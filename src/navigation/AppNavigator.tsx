@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Session } from '@supabase/supabase-js';
+import * as Notifications from 'expo-notifications';
 
 import { supabase } from '../utils/supabase';
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -12,6 +13,13 @@ import DashboardScreen from '../screens/client/DashboardScreen';
 import PaymentsScreen from '../screens/client/PaymentsScreen';
 import BudgetScreen from '../screens/client/BudgetScreen';
 import ProfileScreen from '../screens/client/ProfileScreen';
+import NotificationsScreen from '../screens/client/NotificationsScreen';
+import {
+  mirrorToLocalTray,
+  registerForTrayNotifications,
+  setupAndroidNotificationChannels,
+  subscribeToRealtimeNotifications,
+} from '../services/notificationService';
 
 // Types for navigation
 export type RootStackParamList = {
@@ -27,6 +35,7 @@ export type MainTabParamList = {
   Dashboard: undefined;
   Payments: undefined;
   Budget: undefined;
+  Notifications: undefined;
   Profile: undefined;
 };
 
@@ -54,6 +63,8 @@ const MainNavigator = () => (
           iconName = focused ? 'receipt' : 'receipt-outline';
         } else if (route.name === 'Budget') {
           iconName = focused ? 'pie-chart' : 'pie-chart-outline';
+        } else if (route.name === 'Notifications') {
+          iconName = focused ? 'notifications' : 'notifications-outline';
         } else if (route.name === 'Profile') {
           iconName = focused ? 'person' : 'person-outline';
         }
@@ -90,6 +101,7 @@ const MainNavigator = () => (
     <Tab.Screen name="Dashboard" component={DashboardScreen} />
     <Tab.Screen name="Payments" component={PaymentsScreen} />
     <Tab.Screen name="Budget" component={BudgetScreen} />
+    <Tab.Screen name="Notifications" component={NotificationsScreen} />
     <Tab.Screen name="Profile" component={ProfileScreen} />
   </Tab.Navigator>
 );
@@ -97,6 +109,7 @@ const MainNavigator = () => (
 export default function AppNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigationRef = React.useRef<any>(null);
 
   useEffect(() => {
     // Get initial session
@@ -116,6 +129,36 @@ export default function AppNavigator() {
     };
   }, []);
 
+  useEffect(() => {
+    void setupAndroidNotificationChannels();
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    void registerForTrayNotifications(session.user.id);
+    const unsubscribeRealtime = subscribeToRealtimeNotifications(session.user.id, (notification) => {
+      void mirrorToLocalTray(notification);
+    });
+
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const screen = response.notification.request.content.data?.screen;
+      const target =
+        screen === 'Payments' || screen === 'Orders'
+          ? 'Payments'
+          : screen === 'Budget'
+            ? 'Budget'
+            : 'Notifications';
+
+      navigationRef.current?.navigate('Main', { screen: target });
+    });
+
+    return () => {
+      unsubscribeRealtime();
+      responseSubscription.remove();
+    };
+  }, [session?.user?.id]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -125,7 +168,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {session ? (
           <Stack.Screen name="Main" component={MainNavigator} />

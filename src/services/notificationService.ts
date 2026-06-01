@@ -1,0 +1,220 @@
+import { Platform } from 'react-native';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { supabase } from '../utils/supabase';
+
+export type NotificationCategory = 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  body: string;
+  type: string;
+  category: NotificationCategory;
+  priority: 'LOW' | 'NORMAL' | 'HIGH';
+  data?: Record<string, unknown> | null;
+  read_at?: string | null;
+  created_at: string;
+}
+
+export const ANDROID_CHANNELS: Record<NotificationCategory, string> = {
+  PAYMENT_UPDATES: 'spay-payments-v1',
+  ALERTS: 'spay-alerts-v1',
+  ADS: 'spay-ads-v1',
+  SYSTEM: 'spay-system-v1',
+};
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+function getProjectId(): string | undefined {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ||
+    Constants.easConfig?.projectId ||
+    undefined
+  );
+}
+
+export async function setupAndroidNotificationChannels() {
+  if (Platform.OS !== 'android') return;
+
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.PAYMENT_UPDATES, {
+    name: 'S-Pay Payments',
+    description: 'Payment reminders, due dates, confirmations, and order updates.',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 150, 250],
+    lightColor: '#ee4d2d',
+    sound: 'default',
+  });
+
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ALERTS, {
+    name: 'S-Pay Alerts',
+    description: 'Important account, budget, and system alerts.',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 350, 150, 350],
+    lightColor: '#ef4444',
+    sound: 'default',
+  });
+
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ADS, {
+    name: 'S-Pay Ads',
+    description: 'S-Pay promotions and announcements.',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    vibrationPattern: [0, 150],
+    lightColor: '#3b82f6',
+  });
+
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.SYSTEM, {
+    name: 'S-Pay System',
+    description: 'Account notices and general system messages.',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    vibrationPattern: [0, 200],
+    lightColor: '#10b981',
+    sound: 'default',
+  });
+}
+
+export async function registerForTrayNotifications(userId: string) {
+  await setupAndroidNotificationChannels();
+
+  if (!Device.isDevice) {
+    console.warn('[Notifications] Physical device required for Expo push tokens.');
+    return null;
+  }
+
+  const existingPermissions = await Notifications.getPermissionsAsync();
+  let finalStatus = existingPermissions.status;
+
+  if (existingPermissions.status !== 'granted') {
+    const requested = await Notifications.requestPermissionsAsync();
+    finalStatus = requested.status;
+  }
+
+  if (finalStatus !== 'granted') {
+    console.warn('[Notifications] Permission not granted.');
+    return null;
+  }
+
+  const projectId = getProjectId();
+  const tokenResult = await Notifications.getExpoPushTokenAsync(
+    projectId ? { projectId } : undefined
+  );
+  const expoPushToken = tokenResult.data;
+
+  const { error } = await supabase
+    .from('notification_devices')
+    .upsert(
+      {
+        user_id: userId,
+        expo_push_token: expoPushToken,
+        platform: Platform.OS,
+        device_id: `${Platform.OS}-${Device.modelName || 'device'}`,
+        last_seen_at: new Date().toISOString(),
+        revoked_at: null,
+      },
+      { onConflict: 'expo_push_token' }
+    );
+
+  if (error) {
+    console.warn('[Notifications] Failed to register device token:', error.message);
+  }
+
+  return expoPushToken;
+}
+
+export async function fetchNotifications(limit = 100) {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data || []) as AppNotification[];
+}
+
+export async function markNotificationRead(notificationId: string) {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', notificationId);
+
+  if (error) throw error;
+}
+
+export async function markAllNotificationsRead() {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .is('read_at', null);
+
+  if (error) throw error;
+}
+
+export async function clearNotification(notificationId: string) {
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('id', notificationId);
+
+  if (error) throw error;
+}
+
+export async function mirrorToLocalTray(notification: AppNotification) {
+  const channelId =
+    typeof notification.data?.channelId === 'string'
+      ? notification.data.channelId
+      : ANDROID_CHANNELS[notification.category] || ANDROID_CHANNELS.SYSTEM;
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: notification.title,
+      body: notification.body,
+      sound: notification.category === 'ADS' ? undefined : 'default',
+      data: {
+        notificationId: notification.id,
+        type: notification.type,
+        category: notification.category,
+        screen: notification.data?.screen || 'Notifications',
+      },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 1,
+      channelId: Platform.OS === 'android' ? channelId : undefined,
+    },
+  });
+}
+
+export function subscribeToRealtimeNotifications(
+  userId: string,
+  onNotification: (notification: AppNotification) => void
+) {
+  const channel = supabase
+    .channel(`mobile-notifications-${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        onNotification(payload.new as AppNotification);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
