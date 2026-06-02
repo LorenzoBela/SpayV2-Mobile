@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -59,6 +59,8 @@ import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 
+type PaymentSubTab = 'ledger' | 'breakdown' | 'logs' | 'receipts';
+
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -103,6 +105,11 @@ function formatBillingMonthKey(monthKey: string): string {
     year: 'numeric',
   });
 }
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
 
 // Flip clock sub-component
 interface FlipCardProps {
@@ -287,7 +294,8 @@ export default function AdminPaymentsScreen() {
   const [paymentLogs, setPaymentLogs] = useState<any[]>([]);
 
   // Sub-tab state ('ledger' | 'breakdown' | 'logs' | 'receipts')
-  const [subTab, setSubTab] = useState<'ledger' | 'breakdown' | 'logs' | 'receipts'>('ledger');
+  const [subTab, setSubTab] = useState<PaymentSubTab>('ledger');
+  const [pendingSubTab, setPendingSubTab] = useState<PaymentSubTab | null>(null);
   const [ledgerViewMode, setLedgerViewMode] = useState<'list' | 'table'>('list');
   const [breakdownViewMode, setBreakdownViewMode] = useState<'list' | 'table'>('list');
 
@@ -312,6 +320,7 @@ export default function AdminPaymentsScreen() {
   const [receiptYearFilter, setReceiptYearFilter] = useState('');
   const [receiptMonthFilter, setReceiptMonthFilter] = useState('');
   const [receiptStatusFilter, setReceiptStatusFilter] = useState('');
+  const [receiptPickerType, setReceiptPickerType] = useState<'client' | 'year' | 'month' | 'status' | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState('');
@@ -382,6 +391,12 @@ export default function AdminPaymentsScreen() {
   }, []);
 
   useEffect(() => {
+    if (pendingSubTab !== subTab) return;
+    const timer = setTimeout(() => setPendingSubTab(null), 180);
+    return () => clearTimeout(timer);
+  }, [pendingSubTab, subTab]);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, ledgerFilter, subTab]);
 
@@ -425,30 +440,78 @@ export default function AdminPaymentsScreen() {
     loadData(false);
   };
 
-  // Process payments list
-  const processedPayments = payments.map(p => {
-    const order = orders.find(o => o.id === p.order_id);
-    const client = profiles.find(pr => pr.id === order?.user_id);
-    const isOverdue = !p.is_paid && new Date(p.due_date) < new Date();
+  const handleSubTabPress = (nextTab: PaymentSubTab) => {
+    if (nextTab === subTab) return;
+    setPendingSubTab(nextTab);
+    setSelectedIds([]);
+    setBulkMode(false);
+    requestAnimationFrame(() => {
+      setSubTab(nextTab);
+    });
+  };
 
-    return {
-      ...p,
-      itemName: order?.item_name || 'Purchase Order',
-      totalMonths: order?.installment_months || 0,
-      clientName: client?.name || 'Unknown Client',
-      clientEmail: client?.email || '',
-      clientId: client?.id || '',
-      isOverdue,
-    };
-  });
+  const orderById = useMemo(() => new Map(orders.map(order => [order.id, order])), [orders]);
+  const profileById = useMemo(() => new Map(profiles.map(profile => [profile.id, profile])), [profiles]);
+
+  // Process payments list once per data refresh instead of rejoining on every render.
+  const processedPayments = useMemo(() => {
+    const now = Date.now();
+    return payments.map(p => {
+      const order = orderById.get(p.order_id);
+      const client = profileById.get(order?.user_id);
+      const isOverdue = !p.is_paid && new Date(p.due_date).getTime() < now;
+
+      return {
+        ...p,
+        itemName: order?.item_name || 'Purchase Order',
+        totalMonths: order?.installment_months || 0,
+        clientName: client?.name || 'Unknown Client',
+        clientEmail: client?.email || '',
+        clientId: client?.id || '',
+        isOverdue,
+      };
+    });
+  }, [orderById, payments, profileById]);
 
   // Calculation for stat cards & countdown (client-side)
-  const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-  const totalCollected = payments.filter(p => p.is_paid).reduce((sum, p) => sum + Number(p.amount_due), 0);
-  const collectionRate = totalAmount > 0 ? (totalCollected / totalAmount) * 100 : 0;
-  const overdueItems = processedPayments.filter(p => p.isOverdue);
-  const totalOverdueAmount = overdueItems.reduce((sum, p) => sum + Number(p.amount_due), 0);
-  const totalUpcomingAmount = processedPayments.filter(p => !p.is_paid && !p.isOverdue).reduce((sum, p) => sum + Number(p.amount_due), 0);
+  const {
+    totalAmount,
+    totalCollected,
+    collectionRate,
+    overdueItems,
+    totalOverdueAmount,
+    totalUpcomingAmount,
+  } = useMemo(() => {
+    let total = 0;
+    let collected = 0;
+    let overdueAmount = 0;
+    let upcomingAmount = 0;
+    const overdue: any[] = [];
+
+    processedPayments.forEach(payment => {
+      const amount = Number(payment.amount_due);
+      total += amount;
+      if (payment.is_paid) {
+        collected += amount;
+        return;
+      }
+      if (payment.isOverdue) {
+        overdue.push(payment);
+        overdueAmount += amount;
+      } else {
+        upcomingAmount += amount;
+      }
+    });
+
+    return {
+      totalAmount: total,
+      totalCollected: collected,
+      collectionRate: total > 0 ? (collected / total) * 100 : 0,
+      overdueItems: overdue,
+      totalOverdueAmount: overdueAmount,
+      totalUpcomingAmount: upcomingAmount,
+    };
+  }, [processedPayments]);
 
   // Next Billing Month Schedule calculation
   useEffect(() => {
@@ -482,11 +545,11 @@ export default function AdminPaymentsScreen() {
         year: 'numeric',
       });
       
-      const clientBillingMap = new Map<string, any>();
-      monthPayments.forEach(payment => {
-        const order = orders.find(o => o.id === payment.order_id);
+    const clientBillingMap = new Map<string, any>();
+    monthPayments.forEach(payment => {
+        const order = orderById.get(payment.order_id);
         if (!order) return;
-        const profile = profiles.find(pr => pr.id === order.user_id);
+        const profile = profileById.get(order.user_id);
         if (!profile) return;
         
         const clientData = clientBillingMap.get(profile.id) || {
@@ -525,7 +588,7 @@ export default function AdminPaymentsScreen() {
         clients: [],
       });
     }
-  }, [payments, orders, profiles]);
+  }, [orderById, payments, profileById]);
 
   // Countdown timer clock
   useEffect(() => {
@@ -555,7 +618,7 @@ export default function AdminPaymentsScreen() {
   }, [nextBillingSchedule.earliestDueDate]);
 
   // Tab 1: Filtered payments
-  const filteredPayments = processedPayments.filter(p => {
+  const filteredPayments = useMemo(() => processedPayments.filter(p => {
     const matchesSearch = p.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.clientName.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -571,13 +634,18 @@ export default function AdminPaymentsScreen() {
       return !p.is_paid && p.proof_of_payment !== null && p.proof_of_payment !== '';
     }
     return true;
-  });
+  }), [ledgerFilter, processedPayments, searchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
-  const paginatedPayments = filteredPayments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const paginatedPayments = useMemo(
+    () => filteredPayments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [currentPage, filteredPayments]
+  );
 
   // Tab 2: Monthly Breakdown Data Builder
-  const getMonthlyBreakdown = () => {
+  const monthlyBreakdown = useMemo(() => {
+    if (subTab !== 'breakdown' && subTab !== 'receipts') return {};
+
     const monthsGroup: Record<string, {
       monthName: string;
       totalAmount: number;
@@ -602,9 +670,11 @@ export default function AdminPaymentsScreen() {
     }> = {};
 
     processedPayments.forEach(payment => {
-      if (breakdownFilter === 'completed' && !payment.is_paid) return;
-      if (breakdownFilter === 'pending' && payment.is_paid) return;
-      if (breakdownFilter === 'overdue' && (!payment.isOverdue || payment.is_paid)) return;
+      if (subTab === 'breakdown') {
+        if (breakdownFilter === 'completed' && !payment.is_paid) return;
+        if (breakdownFilter === 'pending' && payment.is_paid) return;
+        if (breakdownFilter === 'overdue' && (!payment.isOverdue || payment.is_paid)) return;
+      }
 
       const monthKey = getBillingMonthKey(payment.due_date);
       const monthName = formatBillingMonthKey(monthKey);
@@ -674,27 +744,30 @@ export default function AdminPaymentsScreen() {
     });
 
     return monthsGroup;
-  };
-
-  const monthlyBreakdown = getMonthlyBreakdown();
+  }, [breakdownFilter, processedPayments, subTab]);
 
   const BREAKDOWN_PAGE_SIZE = 5;
 
-  const sortedMonthKeys = Object.keys(monthlyBreakdown)
+  const sortedMonthKeys = useMemo(() => Object.keys(monthlyBreakdown)
     .sort()
     .reverse()
     .filter(mKey => {
       const monthData = monthlyBreakdown[mKey];
       return Object.keys(monthData.clients).length > 0;
-    });
+    }), [monthlyBreakdown]);
 
   const totalBreakdownListPages = Math.max(1, Math.ceil(sortedMonthKeys.length / BREAKDOWN_PAGE_SIZE));
-  const paginatedMonthKeys = sortedMonthKeys.slice(
-    (breakdownPage - 1) * BREAKDOWN_PAGE_SIZE,
-    breakdownPage * BREAKDOWN_PAGE_SIZE
+  const paginatedMonthKeys = useMemo(
+    () => sortedMonthKeys.slice(
+      (breakdownPage - 1) * BREAKDOWN_PAGE_SIZE,
+      breakdownPage * BREAKDOWN_PAGE_SIZE
+    ),
+    [breakdownPage, sortedMonthKeys]
   );
 
-  const filteredBreakdownPayments = processedPayments
+  const filteredBreakdownPayments = useMemo(() => {
+    if (subTab !== 'breakdown') return [];
+    return processedPayments
     .filter(payment => {
       if (breakdownFilter === 'completed') return payment.is_paid;
       if (breakdownFilter === 'pending') return !payment.is_paid;
@@ -702,11 +775,15 @@ export default function AdminPaymentsScreen() {
       return true;
     })
     .sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime());
+  }, [breakdownFilter, processedPayments, subTab]);
 
   const totalBreakdownTablePages = Math.max(1, Math.ceil(filteredBreakdownPayments.length / PAGE_SIZE));
-  const paginatedBreakdownPayments = filteredBreakdownPayments.slice(
-    (breakdownPage - 1) * PAGE_SIZE,
-    breakdownPage * PAGE_SIZE
+  const paginatedBreakdownPayments = useMemo(
+    () => filteredBreakdownPayments.slice(
+      (breakdownPage - 1) * PAGE_SIZE,
+      breakdownPage * PAGE_SIZE
+    ),
+    [breakdownPage, filteredBreakdownPayments]
   );
 
   const getUnpaidIdsForMonth = (monthData: any): string[] => {
@@ -760,23 +837,29 @@ export default function AdminPaymentsScreen() {
   };
 
   // Tab 3: Processed Activity Logs
-  const processedLogs = paymentLogs.map(log => {
-    const performer = profiles.find(pr => pr.id === log.performed_by_id);
-    const payment = payments.find(p => p.id === log.payment_id);
-    const order = payment ? orders.find(o => o.id === payment.order_id) : null;
-    const client = order ? profiles.find(pr => pr.id === order.user_id) : null;
+  const paymentById = useMemo(() => new Map(payments.map(payment => [payment.id, payment])), [payments]);
 
-    return {
-      ...log,
-      performerName: performer?.name || 'System',
-      performerRole: performer?.role || 'SYSTEM',
-      amountDue: payment?.amount_due || null,
-      itemName: order?.item_name || null,
-      clientName: client?.name || null,
-    };
-  });
+  const processedLogs = useMemo(() => {
+    if (subTab !== 'logs') return [];
 
-  const filteredLogs = processedLogs.filter(log => {
+    return paymentLogs.map(log => {
+      const performer = profileById.get(log.performed_by_id);
+      const payment = paymentById.get(log.payment_id);
+      const order = payment ? orderById.get(payment.order_id) : null;
+      const client = order ? profileById.get(order.user_id) : null;
+
+      return {
+        ...log,
+        performerName: performer?.name || 'System',
+        performerRole: performer?.role || 'SYSTEM',
+        amountDue: payment?.amount_due || null,
+        itemName: order?.item_name || null,
+        clientName: client?.name || null,
+      };
+    });
+  }, [orderById, paymentById, paymentLogs, profileById, subTab]);
+
+  const filteredLogs = useMemo(() => processedLogs.filter(log => {
     const matchesSearch = log.action_description.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
       log.performerName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
       (log.clientName && log.clientName.toLowerCase().includes(logSearchQuery.toLowerCase())) ||
@@ -796,42 +879,47 @@ export default function AdminPaymentsScreen() {
     }
 
     return true;
-  });
+  }), [logFilterPeriod, logFilterType, logSearchQuery, processedLogs]);
 
   // Tab 4: Receipts lists
-  const receiptsList: any[] = [];
-  Object.keys(monthlyBreakdown).forEach(mKey => {
-    const m = monthlyBreakdown[mKey];
-    Object.keys(m.clients).forEach(cId => {
-      const c = m.clients[cId];
-      let paymentStatus: 'fully_paid' | 'partially_paid' | 'unpaid' = 'unpaid';
-      if (c.pendingCount === 0) {
-        paymentStatus = 'fully_paid';
-      } else if (c.paidCount > 0) {
-        paymentStatus = 'partially_paid';
-      }
+  const receiptsList = useMemo(() => {
+    if (subTab !== 'receipts') return [];
 
-      receiptsList.push({
-        key: `${cId}-${mKey}`,
-        clientId: cId,
-        clientName: c.name,
-        clientEmail: c.email,
-        monthKey: mKey,
-        monthName: m.monthName,
-        totalAmount: c.totalAmount,
-        paidAmount: c.paidAmount,
-        pendingAmount: c.pendingAmount,
-        totalCount: c.totalCount,
-        paidCount: c.paidCount,
-        pendingCount: c.pendingCount,
-        collectionRate: c.collectionRate,
-        paymentStatus,
-        payments: c.payments,
+    const list: any[] = [];
+    Object.keys(monthlyBreakdown).forEach(mKey => {
+      const m = monthlyBreakdown[mKey];
+      Object.keys(m.clients).forEach(cId => {
+        const c = m.clients[cId];
+        let paymentStatus: 'fully_paid' | 'partially_paid' | 'unpaid' = 'unpaid';
+        if (c.pendingCount === 0) {
+          paymentStatus = 'fully_paid';
+        } else if (c.paidCount > 0) {
+          paymentStatus = 'partially_paid';
+        }
+
+        list.push({
+          key: `${cId}-${mKey}`,
+          clientId: cId,
+          clientName: c.name,
+          clientEmail: c.email,
+          monthKey: mKey,
+          monthName: m.monthName,
+          totalAmount: c.totalAmount,
+          paidAmount: c.paidAmount,
+          pendingAmount: c.pendingAmount,
+          totalCount: c.totalCount,
+          paidCount: c.paidCount,
+          pendingCount: c.pendingCount,
+          collectionRate: c.collectionRate,
+          paymentStatus,
+          payments: c.payments,
+        });
       });
     });
-  });
+    return list;
+  }, [monthlyBreakdown, subTab]);
 
-  const filteredReceipts = receiptsList.filter(r => {
+  const filteredReceipts = useMemo(() => receiptsList.filter(r => {
     const matchesSearch = r.clientName.toLowerCase().includes(receiptSearchQuery.toLowerCase()) ||
       r.clientEmail.toLowerCase().includes(receiptSearchQuery.toLowerCase()) ||
       r.monthName.toLowerCase().includes(receiptSearchQuery.toLowerCase());
@@ -857,7 +945,7 @@ export default function AdminPaymentsScreen() {
     }
 
     return true;
-  });
+  }), [receiptClientFilter, receiptMonthFilter, receiptSearchQuery, receiptStatusFilter, receiptYearFilter, receiptsList]);
 
   // Action Handlers
   const handleSelectToggle = (id: string) => {
@@ -1006,6 +1094,33 @@ export default function AdminPaymentsScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
+  // Years for filter dropdowns. Keep hooks above early returns to preserve hook order.
+  const availableYears = useMemo(
+    () => Array.from(new Set(receiptsList.map(r => r.monthKey.split('-')[0]))).sort(),
+    [receiptsList]
+  );
+
+  const clientsList = useMemo(() => {
+    const clientMap = new Map<string, { id: string; name: string }>();
+    profiles.forEach(p => {
+      if (p.role === 'CLIENT' || p.role === 'client') {
+        clientMap.set(p.id, { id: p.id, name: p.name });
+      }
+    });
+    receiptsList.forEach(r => {
+      if (!clientMap.has(r.clientId)) {
+        clientMap.set(r.clientId, { id: r.clientId, name: r.clientName });
+      }
+    });
+    return Array.from(clientMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [profiles, receiptsList]);
+  const tabLabels: Record<PaymentSubTab, string> = {
+    ledger: 'Ledger',
+    breakdown: 'Breakdown',
+    logs: 'Activity Logs',
+    receipts: 'Receipts',
+  };
+
   if (loading) {
     return (
       <PremiumLoader
@@ -1016,9 +1131,6 @@ export default function AdminPaymentsScreen() {
       />
     );
   }
-
-  // Years for filter dropdowns
-  const availableYears = Array.from(new Set(receiptsList.map(r => r.monthKey.split('-')[0]))).sort();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
@@ -1289,24 +1401,38 @@ export default function AdminPaymentsScreen() {
               { id: 'receipts', label: 'Receipts', icon: Receipt },
             ].map(tab => {
               const TabIcon = tab.icon;
-              const active = subTab === tab.id;
+              const tabId = tab.id as PaymentSubTab;
+              const active = subTab === tabId;
+              const pending = pendingSubTab === tabId;
               return (
                 <TouchableOpacity
                   key={tab.id}
                   style={[styles.subTabBtn, active && { backgroundColor: t.accentLight, borderColor: t.accent }]}
-                  onPress={() => {
-                    setSubTab(tab.id as any);
-                    setSelectedIds([]);
-                    setBulkMode(false);
-                  }}
+                  onPress={() => handleSubTabPress(tabId)}
+                  disabled={pending}
                 >
-                  <TabIcon size={14} color={active ? t.accent : t.textSecondary} />
-                  <Text style={[styles.subTabBtnText, { color: active ? t.accent : t.textSecondary }]}>{tab.label}</Text>
+                  {pending ? (
+                    <ActivityIndicator size="small" color={t.accent} />
+                  ) : (
+                    <TabIcon size={14} color={active ? t.accent : t.textSecondary} />
+                  )}
+                  <Text style={[styles.subTabBtnText, { color: active || pending ? t.accent : t.textSecondary }]}>
+                    {pending ? 'Loading...' : tab.label}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         </View>
+
+        {(pendingSubTab || refreshing) && (
+          <View style={[styles.fetchingBanner, { backgroundColor: t.accentLight, borderColor: t.accent }]}>
+            <ActivityIndicator size="small" color={t.accent} />
+            <Text style={[styles.fetchingBannerText, { color: t.accent }]}>
+              {refreshing ? 'Fetching latest payment data...' : `Preparing ${tabLabels[pendingSubTab ?? subTab]} view...`}
+            </Text>
+          </View>
+        )}
 
         {/* Tab content rendering */}
 
@@ -2018,21 +2144,96 @@ export default function AdminPaymentsScreen() {
         {/* ─── TAB 4: RECEIPTS ─── */}
         {subTab === 'receipts' && (
           <View style={styles.tabContentWrapper}>
-            {/* Search Box */}
-            <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginBottom: 12 }]}>
-              <Search size={18} color={t.textSecondary} />
-              <TextInput
-                style={[styles.searchInput, { color: t.textPrimary }]}
-                placeholder="Search receipts by client..."
-                placeholderTextColor={t.textSecondary}
-                value={receiptSearchQuery}
-                onChangeText={setReceiptSearchQuery}
-              />
-              {receiptSearchQuery ? (
-                <TouchableOpacity onPress={() => setReceiptSearchQuery('')}>
-                  <X size={16} color={t.textSecondary} />
-                </TouchableOpacity>
-              ) : null}
+            {/* Search & Filter Toolbar for Receipts */}
+            <View style={{ gap: 8, marginBottom: 4 }}>
+              <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Search size={18} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary }]}
+                  placeholder="Search receipts by client..."
+                  placeholderTextColor={t.textSecondary}
+                  value={receiptSearchQuery}
+                  onChangeText={setReceiptSearchQuery}
+                />
+                {receiptSearchQuery ? (
+                  <TouchableOpacity onPress={() => setReceiptSearchQuery('')}>
+                    <X size={16} color={t.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Horizontal Scroll Filter Chips */}
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {/* Client Filter Chip */}
+                  <TouchableOpacity
+                    style={[
+                      styles.tabBtn,
+                      receiptClientFilter !== '' && { backgroundColor: t.accentLight, borderColor: t.accent }
+                    ]}
+                    onPress={() => setReceiptPickerType('client')}
+                  >
+                    <Text style={[styles.tabBtnText, { color: receiptClientFilter !== '' ? t.accent : t.textSecondary }]}>
+                      {receiptClientFilter !== '' ? `Client: ${profiles.find(p => p.id === receiptClientFilter)?.name || 'Selected'}` : 'All Clients'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Year Filter Chip */}
+                  <TouchableOpacity
+                    style={[
+                      styles.tabBtn,
+                      receiptYearFilter !== '' && { backgroundColor: t.accentLight, borderColor: t.accent }
+                    ]}
+                    onPress={() => setReceiptPickerType('year')}
+                  >
+                    <Text style={[styles.tabBtnText, { color: receiptYearFilter !== '' ? t.accent : t.textSecondary }]}>
+                      {receiptYearFilter !== '' ? `Year: ${receiptYearFilter}` : 'All Years'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Month Filter Chip */}
+                  <TouchableOpacity
+                    style={[
+                      styles.tabBtn,
+                      receiptMonthFilter !== '' && { backgroundColor: t.accentLight, borderColor: t.accent }
+                    ]}
+                    onPress={() => setReceiptPickerType('month')}
+                  >
+                    <Text style={[styles.tabBtnText, { color: receiptMonthFilter !== '' ? t.accent : t.textSecondary }]}>
+                      {receiptMonthFilter !== '' ? `Month: ${MONTH_NAMES[Number(receiptMonthFilter) - 1]}` : 'All Months'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Status Filter Chip */}
+                  <TouchableOpacity
+                    style={[
+                      styles.tabBtn,
+                      receiptStatusFilter !== '' && { backgroundColor: t.accentLight, borderColor: t.accent }
+                    ]}
+                    onPress={() => setReceiptPickerType('status')}
+                  >
+                    <Text style={[styles.tabBtnText, { color: receiptStatusFilter !== '' ? t.accent : t.textSecondary }]}>
+                      {receiptStatusFilter !== '' ? `Status: ${receiptStatusFilter === 'fully_paid' ? 'Fully Paid' : receiptStatusFilter === 'partially_paid' ? 'Partial' : 'Unpaid'}` : 'All Statuses'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Clear Filters Button */}
+                  {(receiptSearchQuery !== '' || receiptClientFilter !== '' || receiptYearFilter !== '' || receiptMonthFilter !== '' || receiptStatusFilter !== '') && (
+                    <TouchableOpacity
+                      style={[styles.tabBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', borderColor: t.cardBorder }]}
+                      onPress={() => {
+                        setReceiptSearchQuery('');
+                        setReceiptClientFilter('');
+                        setReceiptYearFilter('');
+                        setReceiptMonthFilter('');
+                        setReceiptStatusFilter('');
+                      }}
+                    >
+                      <Text style={[styles.tabBtnText, { color: t.textPrimary }]}>Clear Filters</Text>
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+              </View>
             </View>
 
             {/* Receipts Grid */}
@@ -2393,6 +2594,226 @@ export default function AdminPaymentsScreen() {
           </SafeAreaView>
         </Modal>
       )}
+      {/* Option Selector Modal for Filters */}
+      <Modal visible={receiptPickerType !== null} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, maxHeight: '60%' }]}>
+            <LinearGradient
+              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+              style={[styles.sheetHero, { paddingVertical: 14 }]}
+            >
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={[styles.sheetIconBadge, { backgroundColor: t.accent }]}>
+                    <Sliders size={18} color="#ffffff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sheetEyebrow, { color: t.accent }]}>FILTER SELECTION</Text>
+                    <Text style={[styles.sheetTitle, { color: t.textPrimary, fontSize: 18 }]}>
+                      {receiptPickerType === 'client' ? 'Select Client' :
+                       receiptPickerType === 'year' ? 'Select Year' :
+                       receiptPickerType === 'month' ? 'Select Month' :
+                       'Select Status'}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setReceiptPickerType(null)}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+
+            <ScrollView contentContainerStyle={{ padding: 12, gap: 8 }} showsVerticalScrollIndicator={true}>
+              {/* Option Rows */}
+              {(() => {
+                if (receiptPickerType === 'client') {
+                  return (
+                    <>
+                      <TouchableOpacity
+                        style={[
+                          styles.filterOptionRow,
+                          { borderBottomColor: t.border },
+                          receiptClientFilter === '' && { backgroundColor: t.accentLight }
+                        ]}
+                        onPress={() => {
+                          setReceiptClientFilter('');
+                          setReceiptPickerType(null);
+                        }}
+                      >
+                        <Text style={[styles.filterOptionText, { color: t.textPrimary }, receiptClientFilter === '' && { color: t.accent, fontWeight: 'bold' }]}>
+                          All Clients
+                        </Text>
+                        {receiptClientFilter === '' && <Check size={16} color={t.accent} />}
+                      </TouchableOpacity>
+                      {clientsList.map(c => {
+                        const isSelected = receiptClientFilter === c.id;
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={[
+                              styles.filterOptionRow,
+                              { borderBottomColor: t.border },
+                              isSelected && { backgroundColor: t.accentLight }
+                            ]}
+                            onPress={() => {
+                              setReceiptClientFilter(c.id);
+                              setReceiptPickerType(null);
+                            }}
+                          >
+                            <Text style={[styles.filterOptionText, { color: t.textPrimary }, isSelected && { color: t.accent, fontWeight: 'bold' }]}>
+                              {c.name}
+                            </Text>
+                            {isSelected && <Check size={16} color={t.accent} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  );
+                }
+                if (receiptPickerType === 'year') {
+                  return (
+                    <>
+                      <TouchableOpacity
+                        style={[
+                          styles.filterOptionRow,
+                          { borderBottomColor: t.border },
+                          receiptYearFilter === '' && { backgroundColor: t.accentLight }
+                        ]}
+                        onPress={() => {
+                          setReceiptYearFilter('');
+                          setReceiptPickerType(null);
+                        }}
+                      >
+                        <Text style={[styles.filterOptionText, { color: t.textPrimary }, receiptYearFilter === '' && { color: t.accent, fontWeight: 'bold' }]}>
+                          All Years
+                        </Text>
+                        {receiptYearFilter === '' && <Check size={16} color={t.accent} />}
+                      </TouchableOpacity>
+                      {availableYears.map(year => {
+                        const isSelected = receiptYearFilter === year;
+                        return (
+                          <TouchableOpacity
+                            key={year}
+                            style={[
+                              styles.filterOptionRow,
+                              { borderBottomColor: t.border },
+                              isSelected && { backgroundColor: t.accentLight }
+                            ]}
+                            onPress={() => {
+                              setReceiptYearFilter(year);
+                              setReceiptPickerType(null);
+                            }}
+                          >
+                            <Text style={[styles.filterOptionText, { color: t.textPrimary }, isSelected && { color: t.accent, fontWeight: 'bold' }]}>
+                              {year}
+                            </Text>
+                            {isSelected && <Check size={16} color={t.accent} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  );
+                }
+                if (receiptPickerType === 'month') {
+                  return (
+                    <>
+                      <TouchableOpacity
+                        style={[
+                          styles.filterOptionRow,
+                          { borderBottomColor: t.border },
+                          receiptMonthFilter === '' && { backgroundColor: t.accentLight }
+                        ]}
+                        onPress={() => {
+                          setReceiptMonthFilter('');
+                          setReceiptPickerType(null);
+                        }}
+                      >
+                        <Text style={[styles.filterOptionText, { color: t.textPrimary }, receiptMonthFilter === '' && { color: t.accent, fontWeight: 'bold' }]}>
+                          All Months
+                        </Text>
+                        {receiptMonthFilter === '' && <Check size={16} color={t.accent} />}
+                      </TouchableOpacity>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
+                        const mStr = String(m);
+                        const isSelected = receiptMonthFilter === mStr;
+                        return (
+                          <TouchableOpacity
+                            key={m}
+                            style={[
+                              styles.filterOptionRow,
+                              { borderBottomColor: t.border },
+                              isSelected && { backgroundColor: t.accentLight }
+                            ]}
+                            onPress={() => {
+                              setReceiptMonthFilter(mStr);
+                              setReceiptPickerType(null);
+                            }}
+                          >
+                            <Text style={[styles.filterOptionText, { color: t.textPrimary }, isSelected && { color: t.accent, fontWeight: 'bold' }]}>
+                              {MONTH_NAMES[m - 1]}
+                            </Text>
+                            {isSelected && <Check size={16} color={t.accent} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  );
+                }
+                if (receiptPickerType === 'status') {
+                  const statuses = [
+                    { key: 'fully_paid', label: 'Fully Paid' },
+                    { key: 'partially_paid', label: 'Partially Paid' },
+                    { key: 'unpaid', label: 'Unpaid' },
+                  ];
+                  return (
+                    <>
+                      <TouchableOpacity
+                        style={[
+                          styles.filterOptionRow,
+                          { borderBottomColor: t.border },
+                          receiptStatusFilter === '' && { backgroundColor: t.accentLight }
+                        ]}
+                        onPress={() => {
+                          setReceiptStatusFilter('');
+                          setReceiptPickerType(null);
+                        }}
+                      >
+                        <Text style={[styles.filterOptionText, { color: t.textPrimary }, receiptStatusFilter === '' && { color: t.accent, fontWeight: 'bold' }]}>
+                          All Statuses
+                        </Text>
+                        {receiptStatusFilter === '' && <Check size={16} color={t.accent} />}
+                      </TouchableOpacity>
+                      {statuses.map(s => {
+                        const isSelected = receiptStatusFilter === s.key;
+                        return (
+                          <TouchableOpacity
+                            key={s.key}
+                            style={[
+                              styles.filterOptionRow,
+                              { borderBottomColor: t.border },
+                              isSelected && { backgroundColor: t.accentLight }
+                            ]}
+                            onPress={() => {
+                              setReceiptStatusFilter(s.key);
+                              setReceiptPickerType(null);
+                            }}
+                          >
+                            <Text style={[styles.filterOptionText, { color: t.textPrimary }, isSelected && { color: t.accent, fontWeight: 'bold' }]}>
+                              {s.label}
+                            </Text>
+                            {isSelected && <Check size={16} color={t.accent} />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </>
+                  );
+                }
+                return null;
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2617,6 +3038,22 @@ const styles = StyleSheet.create({
   subTabBtnText: {
     fontSize: 11,
     fontWeight: 'bold',
+  },
+  fetchingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  fetchingBannerText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '800',
   },
   tabContentWrapper: {
     gap: 12,
@@ -3599,5 +4036,18 @@ const styles = StyleSheet.create({
   },
   tableCell: {
     fontSize: 11,
+  },
+  filterOptionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderRadius: 10,
+  },
+  filterOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,26 +10,35 @@ import {
   Modal,
   Alert,
   StatusBar,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell,
   Search,
   ChevronRight,
-  Sliders,
+  ChevronLeft,
   Calendar,
-  User,
   X,
   Send,
   AlertCircle,
   Clock,
   History,
   CheckCircle,
+  Users,
+  UserCheck,
+  AlertTriangle,
+  Info,
+  Mail,
+  ShieldCheck,
+  Check,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { WebView } from 'react-native-webview';
 import dayjs from 'dayjs';
 
 const formatCurrency = (val: number | string) => {
@@ -39,7 +48,13 @@ const formatCurrency = (val: number | string) => {
   });
 };
 
-function formatDate(value: string) {
+const monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+function formatDate(value: string | null) {
+  if (!value) return 'Never';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'N/A';
   return date.toLocaleDateString('en-US', {
@@ -49,13 +64,27 @@ function formatDate(value: string) {
   });
 }
 
+function formatLogTime(value: string | null) {
+  if (!value) return 'N/A';
+  try {
+    const d = dayjs(value);
+    if (!d.isValid()) return 'N/A';
+    return d.format('MMM D, h:mm A');
+  } catch (e) {
+    return 'N/A';
+  }
+}
+
+
 export default function AdminRemindersScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Data states
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -66,16 +95,24 @@ export default function AdminRemindersScreen() {
   // Search & Tab state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+  const [activeSubFilter, setActiveSubFilter] = useState<'all' | 'overdue' | 'due-soon' | 'scheduled'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentLogsPage, setCurrentLogsPage] = useState(1);
+  const PAGE_SIZE = 10;
 
-  // Modals state
-  const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
-
-  // Bulk Broadcast Form state
-  const [broadcastType, setBroadcastType] = useState<'overdue' | 'selected'>('overdue');
+  // Bulk Reminders Modal State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkType, setBulkType] = useState<'all' | 'month' | 'selected' | 'overdue'>('overdue');
+  const [modalStep, setModalStep] = useState<'select' | 'preview'>('select');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
-  const [targetMonth, setTargetMonth] = useState(() => (new Date().getMonth() + 1).toString());
-  const [targetYear, setTargetYear] = useState(() => new Date().getFullYear().toString());
+  const [selectedBulkMonth, setSelectedBulkMonth] = useState<string>('');
+  const [selectedBulkYear, setSelectedBulkYear] = useState<string>(new Date().getFullYear().toString());
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [activePreviewTab, setActivePreviewTab] = useState<number>(0);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState<string>('');
+  const [isSendingBulk, setIsSendingBulk] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const loadData = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -107,60 +144,147 @@ export default function AdminRemindersScreen() {
     loadData(false);
   };
 
-  // Helper selectors
-  const getUrgency = (dueDateStr: string) => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const dueDate = new Date(dueDateStr);
-    const diffTime = dueDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  // Helper/Selectors
+  const clientsList = useMemo(() => {
+    return profiles.filter((p: any) => p.role === 'CLIENT');
+  }, [profiles]);
 
-    if (dueDate < today) {
-      return { label: 'Overdue', color: '#ef4444', urgency: 'overdue' };
-    } else if (diffDays <= 3) {
-      return { label: 'Due Soon', color: '#eab308', urgency: 'urgent' };
-    }
-    return { label: 'Normal', color: '#64748b', urgency: 'normal' };
-  };
-
-  // Process data for rendering lists
-  const pendingPayments = payments
-    .filter((p: any) => !p.is_paid)
-    .map(p => {
-      const order = orders.find(o => o.id === p.order_id);
-      const client = profiles.find(pr => pr.id === order?.user_id);
-      const urgencyInfo = getUrgency(p.due_date);
-
-      return {
-        ...p,
-        itemName: order?.item_name || 'Purchase Order',
-        totalMonths: order?.installment_months || 0,
-        clientName: client?.name || 'Unknown Client',
-        clientEmail: client?.email || '',
-        clientId: client?.id || '',
-        ...urgencyInfo,
-      };
-    })
-    .filter(p => {
-      return p.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.clientName.toLowerCase().includes(searchQuery.toLowerCase());
+  const availableYears = useMemo(() => {
+    if (payments.length === 0) return [new Date().getFullYear().toString()];
+    const yearsSet = new Set<number>();
+    payments.forEach(p => {
+      if (p.due_date) yearsSet.add(new Date(p.due_date).getFullYear());
     });
+    const arr = Array.from(yearsSet);
+    arr.sort((a, b) => b - a);
+    return arr.map(String);
+  }, [payments]);
 
-  const formattedLogs = reminderLogs.map((log: any) => {
-    const payment = payments.find(p => p.id === log.payment_id);
-    const order = payment ? orders.find(o => o.id === payment.order_id) : null;
-    const client = order ? profiles.find(pr => pr.id === order.user_id) : null;
-    const sender = profiles.find(p => p.id === log.sent_by_id);
+  // Compute targets
+  const reminderTargets = useMemo(() => {
+    const now = new Date();
+    const inSevenDays = new Date();
+    inSevenDays.setDate(now.getDate() + 7);
 
+    return payments
+      .filter((p: any) => !p.is_paid)
+      .map((p: any) => {
+        const order = p && p.order_id ? orders.find(o => o && o.id === p.order_id) : null;
+        const client = order && order.user_id ? profiles.find(pr => pr && pr.id === order.user_id) : null;
+        const dDate = new Date(p.due_date);
+
+        const status: 'overdue' | 'due-soon' | 'scheduled' =
+          dDate < now ? 'overdue' : dDate <= inSevenDays ? 'due-soon' : 'scheduled';
+
+        // Find latest log for this payment
+        const paymentLogs = reminderLogs.filter((log: any) => log && log.payment_id === p.id);
+        paymentLogs.sort((a, b) => {
+          const tA = a && a.sent_at ? new Date(a.sent_at).getTime() : 0;
+          const tB = b && b.sent_at ? new Date(b.sent_at).getTime() : 0;
+          return tB - tA;
+        });
+        const lastSentAt = paymentLogs[0]?.sent_at || null;
+
+        return {
+          id: p.id,
+          clientName: client?.name || 'Unknown Client',
+          clientEmail: client?.email || '',
+          clientId: client?.id || '',
+          itemName: order?.item_name || 'Purchase Order',
+          amountDue: Number(p.amount_due),
+          dueDate: p.due_date,
+          lastSentAt,
+          status,
+        };
+      });
+  }, [payments, orders, profiles, reminderLogs]);
+
+  // Dynamic stats
+  const stats = useMemo(() => {
     return {
-      ...log,
-      clientName: client?.name || 'Unknown Client',
-      itemName: order?.item_name || 'Item Ledger',
-      senderName: sender?.name || (log.automated ? 'System Automator' : 'Admin'),
-      monthNumber: payment?.month_number || 0,
+      total: reminderTargets.length,
+      overdue: reminderTargets.filter(t => t.status === 'overdue').length,
+      dueSoon: reminderTargets.filter(t => t.status === 'due-soon').length,
+      clientsCount: clientsList.length,
     };
-  });
+  }, [reminderTargets, clientsList]);
 
+  // Filter targets for list display
+  const filteredTargets = useMemo(() => {
+    const text = searchQuery.trim().toLowerCase();
+    return reminderTargets.filter((target) => {
+      const matchesText = !text ||
+        target.clientName.toLowerCase().includes(text) ||
+        target.clientEmail.toLowerCase().includes(text) ||
+        target.itemName.toLowerCase().includes(text);
+      const matchesFilter = activeSubFilter === 'all' || target.status === activeSubFilter;
+      return matchesText && matchesFilter;
+    });
+  }, [searchQuery, activeSubFilter, reminderTargets]);
+
+  // Formatting trigger logs
+  const formattedLogs = useMemo(() => {
+    try {
+      return reminderLogs.map((log: any) => {
+        if (!log) return null;
+        const payment = log.payment_id ? payments.find(p => p && p.id === log.payment_id) : null;
+        const order = payment && payment.order_id ? orders.find(o => o && o.id === payment.order_id) : null;
+        const client = order && order.user_id ? profiles.find(pr => pr && pr.id === order.user_id) : null;
+        const sender = log.sent_by_id ? profiles.find(p => p && p.id === log.sent_by_id) : null;
+
+        return {
+          id: log.id || Math.random().toString(),
+          clientName: client?.name || 'Unknown Client',
+          itemName: order?.item_name || 'Item Ledger',
+          amountDue: payment ? Number(payment.amount_due) : 0,
+          dueDate: payment ? payment.due_date : '',
+          sentAt: log.sent_at,
+          sentBy: log.automated ? 'System' : (sender?.name || 'Admin'),
+          automated: !!log.automated,
+        };
+      }).filter(Boolean);
+    } catch (e) {
+      console.warn('[AdminRemindersScreen] Error formatting logs:', e);
+      return [];
+    }
+  }, [reminderLogs, payments, orders, profiles]);
+
+  // Pagination Math
+  const totalPages = Math.max(1, Math.ceil(filteredTargets.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const paginatedTargets = filteredTargets.slice(pageStart, pageStart + PAGE_SIZE);
+
+  // Logs Pagination Math
+  const logsTotalPages = Math.max(1, Math.ceil(formattedLogs.length / PAGE_SIZE));
+  const safeLogsPage = Math.min(currentLogsPage, logsTotalPages);
+  const logsPageStart = (safeLogsPage - 1) * PAGE_SIZE;
+  const paginatedLogs = formattedLogs.slice(logsPageStart, logsPageStart + PAGE_SIZE);
+
+  // Compute delinquent clients
+  const delinquentClients = useMemo(() => {
+    const overdueCounts: Record<string, number> = {};
+    reminderTargets.forEach(t => {
+      if (t.status === 'overdue') {
+        overdueCounts[t.clientEmail] = (overdueCounts[t.clientEmail] || 0) + 1;
+      }
+    });
+    const overdueEmails = new Set(
+      Object.keys(overdueCounts).filter(email => overdueCounts[email] >= 2)
+    );
+    return clientsList.filter(c => overdueEmails.has(c.email));
+  }, [reminderTargets, clientsList]);
+
+  // Search filter for clients checklist
+  const filteredClientsForSelection = useMemo(() => {
+    const q = clientSearch.toLowerCase().trim();
+    return clientsList.filter(c =>
+      c.name?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q)
+    );
+  }, [clientsList, clientSearch]);
+
+  // Actions
   const handleSendReminder = async (paymentId: string, itemName: string, clientName: string) => {
     setActionLoading(true);
     try {
@@ -178,36 +302,90 @@ export default function AdminRemindersScreen() {
     }
   };
 
-  const handleClientToggle = (clientId: string) => {
-    if (selectedClientIds.includes(clientId)) {
-      setSelectedClientIds(prev => prev.filter(id => id !== clientId));
+  const handleToggleSelectClient = (id: string) => {
+    setSelectedClientIds(prev =>
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllClients = () => {
+    const allFilteredIds = filteredClientsForSelection.map(c => c.id);
+    const allSelected = allFilteredIds.every(id => selectedClientIds.includes(id));
+    if (allSelected) {
+      setSelectedClientIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
     } else {
-      setSelectedClientIds(prev => [...prev, clientId]);
+      setSelectedClientIds(prev => Array.from(new Set([...prev, ...allFilteredIds])));
     }
   };
 
-  const handleBulkBroadcast = async () => {
-    setActionLoading(true);
+  const handlePreviewBulkReminders = async () => {
+    if (bulkType === 'month' && (!selectedBulkMonth || !selectedBulkYear)) {
+      Alert.alert('Fields Required', 'Please select both target month and year.');
+      return;
+    }
+    if (bulkType === 'selected' && selectedClientIds.length === 0) {
+      Alert.alert('Recipients Required', 'Please select at least one client.');
+      return;
+    }
+
+    setIsPreviewLoading(true);
+    setModalStep('preview');
+    setPreviewData(null);
+    setActivePreviewTab(0);
+
+    try {
+      const response = await callAdminApi('preview-bulk-reminders', {
+        type: bulkType,
+        month: selectedBulkMonth || undefined,
+        year: selectedBulkYear || undefined,
+        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map(c => c.id) : undefined)
+      });
+
+      if (response.status === 'success' || response.status === 'info') {
+        setPreviewData(response);
+      } else {
+        Alert.alert('Error', response.message || 'Failed to generate bulk preview.');
+        setModalStep('select');
+      }
+    } catch (e: any) {
+      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      setModalStep('select');
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
+  const handleSendBulkReminders = async () => {
+    if (bulkType === 'month' && (!selectedBulkMonth || !selectedBulkYear)) {
+      Alert.alert('Fields Required', 'Please select both target month and year.');
+      return;
+    }
+    if (bulkType === 'selected' && selectedClientIds.length === 0) {
+      Alert.alert('Recipients Required', 'Please select at least one client.');
+      return;
+    }
+
+    setIsSendingBulk(true);
     try {
       const response = await callAdminApi('send-bulk-reminders', {
-        type: broadcastType,
-        clientIds: broadcastType === 'selected' ? selectedClientIds : undefined,
-        month: targetMonth,
-        year: targetYear,
+        type: bulkType,
+        month: selectedBulkMonth || undefined,
+        year: selectedBulkYear || undefined,
+        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map(c => c.id) : undefined)
       });
 
       if (response.success) {
-        Alert.alert('Success', `Broadcast alerts sent. Count: ${response.count || 0}`);
-        setIsBulkOpen(false);
-        setSelectedClientIds([]);
+        Alert.alert('Success', response.message || 'Bulk reminders processed successfully!');
+        setIsBulkModalOpen(false);
+        setModalStep('select');
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed bulk broadcast.');
+        Alert.alert('Error', response.error || 'Failed to dispatch bulk reminders.');
       }
     } catch (e: any) {
       Alert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
-      setActionLoading(false);
+      setIsSendingBulk(false);
     }
   };
 
@@ -222,20 +400,6 @@ export default function AdminRemindersScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
-  const overduePayments = pendingPayments.filter(p => p.urgency === 'overdue');
-  const totalDuesOutstanding = pendingPayments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-
-  if (loading) {
-    return (
-      <PremiumLoader
-        title="Admin Control Center"
-        subtitle="Loading active reminders and scheduled triggers..."
-        error={error}
-        onRetry={() => loadData()}
-      />
-    );
-  }
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
@@ -243,53 +407,57 @@ export default function AdminRemindersScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerSubtitle}>Operations Center</Text>
-          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Dues Reminders</Text>
+          <Text style={styles.headerSubtitle}>S-Pay Admin</Text>
+          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Payment Reminders</Text>
         </View>
-        <TouchableOpacity style={[styles.broadcastBtn, { backgroundColor: t.accent }]} onPress={() => setIsBulkOpen(true)}>
-          <Send size={16} color="#fff" />
-          <Text style={styles.broadcastBtnText}>Broadcast</Text>
+        <TouchableOpacity
+          style={[styles.broadcastBtn, { backgroundColor: t.accent }]}
+          onPress={() => {
+            setSelectedClientIds([]);
+            setSelectedBulkMonth('');
+            setBulkType('overdue');
+            setModalStep('select');
+            setIsBulkModalOpen(true);
+          }}
+        >
+          <Mail size={15} color="#fff" />
+          <Text style={styles.broadcastBtnText}>Bulk Reminders</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Search Input */}
-      {activeTab === 'pending' && (
-        <View style={styles.searchSection}>
-          <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <Search size={18} color={t.textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: t.textPrimary }]}
-              placeholder="Search by client or item name..."
-              placeholderTextColor={t.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <X size={16} color={t.textSecondary} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
-      )}
 
       {/* Tabs */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'pending' && { backgroundColor: t.accentLight, borderColor: t.accent }]}
-          onPress={() => setActiveTab('pending')}
+          onPress={() => {
+            setActiveTab('pending');
+            setCurrentPage(1);
+          }}
         >
           <Clock size={16} color={activeTab === 'pending' ? t.accent : t.textSecondary} />
-          <Text style={[styles.tabBtnText, { color: activeTab === 'pending' ? t.accent : t.textSecondary }]}>Pending Dues</Text>
+          <Text style={[styles.tabBtnText, { color: activeTab === 'pending' ? t.accent : t.textSecondary }]}>Active Targets</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'history' && { backgroundColor: t.accentLight, borderColor: t.accent }]}
-          onPress={() => setActiveTab('history')}
+          onPress={() => {
+            setActiveTab('history');
+            setCurrentLogsPage(1);
+          }}
         >
           <History size={16} color={activeTab === 'history' ? t.accent : t.textSecondary} />
-          <Text style={[styles.tabBtnText, { color: activeTab === 'history' ? t.accent : t.textSecondary }]}>Trigger Log</Text>
+          <Text style={[styles.tabBtnText, { color: activeTab === 'history' ? t.accent : t.textSecondary }]}>Trigger Logs</Text>
         </TouchableOpacity>
       </View>
+
+      {error ? (
+        <View style={[styles.errorBanner, { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2', borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2' }]}>
+          <AlertCircle size={16} color="#ef4444" />
+          <Text style={[styles.errorText, { color: '#ef4444', flex: 1 }]}>{error}</Text>
+          <TouchableOpacity onPress={() => loadData()}>
+            <Text style={{ color: isDarkMode ? '#f87171' : '#ef4444', fontWeight: 'bold', fontSize: 12 }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
@@ -298,171 +466,828 @@ export default function AdminRemindersScreen() {
       >
         {activeTab === 'pending' ? (
           <>
-            {/* Quick stats banner */}
-            <View style={styles.statsBanner}>
-              <View style={[styles.miniCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Text style={styles.miniLabel}>Overdue Items</Text>
-                <Text style={[styles.miniValue, { color: '#ef4444' }]}>{overduePayments.length}</Text>
+            {/* Stat Cards Grid */}
+            <View style={styles.statsGrid}>
+              <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statCardLabel}>Unpaid Items</Text>
+                  <Clock size={14} color={t.accent} />
+                </View>
+                <Text style={[styles.statCardValue, { color: t.textPrimary }]}>{stats.total}</Text>
               </View>
-              <View style={[styles.miniCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Text style={styles.miniLabel}>Total Outstanding Dues</Text>
-                <Text style={[styles.miniValue, { color: t.textPrimary }]}>{formatCurrency(totalDuesOutstanding)}</Text>
+
+              <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statCardLabel}>Overdue Bills</Text>
+                  <AlertCircle size={14} color="#ef4444" />
+                </View>
+                <Text style={[styles.statCardValue, { color: '#ef4444' }]}>{stats.overdue}</Text>
+              </View>
+
+              <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statCardLabel}>Due Soon (7d)</Text>
+                  <Bell size={14} color="#eab308" />
+                </View>
+                <Text style={[styles.statCardValue, { color: '#eab308' }]}>{stats.dueSoon}</Text>
+              </View>
+
+              <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statCardLabel}>Active Clients</Text>
+                  <ShieldCheck size={14} color="#3b82f6" />
+                </View>
+                <Text style={[styles.statCardValue, { color: t.textPrimary }]}>{stats.clientsCount}</Text>
               </View>
             </View>
 
-            {/* List */}
-            <Text style={styles.sectionHeaderTitle}>Dues Outstanding ({pendingPayments.length})</Text>
+            {/* Filter Panel Card */}
+            <View style={[styles.filterBarCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              {/* Search Bar */}
+              <View style={[styles.searchBox, { backgroundColor: t.bg, borderColor: t.border }]}>
+                <Search size={16} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary }]}
+                  placeholder="Search client, email, or item..."
+                  placeholderTextColor={t.textSecondary}
+                  value={searchQuery}
+                  onChangeText={(text) => {
+                    setSearchQuery(text);
+                    setCurrentPage(1);
+                  }}
+                />
+                {searchQuery ? (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <X size={16} color={t.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Status capsules horizontal scroll */}
+              <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.capsulesScroll}>
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'overdue', label: 'Overdue' },
+                  { value: 'due-soon', label: 'Due Soon' },
+                  { value: 'scheduled', label: 'Scheduled' },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.value}
+                    style={[
+                      styles.capsuleBtn,
+                      activeSubFilter === item.value && { backgroundColor: t.accentLight, borderColor: t.accent }
+                    ]}
+                    onPress={() => {
+                      setActiveSubFilter(item.value as any);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.capsuleText,
+                        { color: activeSubFilter === item.value ? t.accent : t.textSecondary }
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Targets list */}
+            <Text style={styles.sectionHeaderTitle}>Dues Outstanding ({filteredTargets.length})</Text>
             <View style={styles.pendingList}>
-              {pendingPayments.length > 0 ? (
-                pendingPayments.map((p) => (
-                  <View key={p.id} style={[styles.pendingItemCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              {paginatedTargets.length > 0 ? (
+                paginatedTargets.map((target) => (
+                  <View key={target.id} style={[styles.pendingItemCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                     <View style={styles.pendingItemHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.pendingItemName, { color: t.textPrimary }]} numberOfLines={1}>{p.itemName}</Text>
-                        <Text style={styles.clientSubtitle}>{p.clientName} • Term {p.month_number} of {p.totalMonths}</Text>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text style={[styles.pendingItemName, { color: t.textPrimary }]} numberOfLines={1}>{target.clientName}</Text>
+                          <View style={[
+                            styles.urgencyBadge,
+                            {
+                              backgroundColor: target.status === 'overdue'
+                                ? 'rgba(239, 68, 68, 0.1)'
+                                : target.status === 'due-soon'
+                                ? 'rgba(238, 77, 45, 0.1)'
+                                : 'rgba(148, 163, 184, 0.1)'
+                            }
+                          ]}>
+                            <Text style={[
+                              styles.urgencyText,
+                              {
+                                color: target.status === 'overdue'
+                                  ? '#ef4444'
+                                  : target.status === 'due-soon'
+                                  ? t.accent
+                                  : t.textSecondary
+                              }
+                            ]}>
+                              {target.status.replace('-', ' ')}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.clientSubtitle}>
+                          {target.itemName} • <Text style={{ fontWeight: 'bold', color: t.textPrimary }}>{formatCurrency(target.amountDue)}</Text>
+                        </Text>
+                        <Text style={[styles.dueDateText, { color: t.textSecondary }]}>Due: {formatDate(target.dueDate)}</Text>
+                        <Text style={[styles.lastSentText, { color: t.textSecondary }]}>Last reminder: {formatDate(target.lastSentAt)}</Text>
                       </View>
-                      <View style={[styles.urgencyBadge, { backgroundColor: p.color + '1a' }]}>
-                        <Text style={[styles.urgencyText, { color: p.color }]}>{p.label}</Text>
-                      </View>
-                    </View>
 
-                    <View style={[styles.dividerLine, { backgroundColor: t.border }]} />
-
-                    <View style={styles.pendingItemFooter}>
-                      <View>
-                        <Text style={styles.footerLabel}>Amount Due</Text>
-                        <Text style={[styles.footerValue, { color: t.textPrimary }]}>{formatCurrency(p.amount_due)}</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.footerLabel}>Due Date</Text>
-                        <Text style={[styles.footerValue, { color: t.textPrimary }]}>{formatDate(p.due_date)}</Text>
-                      </View>
                       <TouchableOpacity
-                        style={[styles.sendSingleBtn, { backgroundColor: t.accentLight }]}
-                        onPress={() => handleSendReminder(p.id, p.itemName, p.clientName)}
+                        style={[styles.sendSingleBtn, { backgroundColor: t.accentLight, borderColor: t.accent }]}
+                        onPress={() => handleSendReminder(target.id, target.itemName, target.clientName)}
                         disabled={actionLoading}
                       >
-                        <Send size={14} color={t.accent} />
+                        <Send size={12} color={t.accent} />
                         <Text style={styles.sendSingleText}>Remind</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
                 ))
               ) : (
-                <Text style={styles.emptyText}>No pending dues require reminders.</Text>
+                <View style={[styles.emptyCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <Info size={24} color={t.textSecondary} />
+                  <Text style={[styles.emptyText, { color: t.textSecondary }]}>No reminder targets match filter constraints.</Text>
+                </View>
               )}
             </View>
+
+            {/* Pagination Controls */}
+            {filteredTargets.length > PAGE_SIZE && (
+              <View style={[styles.paginationRow, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Text style={[styles.paginationCount, { color: t.textSecondary }]}>
+                  Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filteredTargets.length)} of {filteredTargets.length}
+                </Text>
+                <View style={styles.paginationButtons}>
+                  <TouchableOpacity
+                    style={[styles.pageArrowBtn, { borderColor: t.cardBorder }]}
+                    onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={safePage === 1}
+                  >
+                    <ChevronLeft size={16} color={safePage === 1 ? t.border : t.textPrimary} />
+                  </TouchableOpacity>
+                  <Text style={[styles.pageNumberText, { color: t.textPrimary }]}>{safePage} / {totalPages}</Text>
+                  <TouchableOpacity
+                    style={[styles.pageArrowBtn, { borderColor: t.cardBorder }]}
+                    onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={safePage === totalPages}
+                  >
+                    <ChevronRight size={16} color={safePage === totalPages ? t.border : t.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </>
         ) : (
           <>
-            {/* History logs */}
+            {/* Logs List */}
             <Text style={styles.sectionHeaderTitle}>Broadcast & Alert Audits</Text>
-            <View style={[styles.logsContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              {formattedLogs.length > 0 ? (
-                formattedLogs.map((log, idx) => (
-                  <View key={log.id} style={[styles.logItemRow, idx < formattedLogs.length - 1 && { borderBottomColor: t.border }]}>
-                    <View style={styles.logItemLeft}>
-                      <View style={styles.logStatusIndicator}>
-                        <CheckCircle size={14} color="#10b981" />
+            {paginatedLogs.length > 0 ? (
+              <>
+                <View style={[styles.logsContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  {paginatedLogs.map((log, idx) => {
+                    if (!log) return null;
+                    return (
+                      <View key={log.id} style={[styles.logItemRow, idx < paginatedLogs.length - 1 ? { borderBottomColor: t.border } : null]}>
+                        <View style={styles.logItemLeft}>
+                          <View style={styles.logStatusIndicator}>
+                            <Check size={12} color="#10b981" />
+                          </View>
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <Text style={[styles.logDescription, { color: t.textPrimary }]} numberOfLines={1}>
+                              Reminder Sent for {log.itemName} ({formatCurrency(log.amountDue)})
+                            </Text>
+                            <Text style={styles.logMetadata}>
+                              Client: {log.clientName} • By: {log.sentBy}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.logTimeText, { color: t.textSecondary }]}>{formatLogTime(log.sentAt)}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.logDescription, { color: t.textPrimary }]} numberOfLines={1}>
-                          Reminder Sent for {log.itemName} (Term {log.monthNumber})
-                        </Text>
-                        <Text style={styles.logMetadata}>
-                          Client: {log.clientName} • Triggered by: {log.senderName}
-                        </Text>
-                      </View>
+                    );
+                  })}
+                </View>
+
+                {/* Pagination Controls for Logs */}
+                {formattedLogs.length > PAGE_SIZE && (
+                  <View style={[styles.paginationRow, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginTop: 4, marginBottom: 16 }]}>
+                    <Text style={[styles.paginationCount, { color: t.textSecondary }]}>
+                      Showing {logsPageStart + 1}-{Math.min(logsPageStart + PAGE_SIZE, formattedLogs.length)} of {formattedLogs.length}
+                    </Text>
+                    <View style={styles.paginationButtons}>
+                      <TouchableOpacity
+                        style={[styles.pageArrowBtn, { borderColor: t.cardBorder }]}
+                        onPress={() => setCurrentLogsPage(prev => Math.max(1, prev - 1))}
+                        disabled={safeLogsPage === 1}
+                      >
+                        <ChevronLeft size={16} color={safeLogsPage === 1 ? t.border : t.textPrimary} />
+                      </TouchableOpacity>
+                      <Text style={[styles.pageNumberText, { color: t.textPrimary }]}>{safeLogsPage} / {logsTotalPages}</Text>
+                      <TouchableOpacity
+                        style={[styles.pageArrowBtn, { borderColor: t.cardBorder }]}
+                        onPress={() => setCurrentLogsPage(prev => Math.min(logsTotalPages, prev + 1))}
+                        disabled={safeLogsPage === logsTotalPages}
+                      >
+                        <ChevronRight size={16} color={safeLogsPage === logsTotalPages ? t.border : t.textPrimary} />
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.logTimeText}>{dayjs(log.sent_at).format('MMM D, h:mm A')}</Text>
                   </View>
-                ))
-              ) : (
-                <Text style={styles.emptyText}>No reminder triggers recorded.</Text>
-              )}
-            </View>
+                )}
+              </>
+            ) : (
+              <View style={[styles.emptyCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Info size={24} color={t.textSecondary} />
+                <Text style={[styles.emptyText, { color: t.textSecondary }]}>No reminder logs recorded.</Text>
+              </View>
+            )}
           </>
         )}
       </ScrollView>
 
-      {/* Bulk Broadcast Modal */}
-      <Modal visible={isBulkOpen} animationType="slide" transparent={true}>
+      {/* --- MAIN BULK REMINDERS MODAL --- */}
+      <Modal
+        visible={isBulkModalOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          if (!isSendingBulk) {
+            setIsBulkModalOpen(false);
+            setModalStep('select');
+          }
+        }}
+      >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1e293b' : '#ffffff' }]}>
-            <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Broadcast Dues reminders</Text>
+          <TouchableOpacity
+            style={styles.modalOverlayDismiss}
+            activeOpacity={1}
+            onPress={() => {
+              if (!isSendingBulk) {
+                setIsBulkModalOpen(false);
+                setModalStep('select');
+              }
+            }}
+          />
 
-            <ScrollView contentContainerStyle={styles.formContainer} showsVerticalScrollIndicator={false}>
-              <Text style={styles.label}>Broadcast Target Filter</Text>
-              <View style={styles.radioGroup}>
-                <TouchableOpacity
-                  style={[styles.radioBtn, broadcastType === 'overdue' && { backgroundColor: t.accentLight }]}
-                  onPress={() => setBroadcastType('overdue')}
-                >
-                  <Text style={[styles.radioBtnText, { color: broadcastType === 'overdue' ? t.accent : t.textSecondary }]}>
-                    All Overdue Dues
+          <View style={[
+            styles.modalContent,
+            { backgroundColor: t.cardBg, borderColor: t.cardBorder, height: '90%' }
+          ]}>
+            {/* Modal Header */}
+            <View style={[styles.modalHeader, { backgroundColor: t.cardBg, borderBottomWidth: 1.5, borderBottomColor: t.border }]}>
+              <View style={styles.modalHeaderLeft}>
+                <Mail size={18} color={t.textPrimary} />
+                <View>
+                  <Text style={[styles.modalHeaderTitle, { color: t.textPrimary }]}>
+                    {modalStep === 'preview' ? 'Reminders Preview Queue' : 'Bulk Reminders'}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.radioBtn, broadcastType === 'selected' && { backgroundColor: t.accentLight }]}
-                  onPress={() => setBroadcastType('selected')}
-                >
-                  <Text style={[styles.radioBtnText, { color: broadcastType === 'selected' ? t.accent : t.textSecondary }]}>
-                    Selected Clients
+                  <Text style={[styles.modalHeaderDesc, { color: t.textSecondary }]}>
+                    {modalStep === 'preview' ? 'Review compiled email queue' : 'Select dispatch targets'}
                   </Text>
-                </TouchableOpacity>
+                </View>
               </View>
 
-              {broadcastType === 'selected' && (
-                <>
-                  <Text style={styles.label}>Select Clients</Text>
-                  <View style={[styles.selectBox, { borderColor: t.border }]}>
-                    <ScrollView style={{ maxHeight: 120 }}>
-                      {profiles.map((client) => {
-                        const isSelected = selectedClientIds.includes(client.id);
-                        return (
-                          <TouchableOpacity
-                            key={client.id}
-                            style={[styles.selectItem, isSelected && { backgroundColor: t.accentLight }]}
-                            onPress={() => handleClientToggle(client.id)}
-                          >
-                            <Text style={[styles.selectItemText, { color: t.textPrimary }]}>{client.name} ({client.email})</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                </>
-              )}
-
-              <Text style={styles.label}>Amortization Period Month</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="Month (e.g. 6)"
-                keyboardType="numeric"
-                placeholderTextColor={t.textSecondary}
-                value={targetMonth}
-                onChangeText={setTargetMonth}
-              />
-
-              <Text style={styles.label}>Amortization Period Year</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="Year (e.g. 2026)"
-                keyboardType="numeric"
-                placeholderTextColor={t.textSecondary}
-                value={targetYear}
-                onChangeText={setTargetYear}
-              />
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsBulkOpen(false)} disabled={actionLoading}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: t.accent }]} onPress={handleBulkBroadcast} disabled={actionLoading}>
-                <Text style={styles.confirmBtnText}>{actionLoading ? 'Broadcasting...' : 'Send Broadcast'}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!isSendingBulk) {
+                    setIsBulkModalOpen(false);
+                    setModalStep('select');
+                  }
+                }}
+                disabled={isSendingBulk}
+              >
+                <X size={20} color={t.textPrimary} />
               </TouchableOpacity>
             </View>
+
+            {modalStep === 'select' && (
+              <ScrollView style={styles.bulkModalForm} contentContainerStyle={{ padding: 20, paddingBottom: 20 + insets.bottom, gap: 16 }}>
+                <Text style={styles.bulkOptionHeader}>Select Scope</Text>
+
+                <View style={styles.bulkOptionsGrid}>
+                  {/* Row 1 */}
+                  <View style={styles.optionsRow}>
+                    {/* Option 1: All Clients */}
+                    <TouchableOpacity
+                      style={[
+                        styles.bulkOptionCard,
+                        { backgroundColor: t.border, borderColor: t.cardBorder },
+                        bulkType === 'all' && { borderColor: t.accent, borderWidth: 1.5, backgroundColor: t.accentLight }
+                      ]}
+                      onPress={() => setBulkType('all')}
+                    >
+                      <View style={styles.optionCardHeader}>
+                        <View style={[
+                          styles.optionIconContainer,
+                          { backgroundColor: bulkType === 'all' ? t.accentLight : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') }
+                        ]}>
+                          <Users size={16} color={bulkType === 'all' ? t.accent : t.textSecondary} />
+                        </View>
+                        {bulkType === 'all' && (
+                          <View style={[styles.optionCheckedDot, { backgroundColor: t.accent }]}>
+                            <Check size={8} color="#ffffff" />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.optionCardBody}>
+                        <Text style={[styles.bulkOptionTitle, { color: t.textPrimary }]}>All Clients</Text>
+                        <Text style={styles.bulkOptionDescText}>Targets all active pending ledger accounts.</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Option 2: Specific Month */}
+                    <TouchableOpacity
+                      style={[
+                        styles.bulkOptionCard,
+                        { backgroundColor: t.border, borderColor: t.cardBorder },
+                        bulkType === 'month' && { borderColor: t.accent, borderWidth: 1.5, backgroundColor: t.accentLight }
+                      ]}
+                      onPress={() => setBulkType('month')}
+                    >
+                      <View style={styles.optionCardHeader}>
+                        <View style={[
+                          styles.optionIconContainer,
+                          { backgroundColor: bulkType === 'month' ? t.accentLight : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') }
+                        ]}>
+                          <Calendar size={16} color={bulkType === 'month' ? t.accent : t.textSecondary} />
+                        </View>
+                        {bulkType === 'month' && (
+                          <View style={[styles.optionCheckedDot, { backgroundColor: t.accent }]}>
+                            <Check size={8} color="#ffffff" />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.optionCardBody}>
+                        <Text style={[styles.bulkOptionTitle, { color: t.textPrimary }]}>Specific Month</Text>
+                        <Text style={styles.bulkOptionDescText}>Targets payments due in selected billing month.</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Row 2 */}
+                  <View style={styles.optionsRow}>
+                    {/* Option 3: Selected Clients */}
+                    <TouchableOpacity
+                      style={[
+                        styles.bulkOptionCard,
+                        { backgroundColor: t.border, borderColor: t.cardBorder },
+                        bulkType === 'selected' && { borderColor: t.accent, borderWidth: 1.5, backgroundColor: t.accentLight }
+                      ]}
+                      onPress={() => setBulkType('selected')}
+                    >
+                      <View style={styles.optionCardHeader}>
+                        <View style={[
+                          styles.optionIconContainer,
+                          { backgroundColor: bulkType === 'selected' ? t.accentLight : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') }
+                        ]}>
+                          <UserCheck size={16} color={bulkType === 'selected' ? t.accent : t.textSecondary} />
+                        </View>
+                        {bulkType === 'selected' && (
+                          <View style={[styles.optionCheckedDot, { backgroundColor: t.accent }]}>
+                            <Check size={8} color="#ffffff" />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.optionCardBody}>
+                        <Text style={[styles.bulkOptionTitle, { color: t.textPrimary }]}>Selected Clients</Text>
+                        <Text style={styles.bulkOptionDescText}>Allows manually choosing recipients list.</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Option 4: Overdue Only */}
+                    <TouchableOpacity
+                      style={[
+                        styles.bulkOptionCard,
+                        { backgroundColor: t.border, borderColor: t.cardBorder },
+                        bulkType === 'overdue' && { borderColor: t.accent, borderWidth: 1.5, backgroundColor: t.accentLight }
+                      ]}
+                      onPress={() => setBulkType('overdue')}
+                    >
+                      <View style={styles.optionCardHeader}>
+                        <View style={[
+                          styles.optionIconContainer,
+                          { backgroundColor: bulkType === 'overdue' ? t.accentLight : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)') }
+                        ]}>
+                          <AlertTriangle size={16} color={bulkType === 'overdue' ? t.accent : t.textSecondary} />
+                        </View>
+                        {bulkType === 'overdue' && (
+                          <View style={[styles.optionCheckedDot, { backgroundColor: t.accent }]}>
+                            <Check size={8} color="#ffffff" />
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.optionCardBody}>
+                        <Text style={[styles.bulkOptionTitle, { color: t.textPrimary }]}>Overdue Only</Text>
+                        <Text style={styles.bulkOptionDescText}>Targets the {delinquentClients.length} accounts with 2+ late bills.</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Sub Options conditional parameters */}
+                {bulkType === 'month' && (
+                  <View style={[styles.subFieldsCard, { backgroundColor: t.border }]}>
+                    <Text style={styles.subFieldsHeader}>Target Billing period</Text>
+                    <View style={{ gap: 4 }}>
+                      <Text style={styles.subFieldLabel}>Month</Text>
+                      <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeRow}>
+                        {monthNames.map((m, idx) => (
+                          <TouchableOpacity
+                            key={m}
+                            style={[styles.badgeBtn, selectedBulkMonth === String(idx + 1) && { backgroundColor: t.accent, borderColor: t.accent }]}
+                            onPress={() => setSelectedBulkMonth(String(idx + 1))}
+                          >
+                            <Text style={[styles.badgeBtnText, { color: selectedBulkMonth === String(idx + 1) ? '#ffffff' : t.textSecondary }]}>
+                              {m.substring(0, 3)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+
+                    <View style={{ gap: 4, marginTop: 10 }}>
+                      <Text style={styles.subFieldLabel}>Year</Text>
+                      <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeRow}>
+                        {availableYears.map(y => (
+                          <TouchableOpacity
+                            key={y}
+                            style={[styles.badgeBtn, selectedBulkYear === y && { backgroundColor: t.accent, borderColor: t.accent }]}
+                            onPress={() => setSelectedBulkYear(y)}
+                          >
+                            <Text style={[styles.badgeBtnText, { color: selectedBulkYear === y ? '#ffffff' : t.textSecondary }]}>
+                              {y}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </View>
+                )}
+
+                {bulkType === 'selected' && (
+                  <View style={[styles.subFieldsCard, { backgroundColor: t.border }]}>
+                    <Text style={styles.subFieldsHeader}>Target Recipients</Text>
+                    <TouchableOpacity
+                      style={[styles.clientSelectTrigger, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                      onPress={() => setIsClientModalOpen(true)}
+                    >
+                      <Users size={14} color={t.accent} />
+                      <Text style={[styles.clientSelectTriggerText, { color: t.textPrimary }]}>
+                        {selectedClientIds.length > 0 ? `${selectedClientIds.length} Recipients Selected` : 'Select Client Recipients...'}
+                      </Text>
+                      <ChevronRight size={14} color={t.textSecondary} />
+                    </TouchableOpacity>
+
+                    {/* Optional period filters */}
+                    <Text style={[styles.subFieldsHeader, { marginTop: 12 }]}>Billing month constraint (optional)</Text>
+                    <View style={{ gap: 4 }}>
+                      <Text style={styles.subFieldLabel}>Month</Text>
+                      <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeRow}>
+                        <TouchableOpacity
+                          style={[styles.badgeBtn, selectedBulkMonth === '' && { backgroundColor: t.accent, borderColor: t.accent }]}
+                          onPress={() => setSelectedBulkMonth('')}
+                        >
+                          <Text style={[styles.badgeBtnText, { color: selectedBulkMonth === '' ? '#ffffff' : t.textSecondary }]}>
+                            All Months
+                          </Text>
+                        </TouchableOpacity>
+                        {monthNames.map((m, idx) => (
+                          <TouchableOpacity
+                            key={m}
+                            style={[styles.badgeBtn, selectedBulkMonth === String(idx + 1) && { backgroundColor: t.accent, borderColor: t.accent }]}
+                            onPress={() => setSelectedBulkMonth(String(idx + 1))}
+                          >
+                            <Text style={[styles.badgeBtnText, { color: selectedBulkMonth === String(idx + 1) ? '#ffffff' : t.textSecondary }]}>
+                              {m.substring(0, 3)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+
+                    <View style={{ gap: 4, marginTop: 10 }}>
+                      <Text style={styles.subFieldLabel}>Year</Text>
+                      <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeRow}>
+                        {availableYears.map(y => (
+                          <TouchableOpacity
+                            key={y}
+                            style={[styles.badgeBtn, selectedBulkYear === y && { backgroundColor: t.accent, borderColor: t.accent }]}
+                            onPress={() => setSelectedBulkYear(y)}
+                          >
+                            <Text style={[styles.badgeBtnText, { color: selectedBulkYear === y ? '#ffffff' : t.textSecondary }]}>
+                              {y}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </View>
+                )}
+
+                <View style={[styles.bulkModalNotice, { backgroundColor: t.border }]}>
+                  <Info size={14} color={t.textSecondary} />
+                  <Text style={[styles.bulkModalNoticeText, { color: t.textSecondary }]}>
+                    Emails will be delivered in the background via S-Pay Relay Server SMTP configurations.
+                  </Text>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.bulkModalFooter}>
+                  <TouchableOpacity
+                    style={[styles.previewModeBtn, { borderColor: t.border, backgroundColor: t.border }]}
+                    onPress={handlePreviewBulkReminders}
+                    disabled={isSendingBulk}
+                  >
+                    <Text style={[styles.previewModeBtnText, { color: t.textPrimary }]}>Preview Queue</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.bulkActionsRight}>
+                    <TouchableOpacity
+                      style={[styles.bulkCancelBtn, { borderColor: t.border }]}
+                      onPress={() => setIsBulkModalOpen(false)}
+                      disabled={isSendingBulk}
+                    >
+                      <Text style={[styles.bulkCancelBtnText, { color: t.textSecondary }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.bulkSendBtn, { backgroundColor: t.accent }]}
+                      onPress={handleSendBulkReminders}
+                      disabled={isSendingBulk}
+                    >
+                      <Text style={styles.bulkSendBtnText}>Dispatch</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            )}
+
+            {modalStep === 'preview' && (
+              <View style={styles.previewStepBody}>
+                {isPreviewLoading ? (
+                  <View style={styles.previewStepLoading}>
+                    <ActivityIndicator size="large" color={t.accent} />
+                    <Text style={[styles.previewStepLoadingText, { color: t.textPrimary }]}>Compiling Queue templates...</Text>
+                  </View>
+                ) : !previewData?.clients || previewData.clients.length === 0 ? (
+                  <View style={styles.previewStepEmpty}>
+                    <Info size={32} color={t.textSecondary} />
+                    <Text style={[styles.previewStepEmptyText, { color: t.textPrimary }]}>
+                      {previewData?.message || 'No reminders matched queue constraints.'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.bulkCancelBtn, { borderColor: t.border, marginTop: 10 }]}
+                      onPress={() => setModalStep('select')}
+                    >
+                      <Text style={{ color: t.textPrimary, fontWeight: 'bold' }}>Back</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.previewMainContent}>
+                    {/* Horizontal scroll tabs at the top for preview recipients selection */}
+                    <View style={[styles.previewTabsContainer, { borderBottomColor: t.border }]}>
+                      <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.previewTabsScroll}>
+                        {previewData.clients.map((client: any, idx: number) => {
+                          const isActive = activePreviewTab === idx;
+                          return (
+                            <TouchableOpacity
+                              key={client.user_id}
+                              style={[
+                                styles.previewTabBtn,
+                                { backgroundColor: t.border, borderColor: t.border },
+                                isActive && { borderColor: t.accent, borderWidth: 1.5, backgroundColor: t.accentLight }
+                              ]}
+                              onPress={() => setActivePreviewTab(idx)}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <View style={styles.previewTabAvatar}>
+                                  <Text style={styles.previewTabAvatarText}>
+                                    {client.name.substring(0, 1).toUpperCase()}
+                                  </Text>
+                                </View>
+                                <View style={{ maxWidth: 100 }}>
+                                  <Text style={[styles.previewTabBtnName, { color: t.textPrimary }]} numberOfLines={1}>
+                                    {client.name}
+                                  </Text>
+                                  <Text style={[styles.previewTabBtnSub, { color: t.textSecondary }]} numberOfLines={1}>
+                                    {client.email}
+                                  </Text>
+                                  <Text style={[styles.previewTabBtnCount, { color: t.accent }]} numberOfLines={1}>
+                                    {client.payment_count} bill(s)
+                                  </Text>
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+
+                    {/* Preview details of active client */}
+                    {(() => {
+                      const activeClient = previewData.clients[activePreviewTab];
+                      if (!activeClient) return null;
+
+                      return (
+                        <ScrollView contentContainerStyle={styles.previewDetailsScroll} showsVerticalScrollIndicator={false}>
+                          <View style={[styles.previewClientCard, { backgroundColor: t.border }]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.previewClientName, { color: t.textPrimary }]}>{activeClient.name}</Text>
+                              <Text style={[styles.previewClientEmail, { color: t.textSecondary }]}>{activeClient.email}</Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={[styles.previewClientLabel, { color: t.textSecondary }]}>Total Owed</Text>
+                              <Text style={[styles.previewClientAmt, { color: t.textPrimary }]}>{formatCurrency(activeClient.total_due)}</Text>
+                            </View>
+                          </View>
+
+                          {/* Native Webview wrapper for exact email template parity */}
+                          <View style={[styles.webviewContainer, { borderColor: t.border }]}>
+                            <View style={[styles.webviewHeader, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderBottomColor: t.border }]}>
+                              <Text style={[styles.webviewHeaderText, { color: t.textSecondary }]} numberOfLines={1}>
+                                <Text style={{ fontWeight: 'bold', color: t.textPrimary }}>To: </Text>
+                                {activeClient.name} &lt;{activeClient.email}&gt;
+                              </Text>
+                              <Text style={[styles.webviewHeaderText, { color: t.textSecondary }]} numberOfLines={1}>
+                                <Text style={{ fontWeight: 'bold', color: t.textPrimary }}>Subject: </Text>
+                                {activeClient.subject}
+                              </Text>
+                            </View>
+                            <WebView
+                              originWhitelist={['*']}
+                              source={{ html: activeClient.email_content }}
+                              style={styles.webview}
+                              scrollEnabled={true}
+                            />
+                          </View>
+
+                          {/* Bills Breakdown List */}
+                          <Text style={styles.subFieldsHeader}>Payment Breakdown</Text>
+                          <View style={styles.invoiceBreakdownList}>
+                            {activeClient.payments?.map((p: any, pIdx: number) => (
+                              <View key={pIdx} style={[styles.invoiceItemRow, { backgroundColor: t.border, borderColor: t.cardBorder }]}>
+                                <View style={styles.invoiceRowTop}>
+                                  <Text style={[styles.invoiceItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                                    {p.item_name}
+                                  </Text>
+                                  <Text style={[styles.invoiceItemVal, { color: t.textPrimary }]}>
+                                    {formatCurrency(p.amount_due)}
+                                  </Text>
+                                </View>
+                                <View style={styles.invoiceRowBottom}>
+                                  <Text style={[styles.invoiceItemSub, { color: t.textSecondary }]}>
+                                    Due: {formatDate(p.due_date)}
+                                  </Text>
+                                  <Text style={[styles.invoiceItemTerm, { color: t.textSecondary }]}>
+                                    Installment {p.month_number}/{p.installment_months}
+                                  </Text>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        </ScrollView>
+                      );
+                    })()}
+                  </View>
+                )}
+
+                {/* Footer dispatch summary controls */}
+                {previewData?.clients && previewData.clients.length > 0 && (
+                  <View style={[styles.previewFooterRow, { borderTopColor: t.border, paddingBottom: 12 + insets.bottom }]}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={[styles.previewFooterSummary, { color: t.textSecondary }]} numberOfLines={1}>
+                        Scope: <Text style={{ color: t.textPrimary, fontWeight: 'bold' }}>{previewData.total_clients} Clients</Text>
+                      </Text>
+                      <Text style={[styles.previewFooterSummary, { color: t.textSecondary }]} numberOfLines={1}>
+                        Total: <Text style={{ color: t.accent, fontWeight: 'bold' }}>{formatCurrency(previewData.total_amount)}</Text>
+                      </Text>
+                    </View>
+
+                    <View style={styles.bulkActionsRight}>
+                      <TouchableOpacity
+                        style={[styles.bulkCancelBtn, { borderColor: t.border }]}
+                        onPress={() => setModalStep('select')}
+                        disabled={isSendingBulk}
+                      >
+                        <Text style={[styles.bulkCancelBtnText, { color: t.textSecondary }]}>Options</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.bulkSendBtn, { backgroundColor: t.accent }]}
+                        onPress={handleSendBulkReminders}
+                        disabled={isSendingBulk}
+                      >
+                        <Text style={styles.bulkSendBtnText}>
+                          {isSendingBulk ? 'Sending...' : 'Send All'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- CLIENTS CHECKLIST SUB-MODAL --- */}
+      <Modal
+        visible={isClientModalOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsClientModalOpen(false)}
+      >
+        <View style={styles.pickerModalOverlay}>
+          <View style={[styles.clientModalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={styles.pickerModalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Users size={16} color={t.accent} />
+                <Text style={[styles.pickerModalTitle, { color: t.textPrimary }]}>Recipients Select</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsClientModalOpen(false)}>
+                <X size={20} color={t.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search */}
+            <View style={[styles.searchBox, { borderColor: t.border, backgroundColor: t.border }]}>
+              <Search size={14} color={t.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: t.textPrimary }]}
+                placeholder="Search clients name/email..."
+                placeholderTextColor={t.textSecondary}
+                value={clientSearch}
+                onChangeText={setClientSearch}
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.selectionActions}>
+              <Text style={[styles.selectionCount, { color: t.textSecondary }]}>
+                {filteredClientsForSelection.length} client(s) found
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={styles.quickSelectBtn} onPress={handleSelectAllClients}>
+                  <Text style={[styles.quickSelectBtnText, { color: t.accent }]}>Toggle All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickSelectBtn} onPress={() => setSelectedClientIds([])}>
+                  <Text style={[styles.quickSelectBtnText, { color: t.textSecondary }]}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Scroll checklist */}
+            <ScrollView style={styles.clientModalScroll}>
+              {filteredClientsForSelection.length > 0 ? (
+                filteredClientsForSelection.map((c) => {
+                  const isSelected = selectedClientIds.includes(c.id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[
+                        styles.clientCheckRow,
+                        { borderBottomColor: t.border },
+                        isSelected && { backgroundColor: t.accentLight }
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => handleToggleSelectClient(c.id)}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                        <View style={[
+                          styles.checkbox,
+                          { borderColor: t.accent, backgroundColor: isSelected ? t.accent : 'transparent' }
+                        ]}>
+                          {isSelected && <Check size={12} color="#ffffff" />}
+                        </View>
+                        
+                        {/* Letter Avatar */}
+                        <View style={styles.clientAvatar}>
+                          <Text style={styles.clientAvatarText}>
+                            {c.name.substring(0, 1).toUpperCase()}
+                          </Text>
+                        </View>
+
+                        <View style={styles.clientCheckDetails}>
+                          <Text style={[styles.clientCheckName, { color: t.textPrimary }]}>{c.name}</Text>
+                          <Text style={[styles.clientCheckEmail, { color: t.textSecondary }]}>{c.email}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No matching clients found.</Text>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.applyFilterBtn, { backgroundColor: t.accent, marginTop: 15 }]}
+              onPress={() => setIsClientModalOpen(false)}
+            >
+              <Text style={styles.applyFilterBtnText}>Confirm Selection ({selectedClientIds.length})</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -484,6 +1309,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     gap: 2,
+    flex: 1,
   },
   headerSubtitle: {
     color: '#ee4d2d',
@@ -491,17 +1317,19 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 2,
     textTransform: 'uppercase',
+    fontFamily: 'Outfit-Bold',
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     letterSpacing: -0.3,
+    fontFamily: 'Outfit-Bold',
   },
   broadcastBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
   },
@@ -509,30 +1337,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
-  },
-  searchSection: {
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderRadius: 14,
-    height: 48,
-    paddingHorizontal: 14,
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    height: '100%',
+    fontFamily: 'Outfit-Bold',
   },
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tabBtn: {
     flex: 1,
@@ -549,47 +1360,100 @@ const styles = StyleSheet.create({
   tabBtnText: {
     fontSize: 11,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
   },
   scrollContent: {
     padding: 16,
     paddingTop: 0,
-    gap: 16,
+    gap: 14,
   },
-  statsBanner: {
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  statCard: {
+    width: '48.5%',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 12,
+    gap: 6,
+    minHeight: 80,
+    justifyContent: 'space-between',
+  },
+  statCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statCardLabel: {
+    fontSize: 9.5,
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    fontFamily: 'Outfit-Medium',
+  },
+  statCardValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  filterBarCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 12,
     gap: 10,
   },
-  miniCard: {
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    height: 40,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  searchInput: {
     flex: 1,
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 12,
-    gap: 4,
+    fontSize: 12.5,
+    height: '100%',
+    fontFamily: 'Outfit-Regular',
+    padding: 0,
   },
-  miniLabel: {
-    fontSize: 9,
-    color: '#64748b',
-    fontWeight: '600',
+  capsulesScroll: {
+    paddingVertical: 2,
+    gap: 6,
   },
-  miniValue: {
-    fontSize: 14,
+  capsuleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  capsuleText: {
+    fontSize: 10.5,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
   },
   sectionHeaderTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#ee4d2d',
-    marginTop: 8,
+    marginTop: 6,
+    fontFamily: 'Outfit-Bold',
   },
   pendingList: {
-    gap: 12,
+    gap: 10,
   },
   pendingItemCard: {
     borderRadius: 18,
     borderWidth: 1.5,
-    padding: 16,
-    gap: 12,
+    padding: 14,
   },
   pendingItemHeader: {
     flexDirection: 'row',
@@ -597,60 +1461,103 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pendingItemName: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
   },
   clientSubtitle: {
     fontSize: 11,
     color: '#64748b',
     marginTop: 3,
+    fontFamily: 'Outfit-Medium',
+  },
+  dueDateText: {
+    fontSize: 9.5,
+    marginTop: 2.5,
+    fontFamily: 'Outfit-Regular',
+  },
+  lastSentText: {
+    fontSize: 9.5,
+    marginTop: 1.5,
+    fontFamily: 'Outfit-Regular',
   },
   urgencyBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 6,
   },
   urgencyText: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: 'bold',
     textTransform: 'uppercase',
-  },
-  dividerLine: {
-    height: 1,
-  },
-  pendingItemFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  footerLabel: {
-    fontSize: 8,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  footerValue: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    marginTop: 2,
+    fontFamily: 'Outfit-Bold',
   },
   sendSingleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
+    gap: 4,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
+    borderWidth: 1,
   },
   sendSingleText: {
     color: '#ee4d2d',
     fontSize: 11,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  emptyCard: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  emptyText: {
+    textAlign: 'center',
+    fontSize: 11.5,
+    fontFamily: 'Outfit-Regular',
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginTop: 4,
+  },
+  paginationCount: {
+    fontSize: 11,
+    fontFamily: 'Outfit-Regular',
+  },
+  paginationButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pageArrowBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageNumberText: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+    minWidth: 40,
+    textAlign: 'center',
   },
   logsContainer: {
     borderRadius: 18,
     borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 2,
     marginBottom: 20,
   },
   logItemRow: {
@@ -676,119 +1583,555 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logDescription: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
   },
   logMetadata: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: '#64748b',
-    marginTop: 1,
+    marginTop: 2,
+    fontFamily: 'Outfit-Regular',
   },
   logTimeText: {
-    fontSize: 10,
-    color: '#64748b',
+    fontSize: 9.5,
+    fontFamily: 'Outfit-Medium',
   },
-  emptyText: {
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: 12,
-    paddingVertical: 20,
-  },
-  // Modal layout
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    padding: 20,
+    justifyContent: 'flex-end',
+  },
+  modalOverlayDismiss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContent: {
-    borderRadius: 24,
-    padding: 24,
-    maxHeight: '90%',
-    gap: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    overflow: 'hidden',
   },
-  modalTitle: {
-    fontSize: 18,
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  modalHeaderTitle: {
+    color: '#ffffff',
+    fontSize: 13,
     fontWeight: 'bold',
+    textTransform: 'uppercase',
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 0.5,
   },
-  modalDesc: {
-    fontSize: 12,
-    lineHeight: 18,
+  modalHeaderDesc: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+    marginTop: 1,
   },
-  formContainer: {
-    gap: 12,
+  bulkModalForm: {
+    flex: 1,
   },
-  label: {
-    fontSize: 11,
-    fontWeight: 'bold',
+  bulkOptionHeader: {
+    fontSize: 9,
     color: '#ee4d2d',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  bulkOptionsGrid: {
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 2,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    width: '100%',
+  },
+  bulkOptionCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    gap: 6,
+    minHeight: 110,
+    justifyContent: 'space-between',
+  },
+  optionCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  optionIconContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionCheckedDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionCardBody: {
+    marginTop: 4,
+    gap: 2,
+  },
+  bulkOptionTitle: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  bulkOptionDescText: {
+    fontSize: 8.5,
+    color: '#64748b',
+    lineHeight: 11,
+    fontFamily: 'Outfit-Regular',
+  },
+  subFieldsCard: {
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+  },
+  subFieldsHeader: {
+    fontSize: 9.5,
+    color: '#ee4d2d',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 0.5,
+  },
+  subFieldLabel: {
+    fontSize: 8.5,
+    color: '#64748b',
+    fontFamily: 'Outfit-Medium',
+  },
+  badgeRow: {
+    gap: 6,
+    paddingVertical: 2,
+  },
+  badgeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  badgeBtnText: {
+    fontSize: 10.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  clientSelectTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  clientSelectTriggerText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 11,
+    fontFamily: 'Outfit-Medium',
+  },
+  bulkModalNotice: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  bulkModalNoticeText: {
+    flex: 1,
+    fontSize: 9.5,
+    fontFamily: 'Outfit-Regular',
+    lineHeight: 12,
+  },
+  bulkModalFooter: {
+    flexDirection: 'column',
+    gap: 8,
     marginTop: 4,
   },
-  radioGroup: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  radioBtn: {
-    flex: 1,
-    height: 40,
+  previewModeBtn: {
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: 'transparent',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  radioBtnText: {
-    fontSize: 11,
+  previewModeBtnText: {
+    fontSize: 11.5,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
   },
-  selectBox: {
-    borderRadius: 12,
-    borderWidth: 1.5,
-    padding: 8,
-  },
-  selectItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  selectItemText: {
-    fontSize: 12,
-  },
-  input: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    fontSize: 13,
-  },
-  modalButtons: {
+  bulkActionsRight: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    gap: 8,
+  },
+  bulkCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkCancelBtnText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    fontFamily: 'Outfit-Medium',
+  },
+  bulkSendBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkSendBtnText: {
+    color: '#ffffff',
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  previewStepBody: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  previewStepLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: 12,
+    paddingVertical: 40,
   },
-  cancelBtn: {
-    height: 44,
-    paddingHorizontal: 18,
+  previewStepLoadingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: 'Outfit-Medium',
+  },
+  previewStepEmpty: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 8,
+    paddingVertical: 40,
+  },
+  previewStepEmptyText: {
+    fontSize: 11.5,
+    fontFamily: 'Outfit-Regular',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  previewMainContent: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  previewTabsContainer: {
+    borderBottomWidth: 1.5,
+    padding: 8,
+  },
+  previewTabsScroll: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  previewTabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    minWidth: 120,
   },
-  cancelBtnText: {
-    fontSize: 13,
-    color: '#94a3b8',
+  previewTabAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(148, 163, 184, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewTabAvatarText: {
+    color: '#64748b',
+    fontSize: 9.5,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
   },
-  confirmBtn: {
-    height: 44,
-    paddingHorizontal: 18,
+  previewTabBtnName: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  previewTabBtnSub: {
+    fontSize: 8.5,
+    fontFamily: 'Outfit-Regular',
+    marginTop: 1,
+  },
+  previewTabBtnCount: {
+    fontSize: 8.5,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 2,
+  },
+  previewDetailsScroll: {
+    padding: 12,
+    gap: 10,
+  },
+  previewClientCard: {
+    padding: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  previewClientName: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  previewClientEmail: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+    marginTop: 1,
+  },
+  previewClientLabel: {
+    fontSize: 8,
+    fontFamily: 'Outfit-Medium',
+    textTransform: 'uppercase',
+  },
+  previewClientAmt: {
+    fontSize: 13.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  subjectCard: {
+    padding: 10,
+    borderRadius: 10,
+  },
+  subjectText: {
+    fontSize: 9.5,
+    lineHeight: 13.5,
+    fontFamily: 'Outfit-Regular',
+  },
+  webviewContainer: {
+    height: 220,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  webview: {
+    flex: 1,
+  },
+  webviewHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    gap: 2,
+  },
+  webviewHeaderText: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+  },
+  invoiceBreakdownList: {
+    gap: 6,
+  },
+  invoiceItemRow: {
+    padding: 10,
+    borderRadius: 12,
+    flexDirection: 'column',
+    borderWidth: 1,
+  },
+  invoiceRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  invoiceRowBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 4,
+  },
+  invoiceItemName: {
+    fontSize: 10.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+    flex: 1,
+    marginRight: 8,
+  },
+  invoiceItemSub: {
+    fontSize: 8.5,
+    fontFamily: 'Outfit-Regular',
+  },
+  invoiceItemVal: {
+    fontSize: 10.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  invoiceItemTerm: {
+    fontSize: 8.5,
+    fontFamily: 'Outfit-Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  previewFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderTopWidth: 1,
+  },
+  previewFooterSummary: {
+    fontSize: 10,
+    fontFamily: 'Outfit-Medium',
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 12,
+    padding: 20,
   },
-  confirmBtnText: {
-    fontSize: 13,
-    color: '#fff',
+  clientModalContent: {
+    width: '100%',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 20,
+    gap: 12,
+    maxHeight: '75%',
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pickerModalTitle: {
+    fontSize: 14,
     fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  selectionCount: {
+    fontSize: 8.5,
+    fontFamily: 'Outfit-Bold',
+    textTransform: 'uppercase',
+  },
+  quickSelectBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  quickSelectBtnText: {
+    fontSize: 9.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  clientModalScroll: {
+    maxHeight: 280,
+  },
+  clientCheckRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+  },
+  clientCheckDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  clientCheckName: {
+    fontSize: 11.5,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  clientCheckEmail: {
+    fontSize: 9.5,
+    fontFamily: 'Outfit-Regular',
+  },
+  clientAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientAvatarText: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyFilterBtn: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyFilterBtnText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
+    fontFamily: 'Outfit-Bold',
+  },
+  emptyListText: {
+    textAlign: 'center',
+    fontSize: 11,
+    paddingVertical: 12,
+    fontFamily: 'Outfit-Regular',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  errorText: {
+    fontSize: 11.5,
+    fontFamily: 'Outfit-Medium',
   },
 });

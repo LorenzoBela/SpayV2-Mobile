@@ -45,6 +45,7 @@ import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
+import DatePicker from '../../components/DatePicker';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -1039,33 +1040,17 @@ export default function AdminOrdersScreen() {
               </View>
 
               <View style={styles.dateGrid}>
-                <View style={[styles.dateCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Calendar size={16} color={t.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE DATE</Text>
-                    <TextInput
-                      style={[styles.dateInput, { color: t.textPrimary }]}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={t.textSecondary}
-                      value={purchaseDate}
-                      onChangeText={setPurchaseDate}
-                    />
-                  </View>
-                </View>
-
-                <View style={[styles.dateCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Clock size={16} color={t.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>FIRST DUE DATE (OPTIONAL)</Text>
-                    <TextInput
-                      style={[styles.dateInput, { color: t.textPrimary }]}
-                      placeholder="Auto: 5th next month"
-                      placeholderTextColor={t.textSecondary}
-                      value={firstPaymentDate}
-                      onChangeText={setFirstPaymentDate}
-                    />
-                  </View>
-                </View>
+                <DatePicker
+                  label="Purchase Date"
+                  value={purchaseDate}
+                  onChange={setPurchaseDate}
+                />
+                <DatePicker
+                  label="First Due Date"
+                  value={firstPaymentDate}
+                  onChange={setFirstPaymentDate}
+                  placeholder="Auto: 5th next month"
+                />
               </View>
 
               <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
@@ -1256,44 +1241,22 @@ export default function AdminOrdersScreen() {
 
                 {/* Purchase Date */}
                 {selectedOrder && (
-                  <View style={[
-                    styles.premiumInputCard, 
-                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
-                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
-                  ]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
-                      PURCHASE DATE {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
-                    </Text>
-                    <TextInput
-                      style={[styles.premiumInput, { color: t.textPrimary }]}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={t.textSecondary}
-                      value={editPurchaseDate}
-                      onChangeText={setEditPurchaseDate}
-                      editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
-                    />
-                  </View>
+                  <DatePicker
+                    label={`Purchase Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
+                    value={editPurchaseDate}
+                    onChange={setEditPurchaseDate}
+                    disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
+                  />
                 )}
 
                 {/* First Payment Date */}
                 {selectedOrder && (
-                  <View style={[
-                    styles.premiumInputCard, 
-                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
-                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
-                  ]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
-                      FIRST PAYMENT DUE DATE {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
-                    </Text>
-                    <TextInput
-                      style={[styles.premiumInput, { color: t.textPrimary }]}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={t.textSecondary}
-                      value={editFirstPaymentDate}
-                      onChangeText={setEditFirstPaymentDate}
-                      editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
-                    />
-                  </View>
+                  <DatePicker
+                    label={`First Payment Due Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
+                    value={editFirstPaymentDate}
+                    onChange={setEditFirstPaymentDate}
+                    disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
+                  />
                 )}
 
                 {/* Remarks */}

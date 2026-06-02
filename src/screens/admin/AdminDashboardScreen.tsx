@@ -61,6 +61,7 @@ import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import AdminHeader from '../../components/AdminHeader';
+import DatePicker from '../../components/DatePicker';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
 import dayjs from 'dayjs';
 
@@ -1631,33 +1632,17 @@ export default function AdminDashboardScreen() {
               </View>
 
               <View style={styles.dateGrid}>
-                <View style={[styles.dateCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Calendar size={16} color={t.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE DATE</Text>
-                    <TextInput
-                      style={[styles.dateInput, { color: t.textPrimary }]}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={t.textSecondary}
-                      value={purchaseDate}
-                      onChangeText={setPurchaseDate}
-                    />
-                  </View>
-                </View>
-
-                <View style={[styles.dateCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Clock size={16} color={t.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>FIRST DUE DATE</Text>
-                    <TextInput
-                      style={[styles.dateInput, { color: t.textPrimary }]}
-                      placeholder="Auto: 5th next month"
-                      placeholderTextColor={t.textSecondary}
-                      value={firstPaymentDate}
-                      onChangeText={setFirstPaymentDate}
-                    />
-                  </View>
-                </View>
+                <DatePicker
+                  label="Purchase Date"
+                  value={purchaseDate}
+                  onChange={setPurchaseDate}
+                />
+                <DatePicker
+                  label="First Due Date"
+                  value={firstPaymentDate}
+                  onChange={setFirstPaymentDate}
+                  placeholder="Auto: 5th next month"
+                />
               </View>
 
               <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>

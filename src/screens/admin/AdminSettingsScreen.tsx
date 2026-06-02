@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   useColorScheme,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -25,17 +26,35 @@ import {
   User,
   Mail,
   Smartphone,
+  Languages,
   Save,
   CheckCircle,
   Sliders,
+  ChevronRight,
+  Fingerprint,
   LogOut,
   LayoutDashboard,
+  RefreshCw,
+  Download,
 } from 'lucide-react-native';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { callAdminApi } from '../../services/adminService';
+import {
+  checkForUpdatesAndPromptAsync,
+  downloadAndInstallConfiguredApkAsync,
+  getAppUpdateRuntimeInfo,
+  type AppUpdateRuntimeInfo,
+} from '../../services/appUpdateService';
+
+const BIOMETRIC_EMAIL_KEY = 'biometric_email';
+const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
+const BIOMETRIC_PROVIDER_KEY = 'biometric_provider';
+const BIOMETRIC_PIN_KEY = 'biometric_pin';
 
 export default function AdminSettingsScreen() {
   const navigation = useNavigation<any>();
@@ -63,6 +82,23 @@ export default function AdminSettingsScreen() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [systemAlerts, setSystemAlerts] = useState(true);
   const [dbTheme, setDbTheme] = useState<'light' | 'dark' | 'auto'>('auto');
+  const [language, setLanguage] = useState<'en' | 'fil'>('en');
+
+  // Language modal state
+  const [langModalVisible, setLangModalVisible] = useState(false);
+
+  // Biometrics states
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [savingBiometrics, setSavingBiometrics] = useState(false);
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+
+  // App updates states
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [installingApk, setInstallingApk] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateRuntimeInfo>(() => getAppUpdateRuntimeInfo());
 
   const fetchSettings = async () => {
     try {
@@ -112,6 +148,7 @@ export default function AdminSettingsScreen() {
 
         setEmailNotifications(settingsMap['email_notifications'] !== 'false');
         setSystemAlerts(settingsMap['system_alerts'] !== 'false');
+        setLanguage((settingsMap['language'] as 'en' | 'fil') || 'en');
 
         const themePref = (settingsMap['theme'] as 'light' | 'dark' | 'auto') || undefined;
         if (themePref) {
@@ -122,6 +159,14 @@ export default function AdminSettingsScreen() {
       } else {
         setDbTheme(isDarkMode ? 'dark' : 'light');
       }
+
+      // 3. Check biometrics compatibility & stored preference
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      setIsBiometricSupported(hasHardware && isEnrolled);
+
+      const savedEmail = await SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY);
+      setBiometricsEnabled(!!savedEmail);
     } catch (e) {
       console.warn('Failed to load settings:', e);
     } finally {
@@ -164,29 +209,35 @@ export default function AdminSettingsScreen() {
     }
   };
 
-  const handleToggleSetting = async (key: 'emailNotifications' | 'systemAlerts', dbKey: string, currentValue: boolean) => {
-    const nextVal = !currentValue;
+  const handleToggleSetting = async (key: 'emailNotifications' | 'systemAlerts' | 'language', dbKey: string, nextValue: any) => {
+    let prevVal: any;
     if (key === 'emailNotifications') {
-      setEmailNotifications(nextVal);
+      prevVal = emailNotifications;
+      setEmailNotifications(nextValue);
+    } else if (key === 'systemAlerts') {
+      prevVal = systemAlerts;
+      setSystemAlerts(nextValue);
     } else {
-      setSystemAlerts(nextVal);
+      prevVal = language;
+      setLanguage(nextValue);
     }
 
     try {
       const response = await callAdminApi('update-setting', {
         settingName: dbKey,
-        settingValue: nextVal ? 'true' : 'false',
+        settingValue: String(nextValue),
       });
 
       if (!response.success) {
         throw new Error(response.error);
       }
     } catch (e) {
-      // Revert state if failed
       if (key === 'emailNotifications') {
-        setEmailNotifications(currentValue);
+        setEmailNotifications(prevVal);
+      } else if (key === 'systemAlerts') {
+        setSystemAlerts(prevVal);
       } else {
-        setSystemAlerts(currentValue);
+        setLanguage(prevVal);
       }
       Alert.alert('Error', 'Failed to update settings preference.');
     }
@@ -216,6 +267,80 @@ export default function AdminSettingsScreen() {
     }
   };
 
+  const handleToggleBiometrics = async (value: boolean) => {
+    if (!isBiometricSupported) {
+      Alert.alert('Unsupported', 'Biometric hardware is not available or enrolled on this device.');
+      return;
+    }
+
+    if (value) {
+      setPin('');
+      setConfirmPin('');
+      setPinModalVisible(true);
+    } else {
+      try {
+        await SecureStore.deleteItemAsync(BIOMETRIC_EMAIL_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PROVIDER_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PIN_KEY);
+        setBiometricsEnabled(false);
+        Alert.alert('Biometrics Disabled', 'Secure credentials have been cleared.');
+      } catch (err) {
+        Alert.alert('Error', 'Failed to clear security credentials.');
+      }
+    }
+  };
+
+  const handleEnableBiometrics = async () => {
+    if (!/^\d{6}$/.test(pin)) {
+      Alert.alert('PIN Required', 'Enter a 6-digit fallback PIN.');
+      return;
+    }
+
+    if (pin !== confirmPin) {
+      Alert.alert('PIN Mismatch', 'Enter the same 6-digit PIN in both fields.');
+      return;
+    }
+
+    try {
+      setSavingBiometrics(true);
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Verify identity to enable biometrics',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        setBiometricsEnabled(false);
+        return;
+      }
+
+      await SecureStore.setItemAsync(BIOMETRIC_EMAIL_KEY, profile.email);
+      await SecureStore.setItemAsync(BIOMETRIC_PROVIDER_KEY, 'google');
+      await SecureStore.setItemAsync(BIOMETRIC_PIN_KEY, pin);
+      await SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY);
+      setBiometricsEnabled(true);
+      setPinModalVisible(false);
+      setPin('');
+      setConfirmPin('');
+      Alert.alert('Biometrics Enabled', 'You can now unlock Google sign-in with biometrics or your fallback PIN.');
+    } catch (err: any) {
+      setBiometricsEnabled(false);
+      Alert.alert('Biometrics Not Enabled', err?.message || 'Failed to enable biometric sign-in.');
+    } finally {
+      setSavingBiometrics(false);
+    }
+  };
+
+  const closePinModal = () => {
+    if (savingBiometrics) return;
+    setPinModalVisible(false);
+    setPin('');
+    setConfirmPin('');
+    setBiometricsEnabled(false);
+  };
+
   const handleSignOut = async () => {
     Alert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
       { text: 'Cancel', style: 'cancel' },
@@ -229,6 +354,163 @@ export default function AdminSettingsScreen() {
       },
     ]);
   };
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdates(true);
+    try {
+      await checkForUpdatesAndPromptAsync(true);
+      setUpdateInfo(getAppUpdateRuntimeInfo());
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const handleDownloadApk = async () => {
+    setInstallingApk(true);
+    try {
+      await downloadAndInstallConfiguredApkAsync();
+    } catch (error: any) {
+      Alert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
+    } finally {
+      setInstallingApk(false);
+    }
+  };
+
+  const handleLanguageChange = (nextLang: 'en' | 'fil') => {
+    handleToggleSetting('language', 'language', nextLang);
+    setLangModalVisible(false);
+  };
+
+  const renderLanguageModal = () => (
+    <Modal
+      visible={langModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setLangModalVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setLangModalVisible(false)}
+      >
+        <View
+          style={[
+            styles.modalContent,
+            { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+          ]}
+        >
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitleText, { color: t.textPrimary }]}>Select Language</Text>
+            <View style={[styles.modalTitleDivider, { backgroundColor: t.divider }]} />
+          </View>
+
+          <TouchableOpacity
+            onPress={() => handleLanguageChange('en')}
+            style={[styles.modalOptionRow, language === 'en' && { backgroundColor: t.tabBgActive }]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.modalOptionText, { color: language === 'en' ? t.accent : t.textPrimary }]}>
+              English
+            </Text>
+            {language === 'en' && <CheckCircle size={16} color={t.accent} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => handleLanguageChange('fil')}
+            style={[styles.modalOptionRow, language === 'fil' && { backgroundColor: t.tabBgActive }]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.modalOptionText, { color: language === 'fil' ? t.accent : t.textPrimary }]}>
+              Filipino
+            </Text>
+            {language === 'fil' && <CheckCircle size={16} color={t.accent} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setLangModalVisible(false)}
+            style={[styles.modalCloseBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.modalCloseBtnText, { color: t.textPrimary }]}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  const renderPinModal = () => (
+    <Modal
+      visible={pinModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={closePinModal}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.pinModalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+          <Text style={[styles.pinModalTitle, { color: t.textPrimary }]}>Create Fallback PIN</Text>
+          <Text style={[styles.pinModalBody, { color: t.textSecondary }]}>
+            Set a 6-digit PIN for this device in case biometric unlock fails.
+          </Text>
+          <TextInput
+            value={pin}
+            onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="6-digit PIN"
+            placeholderTextColor={t.textMuted}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={6}
+            editable={!savingBiometrics}
+            style={[
+              styles.pinInput,
+              {
+                color: t.textPrimary,
+                borderColor: t.cardBorder,
+                backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+              },
+            ]}
+          />
+          <TextInput
+            value={confirmPin}
+            onChangeText={(value) => setConfirmPin(value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="Confirm PIN"
+            placeholderTextColor={t.textMuted}
+            keyboardType="number-pad"
+            secureTextEntry
+            maxLength={6}
+            editable={!savingBiometrics}
+            style={[
+              styles.pinInput,
+              {
+                color: t.textPrimary,
+                borderColor: t.cardBorder,
+                backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+              },
+            ]}
+          />
+          <View style={styles.pinModalActions}>
+            <TouchableOpacity
+              style={styles.pinCancelBtn}
+              onPress={closePinModal}
+              disabled={savingBiometrics}
+            >
+              <Text style={[styles.pinCancelText, { color: t.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.pinConfirmBtn}
+              onPress={handleEnableBiometrics}
+              disabled={savingBiometrics}
+            >
+              {savingBiometrics ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.pinConfirmText}>Enable</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const t = {
     bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
@@ -252,11 +534,14 @@ export default function AdminSettingsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
-        <View style={[styles.headerBar, { backgroundColor: t.headerBg, borderBottomColor: t.headerBorder }]}>
-          <View style={styles.headerLeftContainer}>
-            <Text style={styles.headerSubtitle}>S-Pay Admin</Text>
-            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Settings</Text>
-          </View>
+        <View style={[styles.header, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
+          {navigation.canGoBack() && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
+              <ArrowLeft size={20} color={t.textPrimary} />
+            </TouchableOpacity>
+          )}
+          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Settings</Text>
+          <View style={{ width: 40 }} />
         </View>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <SettingsSkeleton />
@@ -415,7 +700,7 @@ export default function AdminSettingsScreen() {
         </View>
         <Switch
           value={emailNotifications}
-          onValueChange={() => handleToggleSetting('emailNotifications', 'email_notifications', emailNotifications)}
+          onValueChange={(val) => handleToggleSetting('emailNotifications', 'email_notifications', val)}
           trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
           thumbColor={emailNotifications ? '#ffffff' : t.switchThumbFalse}
         />
@@ -438,10 +723,32 @@ export default function AdminSettingsScreen() {
         </View>
         <Switch
           value={systemAlerts}
-          onValueChange={() => handleToggleSetting('systemAlerts', 'system_alerts', systemAlerts)}
+          onValueChange={(val) => handleToggleSetting('systemAlerts', 'system_alerts', val)}
           trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
           thumbColor={systemAlerts ? '#ffffff' : t.switchThumbFalse}
         />
+      </View>
+
+      <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
+
+      {/* Language Selection */}
+      <View style={styles.langSelectorSection}>
+        <Text style={[styles.inputLabel, { color: t.textSecondary, marginBottom: 8 }]}>
+          Language Preference
+        </Text>
+        <TouchableOpacity
+          onPress={() => setLangModalVisible(true)}
+          style={[styles.langSelectBtn, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}
+          activeOpacity={0.8}
+        >
+          <View style={styles.langSelectBtnLeft}>
+            <Languages size={16} color={t.textSecondary} />
+            <Text style={[styles.langSelectBtnText, { color: t.textPrimary }]}>
+              {language === 'en' ? 'English' : 'Filipino'}
+            </Text>
+          </View>
+          <ChevronRight size={16} color={t.textSecondary} />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -458,6 +765,31 @@ export default function AdminSettingsScreen() {
           Your administrator account is linked and secured via Google OAuth Single Sign-On (SSO). There is no active password associated with this profile.
         </Text>
 
+        {/* Biometric Sign-In Toggle */}
+        <View style={styles.toggleRowContainer}>
+          <View style={styles.toggleRowLeft}>
+            <View style={[styles.toggleIconBox, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.1)' : 'rgba(238,77,45,0.05)' }]}>
+              <Fingerprint size={16} color={t.accent} />
+            </View>
+            <View style={styles.toggleTextCol}>
+              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>Biometric Sign-In</Text>
+              <Text style={[styles.toggleDescText, { color: t.textSecondary }]}>
+                Use FaceID / TouchID for quick sign-in with a 6-digit fallback PIN.
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={biometricsEnabled}
+            onValueChange={handleToggleBiometrics}
+            disabled={savingBiometrics}
+            trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
+            thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
+          />
+        </View>
+
+        <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
+
+        {/* Info Notices */}
         <View
           style={[
             styles.noticeBox,
@@ -468,11 +800,86 @@ export default function AdminSettingsScreen() {
           ]}
         >
           <Text style={[styles.noticeText, { color: isDarkMode ? '#fdba74' : '#c2410c' }]}>
-            To configure multi-factor authentication, password requirements, or manage connected apps, use your Google Account security settings.
+            To configure multi-factor authentication, password requirements, or connected apps, use your Google Account security settings.
           </Text>
         </View>
 
-        <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
+        <View
+          style={[
+            styles.successBox,
+            {
+              backgroundColor: isDarkMode ? 'rgba(16,185,129,0.1)' : '#ecfdf5',
+              borderColor: isDarkMode ? 'rgba(16,185,129,0.2)' : '#d1fae5',
+            },
+          ]}
+        >
+          <CheckCircle size={16} color={isDarkMode ? '#34d399' : '#047857'} />
+          <Text style={[styles.successText, { color: isDarkMode ? '#a7f3d0' : '#065f46' }]}>
+            Session data and operation settings are synchronized with your S-Pay profile.
+          </Text>
+        </View>
+
+        {/* App Updates Panel */}
+        <View style={[styles.updatePanel, { backgroundColor: t.inputBg, borderColor: t.cardBorder }]}>
+          <View style={styles.updateHeader}>
+            <View style={[styles.toggleIconBox, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.1)' : 'rgba(238,77,45,0.05)' }]}>
+              <Download size={16} color={t.accent} />
+            </View>
+            <View style={styles.updateHeaderText}>
+              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>App Updates</Text>
+              <Text style={[styles.toggleDescText, { color: t.textSecondary }]}>
+                OTA channel {updateInfo.channel} · runtime {updateInfo.runtimeVersion}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.updateMetaGrid, { borderColor: t.divider }]}>
+            <View style={styles.updateMetaItem}>
+              <Text style={[styles.updateMetaLabel, { color: t.textMuted }]}>Version</Text>
+              <Text style={[styles.updateMetaValue, { color: t.textPrimary }]}>{updateInfo.appVersion}</Text>
+            </View>
+            <View style={styles.updateMetaItem}>
+              <Text style={[styles.updateMetaLabel, { color: t.textMuted }]}>Update ID</Text>
+              <Text style={[styles.updateMetaValue, { color: t.textPrimary }]} numberOfLines={1}>
+                {updateInfo.updateId}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            onPress={handleCheckForUpdates}
+            disabled={checkingUpdates || installingApk}
+            style={[styles.updatePrimaryBtn, { backgroundColor: t.accent }]}
+            activeOpacity={0.8}
+          >
+            {checkingUpdates ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <RefreshCw size={15} color="#ffffff" />
+                <Text style={styles.updatePrimaryBtnText}>Check for Updates</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {Platform.OS === 'android' && updateInfo.apkUrl ? (
+            <TouchableOpacity
+              onPress={handleDownloadApk}
+              disabled={checkingUpdates || installingApk}
+              style={[styles.updateSecondaryBtn, { borderColor: t.inputBorder }]}
+              activeOpacity={0.8}
+            >
+              {installingApk ? (
+                <ActivityIndicator size="small" color={t.accent} />
+              ) : (
+                <>
+                  <Download size={15} color={t.accent} />
+                  <Text style={[styles.updateSecondaryBtnText, { color: t.accent }]}>Download Latest APK</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         {/* Switch Workspace */}
         {userRole === 'ADMIN' && (
@@ -504,7 +911,7 @@ export default function AdminSettingsScreen() {
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
 
       {/* Header */}
-      <View style={[styles.headerBar, { backgroundColor: t.headerBg, borderBottomColor: t.headerBorder }]}>
+      <View style={[styles.header, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
         <View style={styles.headerLeftContainer}>
           {navigation.canGoBack() && (
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
@@ -520,50 +927,71 @@ export default function AdminSettingsScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardView}
+        style={{ flex: 1 }}
       >
-        <ScrollView
-          contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Sub Nav Tab Bar */}
-          <View style={[styles.tabBar, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} keyboardShouldPersistTaps="handled">
+          {/* User Quick Info Card */}
+          <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={styles.avatarRow}>
+              {profile.avatarUrl ? (
+                <Image source={{ uri: profile.avatarUrl }} style={styles.avatarCircle} />
+              ) : (
+                <View style={[styles.avatarCircle, { backgroundColor: t.accent }]}>
+                  <Text style={styles.avatarText}>{profile.name.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={styles.avatarDetailsCol}>
+                <Text style={[styles.profileNameText, { color: t.textPrimary }]} numberOfLines={1}>
+                  {profile.name}
+                </Text>
+                <Text style={[styles.profileEmailText, { color: t.textSecondary }]} numberOfLines={1}>
+                  {profile.email}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Tab Selector */}
+          <View style={styles.tabBar}>
             {([
-              { id: 'profile' as const, label: 'Profile' },
-              { id: 'notifications' as const, label: 'Alerts' },
-              { id: 'security' as const, label: 'Security' },
-            ]).map(tab => {
-              const isActive = activeTab === tab.id;
+              { id: 'profile' as const, label: 'Profile', icon: User },
+              { id: 'notifications' as const, label: 'Alerts', icon: Sliders },
+              { id: 'security' as const, label: 'Security', icon: Shield },
+            ]).map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
               return (
                 <TouchableOpacity
-                  key={tab.id}
-                  onPress={() => setActiveTab(tab.id)}
+                  key={item.id}
+                  onPress={() => setActiveTab(item.id)}
                   style={[
-                    styles.tabItem,
-                    isActive && { backgroundColor: t.tabBgActive },
+                    styles.tabButton,
+                    isActive
+                      ? { backgroundColor: t.tabBgActive, borderColor: t.accent }
+                      : { backgroundColor: t.cardBg, borderColor: t.cardBorder },
                   ]}
                   activeOpacity={0.8}
                 >
-                  <Text
-                    style={[
-                      styles.tabItemText,
-                      { color: isActive ? t.accent : t.textSecondary },
-                      isActive && styles.tabItemTextActive,
-                    ]}
-                  >
-                    {tab.label}
+                  <Icon size={16} color={isActive ? t.accent : t.textSecondary} />
+                  <Text style={[styles.tabButtonText, { color: isActive ? t.accent : t.textSecondary }]}>
+                    {item.label}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* Active Tab Panel */}
-          {activeTab === 'profile' && renderProfileTab()}
-          {activeTab === 'notifications' && renderNotificationsTab()}
-          {activeTab === 'security' && renderSecurityTab()}
+          {/* Active Panel */}
+          <View style={{ minHeight: 300 }}>
+            {activeTab === 'profile' && renderProfileTab()}
+            {activeTab === 'notifications' && renderNotificationsTab()}
+            {activeTab === 'security' && renderSecurityTab()}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {renderLanguageModal()}
+      {renderPinModal()}
     </SafeAreaView>
   );
 }
@@ -572,13 +1000,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  headerBar: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1.5,
   },
   headerLeftContainer: {
@@ -598,98 +1025,148 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
     marginTop: 2,
     letterSpacing: -0.3,
   },
-  keyboardView: {
-    flex: 1,
-  },
   scrollContent: {
     padding: 16,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  profileCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  avatarCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(238, 77, 45, 0.3)',
+  },
+  avatarText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontFamily: 'Outfit-Bold',
+  },
+  avatarDetailsCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  profileNameText: {
+    fontSize: 16,
+    fontFamily: 'Jakarta-Bold',
+  },
+  profileEmailText: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
   },
   tabBar: {
     flexDirection: 'row',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 4,
-    marginBottom: 16,
+    gap: 8,
   },
-  tabItem: {
+  tabButton: {
     flex: 1,
-    paddingVertical: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 10,
+    justifyContent: 'center',
+    gap: 6,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1.5,
   },
-  tabItemText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  tabItemTextActive: {
-    fontWeight: 'bold',
+  tabButtonText: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Bold',
   },
   tabContentCard: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1.5,
-    padding: 16,
-    marginBottom: 24,
+    padding: 20,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tabHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
+    paddingBottom: 12,
   },
   tabHeaderTitle: {
     fontSize: 15,
-    fontWeight: 'bold',
-    marginLeft: 8,
+    fontFamily: 'Outfit-Bold',
   },
   avatarEditContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    paddingBottom: 16,
+    gap: 16,
+    paddingVertical: 4,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(148, 163, 184, 0.1)',
+    paddingBottom: 16,
   },
   avatarEditPreview: {
     width: 60,
     height: 60,
-    borderRadius: 16,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: 'rgba(238, 77, 45, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarLargeText: {
     color: '#ffffff',
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontFamily: 'Outfit-Bold',
   },
   avatarEditLabels: {
     flex: 1,
-    marginLeft: 16,
+    gap: 2,
   },
   avatarLabelTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontFamily: 'Jakarta-Bold',
   },
   avatarLabelSub: {
     fontSize: 11,
-    marginTop: 2,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 14,
   },
   formGroup: {
-    marginBottom: 16,
+    gap: 6,
   },
   inputLabel: {
     fontSize: 12,
-    fontWeight: 'bold',
-    marginBottom: 6,
+    fontFamily: 'Jakarta-Bold',
   },
   textInput: {
-    height: 44,
-    borderWidth: 1,
+    height: 46,
+    borderWidth: 1.5,
     borderRadius: 12,
     paddingHorizontal: 14,
     fontSize: 14,
+    fontFamily: 'Jakarta-Medium',
   },
   phoneInputContainer: {
     position: 'relative',
@@ -700,42 +1177,41 @@ const styles = StyleSheet.create({
   },
   phoneInputIcon: {
     position: 'absolute',
-    left: 12,
+    left: 14,
   },
   saveBtn: {
-    height: 44,
-    borderRadius: 12,
     flexDirection: 'row',
-    justifyContent: 'center',
+    height: 46,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 10,
+    justifyContent: 'center',
     gap: 8,
+    marginTop: 8,
   },
   saveBtnText: {
     color: '#ffffff',
     fontSize: 13,
-    fontWeight: 'bold',
+    fontFamily: 'Jakarta-Bold',
   },
   formDivider: {
-    height: 1.5,
-    marginVertical: 20,
+    height: 1,
+    marginVertical: 4,
   },
   themeSection: {
-    marginTop: 4,
+    gap: 10,
   },
   themeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 8,
   },
   themeTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
-    marginLeft: 8,
+    fontFamily: 'Outfit-Bold',
   },
   themeDesc: {
     fontSize: 11,
-    marginBottom: 12,
+    fontFamily: 'Jakarta-Medium',
   },
   themeButtonGroup: {
     flexDirection: 'row',
@@ -743,29 +1219,29 @@ const styles = StyleSheet.create({
   },
   themeOptionBtn: {
     flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 10,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1.5,
   },
   themeOptionLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: 'Jakarta-Bold',
   },
   toggleRowContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
   },
   toggleRowLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 12,
     flex: 1,
-    marginRight: 16,
+    paddingRight: 12,
   },
   toggleIconBox: {
     width: 32,
@@ -776,61 +1252,265 @@ const styles = StyleSheet.create({
   },
   toggleTextCol: {
     flex: 1,
-    marginLeft: 12,
+    gap: 2,
   },
   toggleTitleText: {
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
   },
   toggleDescText: {
-    fontSize: 10,
-    marginTop: 2,
-    lineHeight: 14,
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 15,
+  },
+  langSelectorSection: {
+    gap: 6,
+  },
+  langSelectBtn: {
+    flexDirection: 'row',
+    height: 46,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  langSelectBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  langSelectBtnText: {
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
   },
   securityTextContainer: {
-    marginTop: 4,
+    gap: 14,
   },
   securityIntroText: {
     fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 16,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 17,
   },
   noticeBox: {
-    borderWidth: 1,
     borderRadius: 12,
+    borderWidth: 1,
     padding: 12,
-    marginBottom: 16,
   },
   noticeText: {
     fontSize: 11,
-    lineHeight: 16,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 15,
   },
-  switchWorkspaceBtn: {
-    height: 42,
+  successBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  successText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: 'Jakarta-Bold',
+    lineHeight: 15,
+  },
+  updatePanel: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 12,
+  },
+  updateHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  updateHeaderText: {
+    flex: 1,
+    gap: 2,
+  },
+  updateMetaGrid: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  updateMetaItem: {
+    gap: 2,
+  },
+  updateMetaLabel: {
+    fontSize: 10,
+    fontFamily: 'Jakarta-Bold',
+    textTransform: 'uppercase',
+  },
+  updateMetaValue: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Bold',
+  },
+  updatePrimaryBtn: {
+    flexDirection: 'row',
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  updatePrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontFamily: 'Jakarta-Bold',
+  },
+  updateSecondaryBtn: {
+    flexDirection: 'row',
+    height: 44,
     borderRadius: 12,
     borderWidth: 1.5,
-    flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    marginBottom: 12,
+  },
+  updateSecondaryBtnText: {
+    fontSize: 13,
+    fontFamily: 'Jakarta-Bold',
+  },
+  switchWorkspaceBtn: {
+    flexDirection: 'row',
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(238, 77, 45, 0.04)',
   },
   switchWorkspaceBtnText: {
     fontSize: 13,
-    fontWeight: 'bold',
+    fontFamily: 'Jakarta-Bold',
   },
   logoutBtn: {
-    height: 42,
-    borderRadius: 12,
-    borderWidth: 1.5,
     flexDirection: 'row',
-    justifyContent: 'center',
+    borderWidth: 1.5,
+    height: 46,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
   },
   logoutBtnText: {
     color: '#ef4444',
     fontSize: 13,
-    fontWeight: 'bold',
+    fontFamily: 'Jakarta-Bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1.5,
+    borderBottomWidth: 0,
+    padding: 24,
+    gap: 16,
+    paddingBottom: Platform.OS === 'ios' ? 44 : 28,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitleText: {
+    fontSize: 18,
+    fontFamily: 'Outfit-Bold',
+  },
+  modalTitleDivider: {
+    height: 1,
+    width: '100%',
+  },
+  modalOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 50,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  modalOptionText: {
+    fontSize: 15,
+    fontFamily: 'Jakarta-Bold',
+  },
+  modalCloseBtn: {
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  modalCloseBtnText: {
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
+  },
+  pinModalContent: {
+    marginHorizontal: 24,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 20,
+    marginBottom: 'auto',
+    marginTop: 'auto',
+  },
+  pinModalTitle: {
+    fontSize: 18,
+    fontFamily: 'Outfit-Bold',
+    marginBottom: 8,
+  },
+  pinModalBody: {
+    fontSize: 13,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+  pinInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 14,
+    fontSize: 18,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 3,
+    marginBottom: 12,
+  },
+  pinModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 6,
+  },
+  pinCancelBtn: {
+    minWidth: 92,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  pinCancelText: {
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
+  },
+  pinConfirmBtn: {
+    minWidth: 92,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#ee4d2d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  pinConfirmText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
   },
 });
