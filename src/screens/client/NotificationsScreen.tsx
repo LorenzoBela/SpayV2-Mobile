@@ -45,6 +45,7 @@ import {
 } from '../../services/notificationService';
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -500,6 +501,7 @@ export default function NotificationsScreen() {
           <Pressable style={styles.modalDismissClickArea} onPress={() => setSelectedNotification(null)} />
 
           {selectedNotification && (
+            <SwipeDismissModal onDismiss={() => setSelectedNotification(null)}>
             <View
               style={[
                 styles.modalContent,
@@ -593,6 +595,7 @@ export default function NotificationsScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            </SwipeDismissModal>
           )}
         </View>
       </Modal>

@@ -19,6 +19,7 @@ import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
 
 import { supabase } from '../utils/supabase';
+import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RoleSelectionScreen from '../screens/auth/RoleSelectionScreen';
@@ -26,7 +27,6 @@ import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import DashboardScreen from '../screens/client/DashboardScreen';
 import PaymentsScreen from '../screens/client/PaymentsScreen';
 import BudgetScreen from '../screens/client/BudgetScreen';
-import ProfileScreen from '../screens/client/ProfileScreen';
 import NotificationsScreen from '../screens/client/NotificationsScreen';
 import ReportsScreen from '../screens/client/ReportsScreen';
 import OrdersScreen from '../screens/client/OrdersScreen';
@@ -46,6 +46,7 @@ import {
   RootStackParamList,
   ThemeContext,
 } from './navigationTypes';
+import { ClientVisibleTabName } from './clientTabs';
 
 // Map route names to Lucide icon components
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -59,6 +60,26 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+
+const withClientTabGesture = (
+  routeName: ClientVisibleTabName,
+  ScreenComponent: React.ComponentType<any>,
+) => {
+  const GestureWrappedClientTab = (props: any) => (
+    <ClientTabGestureSurface routeName={routeName}>
+      <ScreenComponent {...props} />
+    </ClientTabGestureSurface>
+  );
+
+  GestureWrappedClientTab.displayName = `${routeName}GestureScreen`;
+  return GestureWrappedClientTab;
+};
+
+const DashboardGestureScreen = withClientTabGesture('Dashboard', DashboardScreen);
+const OrdersGestureScreen = withClientTabGesture('Orders', OrdersScreen);
+const PaymentsGestureScreen = withClientTabGesture('Payments', PaymentsScreen);
+const NotificationsGestureScreen = withClientTabGesture('Notifications', NotificationsScreen);
+const MoreGestureScreen = withClientTabGesture('More', MoreScreen);
 
 // Auth Navigator
 const AuthNavigator = () => (
@@ -75,39 +96,83 @@ const MainNavigator = () => {
 
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          const IconComponent = TAB_ICONS[route.name] ?? HelpCircle;
-          return (
-            <IconComponent
-              size={size}
-              color={color}
-              strokeWidth={focused ? 2.5 : 1.5}
-            />
-          );
-        },
-        tabBarActiveTintColor: '#ee4d2d',
-        tabBarInactiveTintColor: isDarkMode ? '#64748b' : '#94a3b8',
-        tabBarStyle: {
-          backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff',
-          borderTopWidth: 1,
-          borderTopColor: isDarkMode ? '#1e293b' : '#e2e8f0',
-          paddingBottom: bottomInset,
-          paddingTop: 8,
-          height: 56 + bottomInset,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        },
-        headerShown: false,
-      })}
+      screenOptions={({ route, navigation }) => {
+        const state = navigation.getState();
+        const activeRouteName = state ? state.routes[state.index]?.name : '';
+        const isMoreTab = route.name === 'More';
+        const forceMoreFocus =
+          isMoreTab &&
+          ['Budget', 'Reports', 'Settings', 'Calendar'].includes(activeRouteName);
+
+        return {
+          tabBarIcon: ({ focused, color, size }) => {
+            const IconComponent = TAB_ICONS[route.name] ?? HelpCircle;
+            const finalFocused = focused || forceMoreFocus;
+            const finalColor = forceMoreFocus ? '#ee4d2d' : color;
+            return (
+              <IconComponent
+                size={size}
+                color={finalColor}
+                strokeWidth={finalFocused ? 2.5 : 1.5}
+              />
+            );
+          },
+          tabBarActiveTintColor: '#ee4d2d',
+          tabBarInactiveTintColor: isDarkMode ? '#64748b' : '#94a3b8',
+          tabBarStyle: {
+            backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff',
+            borderTopWidth: 1,
+            borderTopColor: isDarkMode ? '#1e293b' : '#e2e8f0',
+            paddingBottom: bottomInset,
+            paddingTop: 8,
+            height: 56 + bottomInset,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '500',
+            ...(forceMoreFocus ? { color: '#ee4d2d' } : {}),
+          },
+          headerShown: false,
+        };
+      }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Orders" component={OrdersScreen} />
-      <Tab.Screen name="Payments" component={PaymentsScreen} />
-      <Tab.Screen name="Notifications" component={NotificationsScreen} />
-      <Tab.Screen name="More" component={MoreScreen} />
+      <Tab.Screen name="Dashboard" component={DashboardGestureScreen} />
+      <Tab.Screen name="Orders" component={OrdersGestureScreen} />
+      <Tab.Screen name="Payments" component={PaymentsGestureScreen} />
+      <Tab.Screen name="Notifications" component={NotificationsGestureScreen} />
+      <Tab.Screen name="More" component={MoreGestureScreen} />
+      <Tab.Screen
+        name="Budget"
+        component={BudgetScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Calendar"
+        component={CalendarScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
     </Tab.Navigator>
   );
 };
@@ -212,7 +277,7 @@ export default function AppNavigator() {
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
       if (screen === 'Budget') {
-        navigationRef.current?.navigate('Budget');
+        navigationRef.current?.navigate('Main', { screen: 'Budget' });
       } else {
         const target =
           screen === 'Payments'
@@ -299,11 +364,6 @@ export default function AppNavigator() {
                   ) : (
                     <>
                       <Stack.Screen name="Main" component={MainNavigator} />
-                      <Stack.Screen name="Reports" component={ReportsScreen} />
-                      <Stack.Screen name="Budget" component={BudgetScreen} />
-                      <Stack.Screen name="Calendar" component={CalendarScreen} />
-                      <Stack.Screen name="Settings" component={SettingsScreen} />
-                      <Stack.Screen name="Profile" component={ProfileScreen} />
                     </>
                   )
                 ) : (

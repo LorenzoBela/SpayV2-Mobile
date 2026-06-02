@@ -44,6 +44,8 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
+import { PaymentsSkeleton } from '../../components/SkeletonLoader';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 
 const { width } = Dimensions.get('window');
 
@@ -833,9 +835,7 @@ export default function PaymentsScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#ee4d2d" />
-        </View>
+        <PaymentsSkeleton />
       ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -1441,6 +1441,7 @@ export default function PaymentsScreen() {
         onRequestClose={() => setIsPaymentModalOpen(false)}
       >
         <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
+          <SwipeDismissModal onDismiss={() => setIsPaymentModalOpen(false)}>
           <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
               <View>
@@ -1511,6 +1512,7 @@ export default function PaymentsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </SwipeDismissModal>
         </View>
       </Modal>
 
@@ -1524,6 +1526,7 @@ export default function PaymentsScreen() {
         onRequestClose={() => setIsMonthDetailModalOpen(false)}
       >
         <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
+          <SwipeDismissModal onDismiss={() => setIsMonthDetailModalOpen(false)}>
           <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
               <View>
@@ -1591,6 +1594,7 @@ export default function PaymentsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </SwipeDismissModal>
         </View>
       </Modal>
 

@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash-screen.png",
       "resizeMode": "contain",
       "backgroundColor": "#F53D2D"
     },
@@ -16,7 +16,8 @@
     },
     "android": {
       "permissions": [
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "REQUEST_INSTALL_PACKAGES"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#F53D2D",
@@ -35,6 +36,8 @@
       "expo-splash-screen"
     ],
     "extra": {
+      "otaChannel": "production",
+      "androidApkUrl": "",
       "eas": {
         "projectId": "e0f4bfb6-3c41-4ece-9361-3997de377857"
       }

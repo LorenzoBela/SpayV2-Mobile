@@ -18,6 +18,8 @@ import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+import { ProfileSkeleton } from '../../components/SkeletonLoader';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 
 const BIOMETRIC_EMAIL_KEY = 'biometric_email';
 const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
@@ -195,9 +197,7 @@ export default function ProfileScreen() {
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
 
       {loading ? (
-        <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#ee4d2d" />
-        </View>
+        <ProfileSkeleton />
       ) : (
         <>
           {/* Premium Header Bar */}
@@ -305,6 +305,7 @@ export default function ProfileScreen() {
             onRequestClose={closePinModal}
           >
             <View style={styles.modalBackdrop}>
+              <SwipeDismissModal onDismiss={closePinModal} disabled={savingBiometrics}>
               <View style={[styles.pinModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Create Fallback PIN</Text>
                 <Text style={[styles.modalBody, { color: t.textSecondary }]}>
@@ -367,6 +368,7 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              </SwipeDismissModal>
             </View>
           </Modal>
         </>

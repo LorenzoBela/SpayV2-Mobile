@@ -8,7 +8,7 @@ import {
   Dimensions,
   Easing,
 } from 'react-native';
-import { AlertCircle, RefreshCw, Sparkles, Shield, Wifi, Bell } from 'lucide-react-native';
+import { AlertCircle, RefreshCw, Sparkles, Shield, Wifi, Bell, Wallet } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -73,6 +73,29 @@ export default function PremiumLoader({
   const slideTranslateX = useRef(new Animated.Value(0)).current;
   const indeterminateAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
+
+  // Logo pulse animation loop
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(logoScale, {
+          toValue: 1.06,
+          duration: 1200,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [logoScale]);
 
   // Helper to dynamically strip custom font family if system fonts are forced
   const font = (styleName: keyof typeof styles) => {
@@ -199,6 +222,11 @@ export default function PremiumLoader({
     <View style={styles.container}>
       <View style={styles.content}>
         
+        {/* Logo Badge with micro-animation */}
+        <Animated.View style={[styles.logoBadge, { transform: [{ scale: logoScale }] }]}>
+          <Wallet size={40} color="#ee4d2d" strokeWidth={1.8} />
+        </Animated.View>
+        
         {/* Dynamic Branding & Loading Titles */}
         <View style={styles.header}>
           <Text style={font('loaderTitle')}>{title}</Text>
@@ -292,6 +320,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     alignItems: 'center',
+  },
+  logoBadge: {
+    backgroundColor: 'rgba(238, 77, 45, 0.04)',
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(238, 77, 45, 0.2)',
+    shadowColor: '#ee4d2d',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
   header: {
     alignItems: 'center',

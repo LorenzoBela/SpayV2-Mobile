@@ -163,7 +163,7 @@ export default function MoreScreen() {
         {/* Profile Card */}
         <TouchableOpacity
           style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-          onPress={() => navigation.navigate('Profile')}
+          onPress={() => navigation.navigate('Settings')}
           activeOpacity={0.9}
         >
           {userPhoto ? (
@@ -267,7 +267,7 @@ export default function MoreScreen() {
           {/* Profile details row */}
           <TouchableOpacity
             style={styles.listItemRow}
-            onPress={() => navigation.navigate('Profile')}
+            onPress={() => navigation.navigate('Settings')}
             activeOpacity={0.7}
           >
             <View style={[styles.listIconWrapper, { backgroundColor: t.iconBg }]}>

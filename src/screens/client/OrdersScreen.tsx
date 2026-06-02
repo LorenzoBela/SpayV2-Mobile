@@ -35,6 +35,8 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { OrdersSkeleton } from '../../components/SkeletonLoader';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 
 const { width } = Dimensions.get('window');
 
@@ -276,9 +278,7 @@ export default function OrdersScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#ee4d2d" />
-        </View>
+        <OrdersSkeleton />
       ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -763,6 +763,7 @@ export default function OrdersScreen() {
         onRequestClose={() => setIsPaymentModalOpen(false)}
       >
         <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
+          <SwipeDismissModal onDismiss={() => setIsPaymentModalOpen(false)}>
           <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
@@ -852,6 +853,7 @@ export default function OrdersScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </SwipeDismissModal>
         </View>
       </Modal>
     </SafeAreaView>

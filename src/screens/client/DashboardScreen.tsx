@@ -45,6 +45,7 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import dayjs from 'dayjs';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 
@@ -1478,6 +1479,7 @@ export default function DashboardScreen() {
         onRequestClose={() => setNootAiVisible(false)}
       >
         <View style={[styles.chatModalOverlay, { backgroundColor: isDarkMode ? 'rgba(11, 15, 25, 0.8)' : 'rgba(15, 23, 42, 0.6)' }]}>
+          <SwipeDismissModal onDismiss={() => setNootAiVisible(false)}>
           <View style={[styles.chatModalContainer, { backgroundColor: t.modalBg, borderColor: t.modalBorder }]}>
             {/* Header */}
             <View style={[styles.chatModalHeader, { borderColor: t.divider }]}>
@@ -1532,6 +1534,7 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </SwipeDismissModal>
         </View>
       </Modal>
 
