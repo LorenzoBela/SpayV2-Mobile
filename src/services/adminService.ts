@@ -1,0 +1,275 @@
+import { Platform } from 'react-native';
+import { supabase } from '../utils/supabase';
+
+const getApiUrl = () => {
+  const url = process.env.EXPO_PUBLIC_API_URL;
+  if (url) return url;
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000';
+  }
+  return 'http://localhost:3000';
+};
+
+export const callAdminApi = async (action: string, bodyData: any = {}) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    const response = await fetch(`${apiUrl}/api/admin/actions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        action,
+        ...bodyData,
+      }),
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error: any) {
+    console.error(`[adminService] Error running action ${action}:`, error);
+    return { success: false, error: error?.message || 'Network error executing request.' };
+  }
+};
+
+export const getExportLedgerCsv = async (filters: {
+  allTime: boolean;
+  startYear?: number;
+  startMonth?: number;
+  endYear?: number;
+  endMonth?: number;
+}) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    let queryParams = `?allTime=${filters.allTime}`;
+    if (!filters.allTime && filters.startYear) {
+      queryParams += `&startYear=${filters.startYear}&startMonth=${filters.startMonth}&endYear=${filters.endYear}&endMonth=${filters.endMonth}`;
+    }
+
+    const response = await fetch(`${apiUrl}/api/admin/reports/export${queryParams}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned status ${response.status}`);
+    }
+
+    const csvContent = await response.text();
+    return { success: true, csv: csvContent };
+  } catch (error: any) {
+    console.error('[adminService] Error fetching ledger CSV:', error);
+    return { success: false, error: error?.message || 'Failed to download report ledger CSV.' };
+  }
+};
+
+// Database Query functions for high fidelity statistics rendering
+export const fetchAllAdminData = async () => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const now = new Date();
+
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59, 999);
+
+    const today = new Date();
+    const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+    startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    const endOfNextWeek = new Date(endOfWeek);
+    endOfNextWeek.setDate(endOfWeek.getDate() + 7);
+
+    // Fetch from Supabase
+    // 1. Profiles (role = CLIENT or email lorenzo91145@gmail.com)
+    const { data: profiles, error: pErr } = await supabase
+      .from('profiles')
+      .select('id, name, email, mobile_number, created_at, role')
+      .or(`role.eq.CLIENT,email.eq.lorenzo91145@gmail.com`);
+
+    if (pErr) throw pErr;
+
+    // 2. Account Limits
+    const { data: accountLimits, error: alErr } = await supabase
+      .from('account_limits')
+      .select('user_id, credit_limit');
+
+    if (alErr) throw alErr;
+
+    // 3. Orders
+    const { data: orders, error: oErr } = await supabase
+      .from('orders')
+      .select('id, user_id, item_name, amount, installment_months, order_date, is_paid, remarks')
+      .order('order_date', { ascending: false });
+
+    if (oErr) throw oErr;
+
+    // 4. Payments
+    const { data: payments, error: payErr } = await supabase
+      .from('payments')
+      .select('id, order_id, due_date, amount_due, is_paid, payment_date, proof_of_payment, month_number')
+      .order('due_date', { ascending: true });
+
+    if (payErr) throw payErr;
+
+    // 5. Reminder Logs
+    const { data: reminderLogs, error: rErr } = await supabase
+      .from('reminder_logs')
+      .select('id, payment_id, sent_at, sent_by_id, days_before, automated')
+      .order('sent_at', { ascending: false });
+
+    if (rErr) throw rErr;
+
+    // 6. Reschedule Requests
+    const { data: reschedules, error: resErr } = await supabase
+      .from('payment_reschedule_history')
+      .select('id, payment_id, old_due_date, new_due_date, reason, updated_by_id, admin_approved, created_at')
+      .order('created_at', { ascending: false });
+
+    if (resErr) throw resErr;
+
+    return {
+      success: true,
+      profiles: profiles || [],
+      accountLimits: accountLimits || [],
+      orders: orders || [],
+      payments: payments || [],
+      reminderLogs: reminderLogs || [],
+      reschedules: reschedules || [],
+    };
+  } catch (error: any) {
+    console.error('[adminService] Error fetching all admin DB logs:', error);
+    return { success: false, error: error?.message || 'Database query error.' };
+  }
+};
+
+export const getNotifications = async (limit = 100) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    const response = await fetch(`${apiUrl}/api/notifications/list?limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('[adminService] Error fetching notifications:', error);
+    return { success: false, error: error?.message || 'Failed to fetch notifications.' };
+  }
+};
+
+export const markNotificationsRead = async (notificationId?: string, all = false) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    const response = await fetch(`${apiUrl}/api/notifications/read`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(all ? { all: true } : { notificationId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('[adminService] Error marking notifications read:', error);
+    return { success: false, error: error?.message || 'Failed to mark notifications read.' };
+  }
+};
+
+export const clearNotifications = async (notificationId?: string, all = false) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    const response = await fetch(`${apiUrl}/api/notifications/clear`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(all ? { all: true } : { notificationId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('[adminService] Error clearing notifications:', error);
+    return { success: false, error: error?.message || 'Failed to clear notifications.' };
+  }
+};
+
+export const sendAdminAnnouncement = async (title: string, body: string, target: string, category: string) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    const response = await fetch(`${apiUrl}/api/notifications/ingest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        source: 'admin-announcement',
+        idempotencyKey: `announcement:${Date.now()}`,
+        eventType: category === 'ADS' ? 'AD_ANNOUNCEMENT' : 'CUSTOM_ANNOUNCEMENT',
+        payload: {
+          title,
+          body,
+          target,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('[adminService] Error sending announcement:', error);
+    return { success: false, error: error?.message || 'Failed to send announcement.' };
+  }
+};
+

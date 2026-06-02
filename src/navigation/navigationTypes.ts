@@ -27,6 +27,18 @@ export type MainTabParamList = {
   Calendar: undefined;
 };
 
+export type AdminTabParamList = {
+  AdminDashboard: undefined;
+  AdminClients: undefined;
+  AdminOrders: undefined;
+  AdminPayments: undefined;
+  AdminMore: undefined;
+  AdminReminders: undefined;
+  AdminReports: undefined;
+  AdminSettings: undefined;
+  AdminNotifications: undefined;
+};
+
 export const RoleContext = React.createContext<{
   userRole: string | null;
   activeRole: 'admin' | 'client' | null;

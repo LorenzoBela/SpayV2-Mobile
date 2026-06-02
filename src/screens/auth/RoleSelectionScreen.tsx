@@ -7,7 +7,6 @@ import {
   Animated,
   StatusBar,
   Platform,
-  ActivityIndicator,
   TouchableOpacity,
   Image,
 } from 'react-native';
@@ -19,6 +18,12 @@ import {
   User,
   CloudSun,
   LogOut,
+  Users,
+  Receipt,
+  Bell,
+  Settings,
+  LayoutDashboard,
+  Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import PremiumLoader from '../../components/PremiumLoader';
@@ -84,11 +89,16 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('name')
+          .select('name, role')
           .eq('id', user.id)
           .single();
 
         if (error) throw error;
+
+        if (data?.role !== 'ADMIN') {
+          onSelectRole('client');
+          return;
+        }
 
         if (data?.name) {
           setUserName(data.name);
@@ -106,7 +116,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 
   useEffect(() => {
     fetchUserData();
-  }, []);
+  }, [onSelectRole]);
 
   // Scale animations for interactive buttons
   const adminScale = useRef(new Animated.Value(1)).current;
@@ -191,8 +201,12 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 
           {/* Section Subtitle */}
           <Animated.View style={[styles.sectionTitleCol, subtitleAnim.style]}>
-            <Text style={styles.sectionTitle}>SELECT GATEWAY</Text>
-            <Text style={styles.sectionDesc}>Choose the operations panel for this session.</Text>
+            <View style={styles.kickerRow}>
+              <Sparkles size={14} color="#ee4d2d" />
+              <Text style={styles.sectionTitle}>WORKSPACE ROUTER</Text>
+            </View>
+            <Text style={styles.heroTitle}>Choose Console</Text>
+            <Text style={styles.sectionDesc}>Switch between admin operations and customer view.</Text>
           </Animated.View>
 
           {/* Big Workspace Buttons */}
@@ -205,22 +219,41 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                 onPressOut={() => handlePressOut('admin')}
                 onPress={() => onSelectRole('admin')}
                 style={({ pressed }) => [
-                  styles.bigButton,
-                  styles.adminButtonBorder,
+                  styles.workspaceCard,
                   pressed && styles.adminButtonPressed,
                 ]}
               >
-                <View style={styles.bigButtonLeft}>
-                  <View style={[styles.iconFrame, styles.iconFrameAdmin]}>
-                    <ShieldAlert size={26} color="#ee4d2d" />
+                <View style={styles.cardInner}>
+                  <View style={styles.workspaceCardTop}>
+                    <View style={[styles.iconFrame, styles.iconFrameAdmin]}>
+                      <ShieldAlert size={25} color="#ff8a65" />
+                    </View>
+                    <View style={styles.priorityBadge}>
+                      <Text style={styles.priorityBadgeText}>ADMIN</Text>
+                    </View>
                   </View>
-                  <View style={styles.bigButtonTextCol}>
-                    <Text style={styles.bigButtonTitle}>Admin Control Panel</Text>
-                    <Text style={styles.bigButtonDesc}>Manage ledgers, limits, and system audits</Text>
+                  <Text style={styles.bigButtonTitle}>Admin Control Panel</Text>
+                  <Text style={styles.bigButtonDesc}>Orders, payments, clients, limits, and audits.</Text>
+                  <View style={styles.featureGrid}>
+                    <View style={styles.featurePill}>
+                      <Users size={13} color="#fed7aa" />
+                      <Text style={styles.featureText}>Clients</Text>
+                    </View>
+                    <View style={styles.featurePill}>
+                      <Receipt size={13} color="#fed7aa" />
+                      <Text style={styles.featureText}>Ledger</Text>
+                    </View>
+                    <View style={styles.featurePill}>
+                      <Bell size={13} color="#fed7aa" />
+                      <Text style={styles.featureText}>Alerts</Text>
+                    </View>
                   </View>
-                </View>
-                <View style={[styles.arrowFrame, styles.arrowFrameAdmin]}>
-                  <ArrowRight size={18} color="#ffffff" />
+                  <View style={styles.cardActionRow}>
+                    <Text style={styles.cardActionText}>Open admin dashboard</Text>
+                    <View style={[styles.arrowFrame, styles.arrowFrameAdmin]}>
+                      <ArrowRight size={18} color="#ffffff" />
+                    </View>
+                  </View>
                 </View>
               </Pressable>
             </Animated.View>
@@ -232,22 +265,40 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                 onPressOut={() => handlePressOut('client')}
                 onPress={() => onSelectRole('client')}
                 style={({ pressed }) => [
-                  styles.bigButton,
-                  styles.clientButtonBorder,
+                  styles.workspaceCard,
+                  styles.customerCard,
                   pressed && styles.clientButtonPressed,
                 ]}
               >
-                <View style={styles.bigButtonLeft}>
+                <View style={styles.workspaceCardTop}>
                   <View style={[styles.iconFrame, styles.iconFrameClient]}>
-                    <Wallet size={26} color="#3b82f6" />
+                    <Wallet size={25} color="#93c5fd" />
                   </View>
-                  <View style={styles.bigButtonTextCol}>
-                    <Text style={styles.bigButtonTitle}>Customer Portal</Text>
-                    <Text style={styles.bigButtonDesc}>Review personal balances and smart budgets</Text>
+                  <View style={styles.customerBadge}>
+                    <Text style={styles.customerBadgeText}>CUSTOMER VIEW</Text>
                   </View>
                 </View>
-                <View style={[styles.arrowFrame, styles.arrowFrameClient]}>
-                  <ArrowRight size={18} color="#ffffff" />
+                <Text style={styles.bigButtonTitle}>Customer Portal</Text>
+                <Text style={styles.bigButtonDesc}>Balances, orders, payments, reports, and budgets.</Text>
+                <View style={styles.featureGrid}>
+                  <View style={styles.featurePillBlue}>
+                    <LayoutDashboard size={13} color="#bfdbfe" />
+                    <Text style={styles.featureText}>Dashboard</Text>
+                  </View>
+                  <View style={styles.featurePillBlue}>
+                    <Wallet size={13} color="#bfdbfe" />
+                    <Text style={styles.featureText}>Budget</Text>
+                  </View>
+                  <View style={styles.featurePillBlue}>
+                    <Settings size={13} color="#bfdbfe" />
+                    <Text style={styles.featureText}>Profile</Text>
+                  </View>
+                </View>
+                <View style={styles.cardActionRow}>
+                  <Text style={styles.cardActionText}>Enter customer dashboard</Text>
+                  <View style={[styles.arrowFrame, styles.arrowFrameClient]}>
+                    <ArrowRight size={18} color="#ffffff" />
+                  </View>
                 </View>
               </Pressable>
             </Animated.View>
@@ -260,7 +311,6 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
               <LogOut size={15} color="#94a3b8" />
               <Text style={styles.signOutText}>Switch Account</Text>
             </TouchableOpacity>
-            <Text style={styles.footerBranding}>S-PAY OPERATIONS</Text>
           </Animated.View>
 
         </View>
@@ -304,16 +354,16 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 12 : 24,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 32, // Prevent overlap with navigation bars
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 8 : 14,
+    paddingBottom: Platform.OS === 'ios' ? 42 : 52,
     justifyContent: 'space-between',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginTop: 4,
   },
   profileRow: {
     flexDirection: 'row',
@@ -322,16 +372,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     borderWidth: 2,
     borderColor: '#ee4d2d',
   },
   avatarPlaceholder: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: '#161c2a',
     borderColor: '#2d3748',
     borderWidth: 1.5,
@@ -351,7 +401,7 @@ const styles = StyleSheet.create({
   },
   nameText: {
     color: '#f8fafc',
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: 'Outfit-Bold',
     letterSpacing: -0.5,
   },
@@ -361,7 +411,7 @@ const styles = StyleSheet.create({
   },
   timeText: {
     color: '#f8fafc',
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: 'Outfit-Bold',
     letterSpacing: 0.2,
   },
@@ -376,8 +426,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Medium',
   },
   sectionTitleCol: {
-    marginTop: 20,
-    marginBottom: 8,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  kickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   sectionTitle: {
     color: '#ee4d2d',
@@ -386,39 +441,51 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     textTransform: 'uppercase',
   },
+  heroTitle: {
+    color: '#f8fafc',
+    fontSize: 28,
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 0,
+    marginTop: 7,
+  },
   sectionDesc: {
     color: '#94a3b8',
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Jakarta-Medium',
     marginTop: 4,
+    lineHeight: 18,
   },
   workspaceContainer: {
-    gap: 16,
-    marginVertical: 24,
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 6,
     justifyContent: 'center',
   },
-  bigButton: {
+  workspaceCard: {
+    backgroundColor: '#161c2a',
+    borderWidth: 1.5,
+    borderColor: 'rgba(238, 77, 45, 0.24)',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  customerCard: {
+    borderColor: 'rgba(59, 130, 246, 0.24)',
+    padding: 12,
+    gap: 7,
+  },
+  cardInner: {
+    padding: 12,
+    gap: 7,
+  },
+  workspaceCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#161c2a',
-    borderWidth: 1.5,
-    borderColor: '#2d3748',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    height: 96,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 15,
-    elevation: 8,
-  },
-  adminButtonBorder: {
-    borderColor: 'rgba(238, 77, 45, 0.2)',
-  },
-  clientButtonBorder: {
-    borderColor: 'rgba(59, 130, 246, 0.2)',
   },
   adminButtonPressed: {
     backgroundColor: '#1f293d',
@@ -428,45 +495,97 @@ const styles = StyleSheet.create({
     backgroundColor: '#1f293d',
     borderColor: 'rgba(59, 130, 246, 0.4)',
   },
-  bigButtonLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    flex: 1,
-  },
   iconFrame: {
-    width: 48,
-    height: 48,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconFrameAdmin: {
-    backgroundColor: 'rgba(238, 77, 45, 0.08)',
+    backgroundColor: 'rgba(238, 77, 45, 0.16)',
   },
   iconFrameClient: {
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    backgroundColor: 'rgba(59, 130, 246, 0.16)',
   },
-  bigButtonTextCol: {
-    flex: 1,
-    gap: 4,
+  priorityBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(238, 77, 45, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(238, 77, 45, 0.28)',
+  },
+  priorityBadgeText: {
+    color: '#fed7aa',
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 1,
+  },
+  customerBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59, 130, 246, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.25)',
+  },
+  customerBadgeText: {
+    color: '#bfdbfe',
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 1,
   },
   bigButtonTitle: {
     color: '#f8fafc',
-    fontSize: 17,
+    fontSize: 19,
     fontFamily: 'Outfit-Bold',
-    letterSpacing: -0.2,
+    letterSpacing: 0,
+    marginTop: 2,
   },
   bigButtonDesc: {
-    color: '#94a3b8',
-    fontSize: 12,
+    color: '#cbd5e1',
+    fontSize: 11,
     fontFamily: 'Jakarta-Medium',
-    lineHeight: 16,
+    lineHeight: 15,
+  },
+  featureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  featurePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(238, 77, 45, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(238, 77, 45, 0.16)',
+  },
+  featurePillBlue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.16)',
+  },
+  featureText: {
+    color: '#f8fafc',
+    fontSize: 10,
+    fontFamily: 'Jakarta-Bold',
   },
   arrowFrame: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -481,10 +600,21 @@ const styles = StyleSheet.create({
   arrowFrameClient: {
     backgroundColor: '#3b82f6',
   },
+  cardActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  cardActionText: {
+    color: '#f8fafc',
+    fontSize: 12,
+    fontFamily: 'Jakarta-Bold',
+  },
   footer: {
     alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
+    marginTop: 2,
+    marginBottom: 0,
   },
   signOutBtn: {
     flexDirection: 'row',
@@ -492,8 +622,8 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1.5,
     borderColor: '#2d3748',
-    paddingHorizontal: 18,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 99,
     backgroundColor: '#161c2a',
   },
@@ -501,11 +631,5 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 12,
     fontFamily: 'Jakarta-Bold',
-  },
-  footerBranding: {
-    color: '#475569',
-    fontSize: 10,
-    fontFamily: 'Jakarta-Bold',
-    letterSpacing: 3,
   },
 });

@@ -13,6 +13,8 @@ import {
   Menu,
   ShoppingBag,
   HelpCircle,
+  Users,
+  LayoutDashboard,
   type LucideIcon,
 } from 'lucide-react-native';
 import { Session } from '@supabase/supabase-js';
@@ -24,6 +26,14 @@ import PremiumLoader from '../components/PremiumLoader';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RoleSelectionScreen from '../screens/auth/RoleSelectionScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
+import AdminClientsScreen from '../screens/admin/AdminClientsScreen';
+import AdminOrdersScreen from '../screens/admin/AdminOrdersScreen';
+import AdminPaymentsScreen from '../screens/admin/AdminPaymentsScreen';
+import AdminMoreScreen from '../screens/admin/AdminMoreScreen';
+import AdminRemindersScreen from '../screens/admin/AdminRemindersScreen';
+import AdminReportsScreen from '../screens/admin/AdminReportsScreen';
+import AdminSettingsScreen from '../screens/admin/AdminSettingsScreen';
+import AdminNotificationsScreen from '../screens/admin/AdminNotificationsScreen';
 import DashboardScreen from '../screens/client/DashboardScreen';
 import PaymentsScreen from '../screens/client/PaymentsScreen';
 import BudgetScreen from '../screens/client/BudgetScreen';
@@ -42,6 +52,7 @@ import {
 import {
   AuthStackParamList,
   MainTabParamList,
+  AdminTabParamList,
   RoleContext,
   RootStackParamList,
   ThemeContext,
@@ -57,9 +68,18 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   More: Menu,
 };
 
+const ADMIN_TAB_ICONS: Record<string, LucideIcon> = {
+  AdminDashboard: LayoutDashboard,
+  AdminClients: Users,
+  AdminOrders: ShoppingBag,
+  AdminPayments: Receipt,
+  AdminMore: Menu,
+};
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const AdminTab = createBottomTabNavigator<AdminTabParamList>();
 
 const withClientTabGesture = (
   routeName: ClientVisibleTabName,
@@ -174,6 +194,115 @@ const MainNavigator = () => {
         }}
       />
     </Tab.Navigator>
+  );
+};
+
+// Admin Tab Navigator — consumes ThemeContext for dynamic tab bar styling
+const AdminNavigator = () => {
+  const { isDarkMode } = React.useContext(ThemeContext);
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 12);
+
+  return (
+    <AdminTab.Navigator
+      screenOptions={({ route, navigation }) => {
+        const state = navigation.getState();
+        const activeRouteName = state ? state.routes[state.index]?.name : '';
+        const isMoreTab = route.name === 'AdminMore';
+        const forceMoreFocus =
+          isMoreTab &&
+          ['AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications'].includes(activeRouteName);
+
+        return {
+          tabBarIcon: ({ focused, color, size }) => {
+            const IconComponent = ADMIN_TAB_ICONS[route.name] ?? HelpCircle;
+            const finalFocused = focused || forceMoreFocus;
+            const finalColor = forceMoreFocus ? '#ee4d2d' : color;
+            return (
+              <IconComponent
+                size={size}
+                color={finalColor}
+                strokeWidth={finalFocused ? 2.5 : 1.5}
+              />
+            );
+          },
+          tabBarActiveTintColor: '#ee4d2d',
+          tabBarInactiveTintColor: isDarkMode ? '#64748b' : '#94a3b8',
+          tabBarStyle: {
+            backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff',
+            borderTopWidth: 1,
+            borderTopColor: isDarkMode ? '#1e293b' : '#e2e8f0',
+            paddingBottom: bottomInset,
+            paddingTop: 8,
+            height: 56 + bottomInset,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '500',
+            ...(forceMoreFocus ? { color: '#ee4d2d' } : {}),
+          },
+          headerShown: false,
+        };
+      }}
+    >
+      <AdminTab.Screen
+        name="AdminDashboard"
+        component={AdminDashboardScreen}
+        options={{ tabBarLabel: 'Overview' }}
+      />
+      <AdminTab.Screen
+        name="AdminClients"
+        component={AdminClientsScreen}
+        options={{ tabBarLabel: 'Clients' }}
+      />
+      <AdminTab.Screen
+        name="AdminOrders"
+        component={AdminOrdersScreen}
+        options={{ tabBarLabel: 'Orders' }}
+      />
+      <AdminTab.Screen
+        name="AdminPayments"
+        component={AdminPaymentsScreen}
+        options={{ tabBarLabel: 'Ledger' }}
+      />
+      <AdminTab.Screen
+        name="AdminMore"
+        component={AdminMoreScreen}
+        options={{ tabBarLabel: 'More' }}
+      />
+      <AdminTab.Screen
+        name="AdminReminders"
+        component={AdminRemindersScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <AdminTab.Screen
+        name="AdminReports"
+        component={AdminReportsScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <AdminTab.Screen
+        name="AdminSettings"
+        component={AdminSettingsScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <AdminTab.Screen
+        name="AdminNotifications"
+        component={AdminNotificationsScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+    </AdminTab.Navigator>
   );
 };
 
@@ -350,17 +479,7 @@ export default function AppNavigator() {
                       )}
                     </Stack.Screen>
                   ) : activeRole === 'admin' ? (
-                    <Stack.Screen name="Admin">
-                      {(props) => (
-                        <AdminDashboardScreen
-                          {...props}
-                          onSwitchWorkspace={() => setActiveRole(null)}
-                          onSignOut={async () => {
-                            await supabase.auth.signOut();
-                          }}
-                        />
-                      )}
-                    </Stack.Screen>
+                    <Stack.Screen name="Admin" component={AdminNavigator} />
                   ) : (
                     <>
                       <Stack.Screen name="Main" component={MainNavigator} />
