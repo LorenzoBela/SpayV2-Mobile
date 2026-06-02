@@ -25,6 +25,9 @@ export const ANDROID_CHANNELS: Record<NotificationCategory, string> = {
   SYSTEM: 'spay-system-v1',
 };
 
+const ENABLE_REMOTE_PUSH_NOTIFICATIONS =
+  process.env.EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS === 'true';
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -52,7 +55,6 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 150, 250],
     lightColor: '#ee4d2d',
-    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ALERTS, {
@@ -61,7 +63,6 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 350, 150, 350],
     lightColor: '#ef4444',
-    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ADS, {
@@ -78,12 +79,16 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.DEFAULT,
     vibrationPattern: [0, 200],
     lightColor: '#10b981',
-    sound: 'default',
   });
 }
 
 export async function registerForTrayNotifications(userId: string) {
   await setupAndroidNotificationChannels();
+
+  if (!ENABLE_REMOTE_PUSH_NOTIFICATIONS) {
+    console.log('[Notifications] Remote push token registration disabled.');
+    return null;
+  }
 
   if (!Device.isDevice) {
     console.warn('[Notifications] Physical device required for Expo push tokens.');
@@ -104,10 +109,19 @@ export async function registerForTrayNotifications(userId: string) {
   }
 
   const projectId = getProjectId();
-  const tokenResult = await Notifications.getExpoPushTokenAsync(
-    projectId ? { projectId } : undefined
-  );
-  const expoPushToken = tokenResult.data;
+  let expoPushToken: string;
+  try {
+    const tokenResult = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    expoPushToken = tokenResult.data;
+  } catch (error: any) {
+    console.warn(
+      '[Notifications] Remote push token unavailable. Configure FCM or keep EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS unset.',
+      error?.message || error
+    );
+    return null;
+  }
 
   const { error } = await supabase
     .from('notification_devices')
@@ -178,7 +192,6 @@ export async function mirrorToLocalTray(notification: AppNotification) {
     content: {
       title: notification.title,
       body: notification.body,
-      sound: notification.category === 'ADS' ? undefined : 'default',
       data: {
         notificationId: notification.id,
         type: notification.type,

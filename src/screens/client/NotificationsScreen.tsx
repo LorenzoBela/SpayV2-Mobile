@@ -1,15 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  StatusBar,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Receipt,
+  ShieldCheck,
+  Megaphone,
+  Bell,
+  Trash2,
+  CheckCheck,
+  BellOff,
+  Sun,
+  Moon,
+  type LucideIcon,
+} from 'lucide-react-native';
 import {
   AppNotification,
   clearNotification,
@@ -20,12 +32,20 @@ import {
   subscribeToRealtimeNotifications,
 } from '../../services/notificationService';
 import { supabase } from '../../utils/supabase';
+import { ThemeContext } from '../../navigation/navigationTypes';
 
-const TABS: Array<{ id: NotificationCategory; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-  { id: 'PAYMENT_UPDATES', label: 'Payments', icon: 'receipt-outline' },
-  { id: 'ALERTS', label: 'Alerts', icon: 'shield-checkmark-outline' },
-  { id: 'ADS', label: 'Ads', icon: 'megaphone-outline' },
-  { id: 'SYSTEM', label: 'System', icon: 'notifications-outline' },
+const TAB_ICONS: Record<NotificationCategory, LucideIcon> = {
+  PAYMENT_UPDATES: Receipt,
+  ALERTS: ShieldCheck,
+  ADS: Megaphone,
+  SYSTEM: Bell,
+};
+
+const TABS: Array<{ id: NotificationCategory; label: string }> = [
+  { id: 'PAYMENT_UPDATES', label: 'Payments' },
+  { id: 'ALERTS', label: 'Alerts' },
+  { id: 'ADS', label: 'Ads' },
+  { id: 'SYSTEM', label: 'System' },
 ];
 
 function formatTime(value: string) {
@@ -39,10 +59,27 @@ function formatTime(value: string) {
 }
 
 export default function NotificationsScreen() {
+  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<NotificationCategory>('PAYMENT_UPDATES');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Dynamic theme colors
+  const t = {
+    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
+    cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    cardUnreadBg: isDarkMode ? '#231f25' : '#fff7ed',
+    tabBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
+    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+    textMuted: isDarkMode ? '#64748b' : '#94a3b8',
+    iconBtnBg: isDarkMode ? 'rgba(148,163,184,0.06)' : '#f1f5f9',
+    iconBtnBorder: isDarkMode ? 'rgba(148,163,184,0.1)' : '#e2e8f0',
+  };
 
   const load = useCallback(async () => {
     try {
@@ -128,46 +165,62 @@ export default function NotificationsScreen() {
   };
 
   const renderItem = ({ item }: { item: AppNotification }) => {
-    const tab = TABS.find((entry) => entry.id === item.category) || TABS[3];
     const unread = !item.read_at;
 
     return (
       <TouchableOpacity
-        style={[styles.card, unread && styles.cardUnread]}
+        style={[
+          styles.card,
+          { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+          unread && { borderColor: 'rgba(238,77,45,0.7)', backgroundColor: t.cardUnreadBg },
+        ]}
         activeOpacity={0.8}
         onPress={() => handleMarkRead(item)}
       >
         <View style={styles.cardIcon}>
-          <Ionicons name={tab.icon} size={20} color="#ee4d2d" />
+          {React.createElement(TAB_ICONS[item.category] ?? Bell, { size: 20, color: '#ee4d2d' })}
         </View>
         <View style={styles.cardBody}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+            <Text style={[styles.cardTitle, { color: t.textPrimary }]} numberOfLines={1}>{item.title}</Text>
             {unread && <View style={styles.unreadDot} />}
           </View>
-          <Text style={styles.cardText}>{item.body}</Text>
-          <Text style={styles.cardTime}>{formatTime(item.created_at)}</Text>
+          <Text style={[styles.cardText, { color: t.textSecondary }]}>{item.body}</Text>
+          <Text style={[styles.cardTime, { color: t.textMuted }]}>{formatTime(item.created_at)}</Text>
         </View>
         <TouchableOpacity style={styles.clearButton} onPress={() => handleClear(item.id)}>
-          <Ionicons name="trash-outline" size={17} color="#94a3b8" />
+          <Trash2 size={17} color={t.textSecondary} />
         </TouchableOpacity>
       </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>S-Pay Messaging</Text>
-          <Text style={styles.title}>Notifications</Text>
-          <Text style={styles.subtitle}>{unreadCount} unread updates</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
+
+      {/* Premium Header Bar */}
+      <View style={[styles.webHeader, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
+        <View style={styles.webHeaderLeft}>
+          <Text style={styles.webHeaderSubtitle}>S-Pay Messaging</Text>
+          <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Notifications</Text>
+          <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
+            Stay updated on auto-payment reminders, ledger approvals, and system notifications.
+          </Text>
         </View>
-        {unreadCount > 0 && (
-          <TouchableOpacity style={styles.readAllButton} onPress={handleMarkAll}>
-            <Ionicons name="checkmark-done-outline" size={18} color="#ffffff" />
+        <View style={styles.webHeaderRight}>
+          <TouchableOpacity
+            style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+            onPress={toggleTheme}
+          >
+            {isDarkMode ? <Sun size={16} color="#fbbf24" /> : <Moon size={16} color="#475569" />}
           </TouchableOpacity>
-        )}
+          {unreadCount > 0 && (
+            <TouchableOpacity style={styles.readAllButton} onPress={handleMarkAll}>
+              <CheckCheck size={18} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <View style={styles.tabs}>
@@ -176,11 +229,11 @@ export default function NotificationsScreen() {
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.tab, selected && styles.tabSelected]}
+              style={[styles.tab, { borderColor: t.tabBorder }, selected && styles.tabSelected]}
               onPress={() => setActiveTab(tab.id)}
             >
-              <Ionicons name={tab.icon} size={15} color={selected ? '#ffffff' : '#94a3b8'} />
-              <Text style={[styles.tabText, selected && styles.tabTextSelected]}>
+              {React.createElement(TAB_ICONS[tab.id], { size: 15, color: selected ? '#ffffff' : t.textSecondary })}
+              <Text style={[styles.tabText, { color: t.textSecondary }, selected && styles.tabTextSelected]}>
                 {tab.label} {counts[tab.id] > 0 ? counts[tab.id] : ''}
               </Text>
             </TouchableOpacity>
@@ -201,9 +254,9 @@ export default function NotificationsScreen() {
           contentContainerStyle={[styles.listContent, visibleItems.length === 0 && styles.emptyList]}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="notifications-off-outline" size={36} color="#475569" />
-              <Text style={styles.emptyTitle}>No notifications here</Text>
-              <Text style={styles.emptyText}>New S-Pay updates will appear in this inbox and in your Android tray.</Text>
+              <BellOff size={36} color={t.textMuted} />
+              <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>No notifications here</Text>
+              <Text style={[styles.emptyText, { color: t.textMuted }]}>New S-Pay updates will appear in this inbox and in your Android tray.</Text>
             </View>
           }
         />
@@ -215,34 +268,51 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
   },
-  header: {
+  webHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
+    borderBottomWidth: 1.5,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 14,
   },
-  eyebrow: {
+  webHeaderLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  webHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  webHeaderSubtitle: {
     color: '#ee4d2d',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 2,
     textTransform: 'uppercase',
   },
-  title: {
-    color: '#f8fafc',
-    fontSize: 28,
-    fontWeight: '900',
-    marginTop: 4,
-  },
-  subtitle: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '600',
+  webHeaderTitle: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
     marginTop: 2,
+    letterSpacing: -0.3,
+  },
+  webHeaderDesc: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   readAllButton: {
     width: 40,
@@ -263,7 +333,6 @@ const styles = StyleSheet.create({
     minHeight: 42,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
@@ -274,9 +343,8 @@ const styles = StyleSheet.create({
     borderColor: '#ee4d2d',
   },
   tabText: {
-    color: '#94a3b8',
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: 'Jakarta-Bold',
   },
   tabTextSelected: {
     color: '#ffffff',
@@ -296,16 +364,10 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderWidth: 1.5,
     borderRadius: 16,
     padding: 14,
     marginBottom: 10,
-  },
-  cardUnread: {
-    borderColor: 'rgba(238,77,45,0.7)',
-    backgroundColor: '#231f25',
   },
   cardIcon: {
     width: 40,
@@ -325,7 +387,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   cardTitle: {
-    color: '#f8fafc',
     fontSize: 15,
     fontWeight: '800',
     flex: 1,
@@ -337,13 +398,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ee4d2d',
   },
   cardText: {
-    color: '#94a3b8',
     fontSize: 13,
     lineHeight: 19,
     marginTop: 4,
   },
   cardTime: {
-    color: '#64748b',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 8,
@@ -363,13 +422,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   emptyTitle: {
-    color: '#f8fafc',
     fontSize: 17,
     fontWeight: '800',
     marginTop: 12,
   },
   emptyText: {
-    color: '#64748b',
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 19,

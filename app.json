@@ -1,11 +1,16 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "S-Pay",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F53D2D"
+    },
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
@@ -14,18 +19,32 @@
         "POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F53D2D",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.cerberuzz91141.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-notifications"
-    ]
+      "expo-notifications",
+      "expo-splash-screen"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e0f4bfb6-3c41-4ece-9361-3997de377857"
+      }
+    },
+    "owner": "cerberuzz91141",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e0f4bfb6-3c41-4ece-9361-3997de377857"
+    }
   }
 }

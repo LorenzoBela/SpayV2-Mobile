@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,10 +7,22 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  CircleCheck,
+  Clock,
+  Calendar,
+  CloudUpload,
+  Files,
+  Sun,
+  Moon,
+  Bell,
+} from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
 
 interface PaymentItem {
@@ -26,6 +38,8 @@ interface PaymentItem {
 }
 
 export default function PaymentsScreen() {
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
+  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'ALL' | 'PENDING' | 'PAID'>('PENDING');
@@ -35,7 +49,6 @@ export default function PaymentsScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Join query via Supabase JS client
       const { data, error } = await supabase
         .from('payments')
         .select(`
@@ -75,7 +88,6 @@ export default function PaymentsScreen() {
       }
     } catch (error) {
       console.warn('Error fetching payments, fallback placeholders:', error);
-      // Fallback data for demonstration and premium client testing
       setPayments([
         {
           id: 'p1',
@@ -151,7 +163,6 @@ export default function PaymentsScreen() {
         {
           text: 'Camera / Photo Library',
           onPress: async () => {
-            // Simulate uploader state
             setPayments((prev) =>
               prev.map((p) =>
                 p.id === paymentId
@@ -175,16 +186,33 @@ export default function PaymentsScreen() {
     return true;
   });
 
+  // Dynamic theme colors
+  const t = {
+    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
+    cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    tabBg: isDarkMode ? '#161c2a' : '#ffffff',
+    tabActiveBg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
+    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+    textMuted: isDarkMode ? '#64748b' : '#94a3b8',
+    divider: isDarkMode ? '#222d42' : '#e2e8f0',
+    iconBtnBg: isDarkMode ? 'rgba(148,163,184,0.06)' : '#f1f5f9',
+    iconBtnBorder: isDarkMode ? 'rgba(148,163,184,0.1)' : '#e2e8f0',
+  };
+
   const renderPaymentItem = ({ item }: { item: PaymentItem }) => (
-    <View style={styles.paymentCard}>
+    <View style={[styles.paymentCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
       <View style={styles.cardHeader}>
         <View style={styles.itemBadge}>
-          <Ionicons
-            name={item.isPaid ? 'checkmark-circle' : 'time'}
-            size={18}
-            color={item.isPaid ? '#10b981' : '#f59e0b'}
-          />
-          <Text style={styles.itemNameText}>{item.itemName}</Text>
+          {item.isPaid ? (
+            <CircleCheck size={18} color="#10b981" />
+          ) : (
+            <Clock size={18} color="#f59e0b" />
+          )}
+          <Text style={[styles.itemNameText, { color: t.textPrimary }]}>{item.itemName}</Text>
         </View>
         <Text style={[styles.statusTag, item.isPaid ? styles.statusPaid : styles.statusPending]}>
           {item.isPaid ? 'PAID' : item.proofOfPayment ? 'PENDING APPROVAL' : 'UNPAID'}
@@ -194,23 +222,23 @@ export default function PaymentsScreen() {
       <View style={styles.cardBody}>
         <View style={styles.col}>
           <Text style={styles.bodyLabel}>AMOUNT DUE</Text>
-          <Text style={styles.amountText}>₱{item.amountDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+          <Text style={[styles.amountText, { color: t.textPrimary }]}>₱{item.amountDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
         </View>
 
         <View style={styles.col}>
           <Text style={styles.bodyLabel}>INSTALLMENT MONTH</Text>
-          <Text style={styles.monthText}>
+          <Text style={[styles.monthText, { color: t.textSecondary }]}>
             Month {item.monthNumber} of {item.installmentMonths}
           </Text>
         </View>
       </View>
 
-      <View style={styles.cardDivider} />
+      <View style={[styles.cardDivider, { backgroundColor: t.divider }]} />
 
       <View style={styles.cardFooter}>
         <View style={styles.dateContainer}>
-          <Ionicons name="calendar-outline" size={15} color="#64748b" />
-          <Text style={styles.dateText}>
+          <Calendar size={15} color={t.textMuted} />
+          <Text style={[styles.dateText, { color: t.textMuted }]}>
             {item.isPaid ? `Paid: ${item.dueDate}` : `Due: ${item.dueDate}`}
           </Text>
         </View>
@@ -224,10 +252,10 @@ export default function PaymentsScreen() {
             onPress={() => !item.proofOfPayment && handleUploadProof(item.id)}
             disabled={!!item.proofOfPayment}
           >
-            <Ionicons
-              name={item.proofOfPayment ? 'cloud-upload' : 'cloud-upload-outline'}
+            <CloudUpload
               size={14}
               color="#ffffff"
+              strokeWidth={item.proofOfPayment ? 2.5 : 1.5}
             />
             <Text style={styles.actionBtnText}>
               {item.proofOfPayment ? 'Pending' : 'Upload Proof'}
@@ -239,15 +267,43 @@ export default function PaymentsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
+
+      {/* Premium Header Bar */}
+      <View style={[styles.webHeader, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
+        <View style={styles.webHeaderLeft}>
+          <Text style={styles.webHeaderSubtitle}>S-Pay Ledger</Text>
+          <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Timeline & Payments</Text>
+          <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
+            Review payment history, active installment months, and submit receipts.
+          </Text>
+        </View>
+        <View style={styles.webHeaderRight}>
+          <TouchableOpacity
+            style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+            onPress={toggleTheme}
+          >
+            {isDarkMode ? <Sun size={16} color="#fbbf24" /> : <Moon size={16} color="#475569" />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Bell size={16} color={isDarkMode ? '#94a3b8' : '#475569'} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Tabs */}
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, { backgroundColor: t.tabBg, borderColor: t.cardBorder }]}>
         {(['PENDING', 'PAID', 'ALL'] as const).map((tab) => (
           <TouchableOpacity
             key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
+            style={[
+              styles.tabButton,
+              activeTab === tab && [styles.tabButtonActive, { backgroundColor: t.tabActiveBg, borderColor: t.cardBorder }],
+            ]}
             onPress={() => setActiveTab(tab)}
           >
             <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
@@ -259,7 +315,7 @@ export default function PaymentsScreen() {
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color="#ee4d2d" />
         </View>
       ) : (
         <FlatList
@@ -269,8 +325,8 @@ export default function PaymentsScreen() {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="documents-outline" size={48} color="#475569" />
-              <Text style={styles.emptyText}>No matching payments found.</Text>
+              <Files size={48} color={t.textMuted} />
+              <Text style={[styles.emptyText, { color: t.textMuted }]}>No matching payments found.</Text>
             </View>
           }
         />
@@ -282,16 +338,58 @@ export default function PaymentsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+  },
+  webHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
+    borderBottomWidth: 1.5,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  webHeaderLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  webHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  webHeaderSubtitle: {
+    color: '#ee4d2d',
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  webHeaderTitle: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 2,
+    letterSpacing: -0.3,
+  },
+  webHeaderDesc: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
     margin: 16,
     borderRadius: 12,
     padding: 4,
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderWidth: 1.5,
   },
   tabButton: {
     flex: 1,
@@ -300,17 +398,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   tabButtonActive: {
-    backgroundColor: '#0f172a',
     borderWidth: 1,
-    borderColor: '#334155',
   },
   tabText: {
     color: '#64748b',
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Jakarta-Bold',
   },
   tabTextActive: {
-    color: '#3b82f6',
+    color: '#ee4d2d',
   },
   loader: {
     flex: 1,
@@ -322,10 +418,8 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   paymentCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderWidth: 1.5,
     padding: 16,
     marginBottom: 14,
   },
@@ -343,7 +437,6 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   itemNameText: {
-    color: '#f8fafc',
     fontSize: 15,
     fontWeight: '700',
   },
@@ -379,18 +472,15 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   amountText: {
-    color: '#f8fafc',
     fontSize: 16,
     fontWeight: '800',
   },
   monthText: {
-    color: '#94a3b8',
     fontSize: 14,
     fontWeight: '500',
   },
   cardDivider: {
     height: 1,
-    backgroundColor: '#334155',
     marginBottom: 12,
   },
   cardFooter: {
@@ -404,7 +494,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dateText: {
-    color: '#64748b',
     fontSize: 12,
   },
   actionBtn: {
@@ -416,7 +505,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   actionBtnUpload: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#ee4d2d',
   },
   actionBtnPending: {
     backgroundColor: '#475569',
@@ -431,7 +520,6 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyText: {
-    color: '#475569',
     fontSize: 14,
     marginTop: 12,
   },

@@ -1,363 +1,563 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Alert,
+  Dimensions,
+  Platform,
+  Animated,
+  Pressable,
+  Image,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import * as LocalAuthentication from 'expo-local-authentication';
-import * as SecureStore from 'expo-secure-store';
+import { Wallet, ShieldCheck, ChevronRight } from 'lucide-react-native';
+import Svg, { Path } from 'react-native-svg';
+import { StatusBar } from 'expo-status-bar';
+import { GoogleAuth } from 'react-native-google-auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '../../utils/supabase';
 
-export default function LoginScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
-  const [hasBiometricSettings, setHasBiometricSettings] = useState(false);
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Persistent storage key for the last logged-in user
+const LAST_ACCOUNT_KEY = 'spay-ledger:last-logged-account';
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+interface LastAccount {
+  name: string;
+  email: string;
+  photo?: string;
+}
+
+// Official Multi-path Google G logo SVG for high-end look
+const GoogleIcon = ({ size = 20 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Path
+      fill="#4285F4"
+      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+    />
+    <Path
+      fill="#34A853"
+      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+    />
+    <Path
+      fill="#FBBC05"
+      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22-.03-.63z"
+    />
+    <Path
+      fill="#EA4335"
+      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+    />
+  </Svg>
+);
+
+// Lightweight entry animation helper (fade + slide-up)
+function useEntryAnimation(delay = 0, duration = 320) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(15)).current;
 
   useEffect(() => {
-    checkBiometrics();
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
-  const checkBiometrics = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    setIsBiometricSupported(hasHardware && isEnrolled);
-
-    // Check if biometric login credentials are saved
-    const savedEmail = await SecureStore.getItemAsync('biometric_email');
-    const savedPassword = await SecureStore.getItemAsync('biometric_password');
-    if (savedEmail && savedPassword) {
-      setHasBiometricSettings(true);
-      // Auto-trigger biometric authentication if supported and set up
-      if (hasHardware && isEnrolled) {
-        handleBiometricLogin(savedEmail, savedPassword);
-      }
-    }
+  return {
+    style: { opacity, transform: [{ translateY }] },
   };
+}
 
-  const handleBiometricLogin = async (savedEmail: string, savedPassword: string) => {
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Sign in to S-Pay with Biometrics',
-        fallbackLabel: 'Use Password',
-        disableDeviceFallback: false,
-      });
+export default function LoginScreen() {
+  const [loading, setLoading] = useState(false);
+  const [lastAccount, setLastAccount] = useState<LastAccount | null>(null);
 
-      if (result.success) {
-        setLoading(true);
-        const { error } = await supabase.auth.signInWithPassword({
-          email: savedEmail,
-          password: savedPassword,
-        });
+  // Load last logged-in account details on mount
+  useEffect(() => {
+    AsyncStorage.getItem(LAST_ACCOUNT_KEY)
+      .then((raw) => {
+        if (raw) {
+          setLastAccount(JSON.parse(raw));
+        }
+      })
+      .catch((err) => console.warn('Failed to load last account:', err));
+  }, []);
 
-        if (error) throw error;
-      }
-    } catch (error: any) {
-      Alert.alert('Biometric Login Failed', error.message || 'Authentication error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignIn = async () => {
-    if (!email || !password) {
-      Alert.alert('Input Error', 'Please enter your email and password.');
+  useEffect(() => {
+    if (!GOOGLE_WEB_CLIENT_ID) {
+      console.warn('[Auth] EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not configured.');
       return;
     }
 
-    setLoading(true);
+    GoogleAuth.configure({
+      webClientId: GOOGLE_WEB_CLIENT_ID,
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    }).catch((error) => {
+      console.warn('[Auth] Failed to configure Google Auth:', error);
+    });
+  }, []);
+
+  // Entry Animations with precise stagger delays
+  const brandingAnim = useEntryAnimation(0);
+  const welcomeAnim = useEntryAnimation(150);
+  const cardAnim = useEntryAnimation(250);
+  const bottomAnim = useEntryAnimation(lastAccount ? 400 : 320);
+
+  const saveGoogleAccount = async (user?: {
+    name?: string | null;
+    email?: string | null;
+    photo?: string | null;
+  }) => {
+    const name = user?.name || '';
+    const email = user?.email || '';
+    const photo = user?.photo || '';
+
+    if (name || email) {
+      const account = { name, email, photo };
+      await AsyncStorage.setItem(LAST_ACCOUNT_KEY, JSON.stringify(account));
+      setLastAccount(account);
+    }
+  };
+
+  const completeSupabaseSignIn = async (idToken: string, user?: {
+    name?: string | null;
+    email?: string | null;
+    photo?: string | null;
+  }) => {
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: idToken,
+    });
+
+    if (error) throw error;
+
+    await saveGoogleAccount(user);
+  };
+
+  const handleGoogleSignIn = async (options?: { silent?: boolean }) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      setLoading(true);
 
-      if (error) throw error;
+      if (!GOOGLE_WEB_CLIENT_ID) {
+        throw new Error('Google Sign-In is missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.');
+      }
 
-      // Ask user to save biometrics if supported but not yet enabled
-      if (isBiometricSupported && !hasBiometricSettings) {
-        Alert.alert(
-          'Enable Biometrics',
-          'Would you like to enable biometric login for faster access next time?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Enable',
-              onPress: async () => {
-                await SecureStore.setItemAsync('biometric_email', email);
-                await SecureStore.setItemAsync('biometric_password', password);
-                setHasBiometricSettings(true);
-              },
-            },
-          ]
-        );
+      if (options?.silent) {
+        try {
+          const user = await GoogleAuth.getCurrentUser();
+          const tokens = user ? await GoogleAuth.getTokens() : null;
+          if (user && tokens?.idToken) {
+            await completeSupabaseSignIn(tokens.idToken, user);
+            return;
+          }
+        } catch (silentError) {
+          console.log('[Auth] Cached Google credential unavailable, opening One Tap.', silentError);
+        }
+      }
+
+      const response = await GoogleAuth.signIn();
+      
+      if (response.type === 'success') {
+        const idToken = response.data.idToken;
+        if (!idToken) {
+          throw new Error('Google Sign-In failed: No ID token received.');
+        }
+
+        await completeSupabaseSignIn(idToken, response.data.user);
+      } else if (response.type === 'cancelled') {
+        console.log('[Auth] Google Sign-In cancelled by user');
+      } else if (response.type === 'noSavedCredentialFound') {
+        Alert.alert('Sign In Failed', 'No saved Google credential was found on this device.');
       }
     } catch (error: any) {
-      Alert.alert('Sign In Failed', error.message || 'An error occurred during sign in.');
+      if (error?.code === 'SIGN_IN_CANCELLED' || error?.message?.toLowerCase?.().includes('cancel')) {
+        console.log('[Auth] Google Sign-In cancelled by user');
+      } else {
+        Alert.alert('Sign In Failed', error.message || 'An error occurred during Google Sign In.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    Alert.alert('Google Sign-In', 'Google Sign-In is triggered. Session token will sync via Supabase.');
-  };
-
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <View style={styles.cardContainer}>
-        {/* Logo/Branding Header */}
-        <View style={styles.header}>
+    <View style={styles.container}>
+      <StatusBar style="light" />
+
+      <View style={styles.contentContainer}>
+        {/* Branding Header */}
+        <Animated.View style={[styles.header, brandingAnim.style]}>
+          <Text style={styles.tagline}>INSTALLMENTS MADE CLEAR</Text>
           <View style={styles.logoBadge}>
-            <Ionicons name="wallet-sharp" size={36} color="#3b82f6" />
+            <Wallet size={36} color="#ee4d2d" strokeWidth={1.8} />
           </View>
           <Text style={styles.title}>S-PAY</Text>
           <Text style={styles.subtitle}>Unified Expense & Installment Ledger</Text>
-        </View>
+        </Animated.View>
 
-        {/* Input Fields */}
-        <View style={styles.form}>
-          <Text style={styles.label}>Email Address</Text>
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color="#64748b" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="name@example.com"
-              placeholderTextColor="#475569"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+        {/* Welcome Text Section */}
+        <Animated.View style={[styles.welcomeSection, welcomeAnim.style]}>
+          <Text style={styles.welcomeTitle}>
+            {lastAccount ? 'Welcome Back' : 'Authentication'}
+          </Text>
+          <Text style={styles.welcomeSubtitle}>
+            {lastAccount
+              ? 'Tap below to resume your secure session.'
+              : 'Initialize a secure session to manage installments.'}
+          </Text>
+        </Animated.View>
 
-          <Text style={styles.label}>Security Password</Text>
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••••••"
-              placeholderTextColor="#475569"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Action Buttons */}
-          <TouchableOpacity
-            style={styles.signInButton}
-            onPress={handleSignIn}
+        {/* Tappable Account Persistence Card or General Welcome Card */}
+        {lastAccount ? (
+          <Pressable
+            onPress={() => handleGoogleSignIn({ silent: true })}
             disabled={loading}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: '100%' })}
           >
-            {loading ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.signInText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
+            <Animated.View style={[styles.lastAccountCard, cardAnim.style]}>
+              <LastAccountAvatar name={lastAccount.name} photo={lastAccount.photo} />
+              <View style={styles.lastAccountInfo}>
+                <Text style={styles.lastAccountName} numberOfLines={1}>
+                  {lastAccount.name}
+                </Text>
+                <Text style={styles.lastAccountEmail} numberOfLines={1}>
+                  {lastAccount.email}
+                </Text>
+              </View>
+              <View style={styles.lastAccountBadge}>
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ee4d2d" />
+                ) : (
+                  <ChevronRight size={18} color="#94a3b8" />
+                )}
+              </View>
+            </Animated.View>
+          </Pressable>
+        ) : (
+          <Animated.View style={[styles.card, cardAnim.style]}>
+            <Text style={styles.cardHeader}>Log In Securely</Text>
+            <Text style={styles.cardBody}>
+              Access your personal budget limits, payment plans, due alerts, and detailed reports.
+            </Text>
+          </Animated.View>
+        )}
 
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Social / Alternative Sign-in */}
-          <View style={styles.socialRow}>
-            <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn}>
-              <Ionicons name="logo-google" size={20} color="#f8fafc" />
-              <Text style={styles.googleButtonText}>Google</Text>
-            </TouchableOpacity>
-
-            {isBiometricSupported && hasBiometricSettings && (
-              <TouchableOpacity
-                style={styles.biometricButton}
-                onPress={async () => {
-                  const savedEmail = await SecureStore.getItemAsync('biometric_email');
-                  const savedPassword = await SecureStore.getItemAsync('biometric_password');
-                  if (savedEmail && savedPassword) {
-                    handleBiometricLogin(savedEmail, savedPassword);
-                  }
-                }}
-              >
-                <Ionicons name="finger-print" size={22} color="#3b82f6" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        {/* Bottom Actions Section with Premium Spring button */}
+        <Animated.View style={[styles.bottomSection, bottomAnim.style]}>
+          <GoogleSignInButton
+            onPress={() => handleGoogleSignIn()}
+            loading={loading && !lastAccount}
+            disabled={loading}
+          />
+        </Animated.View>
 
         {/* Footer info */}
-        <Text style={styles.footerText}>
-          Migrating to secure PostgreSQL database.
-        </Text>
+        <View style={styles.footer}>
+          <ShieldCheck size={14} color="#64748b" style={styles.footerIcon} />
+          <Text style={styles.footerText}>
+            Secure Sign-In via Google
+          </Text>
+        </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
+
+// Interactive Google Sign-In Button with Spring animation
+interface GoogleSignInButtonProps {
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+}
+
+const GoogleSignInButton = ({ onPress, loading, disabled }: GoogleSignInButtonProps) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    if (disabled) return;
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 3,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 3,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+      style={{ width: '100%', alignItems: 'center' }}
+    >
+      <Animated.View
+        style={[
+          styles.googleButton,
+          {
+            transform: [{ scale: scaleAnim }],
+            opacity: disabled ? 0.8 : 1,
+          },
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color="#f8fafc" />
+        ) : (
+          <View style={styles.buttonContent}>
+            <GoogleIcon size={20} />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </View>
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+// PERSISTED AVATAR COMPONENT WITH FALLBACK MONOGRAM INITIALS
+interface LastAccountAvatarProps {
+  name: string;
+  photo?: string;
+}
+
+const LastAccountAvatar = ({ name, photo }: LastAccountAvatarProps) => {
+  const [imageError, setImageError] = useState(false);
+
+  const initials = name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
+
+  if (photo && !imageError) {
+    return (
+      <Image
+        source={{ uri: photo }}
+        style={styles.lastAccountAvatar}
+        onError={() => setImageError(true)}
+      />
+    );
+  }
+
+  return (
+    <View style={[styles.lastAccountAvatar, styles.lastAccountAvatarFallback]}>
+      <Text style={styles.lastAccountInitials}>{initials || '?'}</Text>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a', // Slate-900
+    backgroundColor: '#0b0f19',
     justifyContent: 'center',
     padding: 24,
   },
-  cardContainer: {
-    backgroundColor: '#1e293b', // Slate-800
-    borderRadius: 24,
-    padding: 32,
-    borderWidth: 1,
-    borderColor: '#334155', // Slate-700
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 8,
+  contentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    width: '100%',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 36,
+    marginBottom: 32,
+  },
+  tagline: {
+    color: '#ee4d2d',
+    fontSize: 10,
+    fontFamily: 'Jakarta-ExtraBold',
+    letterSpacing: 4.5,
+    marginBottom: 16,
+    textTransform: 'uppercase',
   },
   logoBadge: {
-    backgroundColor: '#1e293b',
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+    backgroundColor: 'rgba(238, 77, 45, 0.04)',
+    width: 80,
+    height: 80,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#3b82f6',
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(238, 77, 45, 0.2)',
   },
   title: {
     color: '#f8fafc',
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 2,
+    fontSize: 36,
+    fontFamily: 'Outfit-ExtraBold',
+    letterSpacing: 4,
   },
   subtitle: {
     color: '#64748b',
     fontSize: 13,
-    marginTop: 6,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 8,
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
-  form: {
-    width: '100%',
+  welcomeSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 16,
   },
-  label: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
+  welcomeTitle: {
+    color: '#f8fafc',
+    fontSize: 24,
+    fontFamily: 'Outfit-Bold',
     marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: -0.5,
   },
-  inputContainer: {
+  welcomeSubtitle: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Medium',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  card: {
+    backgroundColor: '#161c2a',
+    borderColor: '#2d3748',
+    borderWidth: 1.5,
+    borderRadius: 24,
+    padding: 32,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  cardHeader: {
+    color: '#f8fafc',
+    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+    marginBottom: 10,
+    letterSpacing: 0.2,
+  },
+  cardBody: {
+    color: '#64748b',
+    fontSize: 13,
+    fontFamily: 'Jakarta-Medium',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  lastAccountCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    marginBottom: 20,
-    paddingHorizontal: 16,
-    height: 50,
+    backgroundColor: '#161c2a',
+    borderColor: '#2d3748',
+    borderWidth: 1.5,
+    borderRadius: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    width: '100%',
+    maxWidth: 400,
+    marginBottom: 24,
   },
-  inputIcon: {
+  lastAccountAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#ee4d2d',
+  },
+  lastAccountAvatarFallback: {
+    backgroundColor: '#ee4d2d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lastAccountInitials: {
+    color: '#f8fafc',
+    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+  },
+  lastAccountInfo: {
+    flex: 1,
+    marginLeft: 16,
     marginRight: 12,
   },
-  input: {
-    flex: 1,
+  lastAccountName: {
     color: '#f8fafc',
-    fontSize: 15,
+    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: -0.3,
+    marginBottom: 2,
   },
-  signInButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 12,
-    height: 50,
+  lastAccountEmail: {
+    color: '#64748b',
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
+  },
+  lastAccountBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(238, 77, 45, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomSection: {
+    width: '100%',
+    maxWidth: 400,
+    marginBottom: 16,
+  },
+  googleButton: {
+    backgroundColor: '#161c2a',
+    borderColor: '#2d3748',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    height: 56,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#3b82f6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-    marginTop: 8,
   },
-  signInText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#334155',
-  },
-  dividerText: {
-    color: '#475569',
-    fontSize: 12,
-    paddingHorizontal: 12,
-  },
-  socialRow: {
+  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
   },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 12,
-    height: 50,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
-    flex: 1,
-  },
   googleButtonText: {
     color: '#f8fafc',
     fontSize: 15,
-    fontWeight: '600',
-    marginLeft: 8,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 0.5,
   },
-  biometricButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    backgroundColor: '#1e293b',
-    justifyContent: 'center',
+  footer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+    opacity: 0.7,
+  },
+  footerIcon: {
+    marginRight: 6,
   },
   footerText: {
-    color: '#475569',
+    color: '#64748b',
     fontSize: 11,
-    textAlign: 'center',
-    marginTop: 32,
+    fontFamily: 'Jakarta-SemiBold',
+    letterSpacing: 0.5,
   },
 });

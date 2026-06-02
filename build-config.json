@@ -1,0 +1,13 @@
+﻿{
+    "timestamp":  "2026-06-02T08:44:05.9145246+08:00",
+    "projectRoot":  "C:\\Users\\Lorenzo Bela\\Downloads\\SpayV2\\mobile",
+    "androidDir":  "C:\\Users\\Lorenzo Bela\\Downloads\\SpayV2\\mobile\\android",
+    "androidSdkRoot":  "C:/Users/Lorenzo Bela/AppData/Local/Android/Sdk",
+    "androidHome":  "C:\\Users\\Lorenzo Bela\\AppData\\Local\\Android\\Sdk",
+    "androidNdkHome":  "C:\\Users\\Lorenzo Bela\\AppData\\Local\\Android\\Sdk\\ndk\\26.1.10909125",
+    "ndkHome":  "C:\\Users\\Lorenzo Bela\\AppData\\Local\\Android\\Sdk\\ndk\\26.1.10909125",
+    "javaHome":  "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\",
+    "nodeBinary":  "C:\\Program Files\\nodejs\\node.exe",
+    "androidStl":  "c++_shared",
+    "cmakeAndroidStlType":  "c++_shared"
+}

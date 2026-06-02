@@ -1,14 +1,26 @@
-import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, StyleSheet, Animated, StatusBar } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  Wallet,
+  Receipt,
+  PieChart,
+  Bell,
+  User,
+  HelpCircle,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
 
 import { supabase } from '../utils/supabase';
+import PremiumLoader from '../components/PremiumLoader';
 import LoginScreen from '../screens/auth/LoginScreen';
+import RoleSelectionScreen from '../screens/auth/RoleSelectionScreen';
+import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import DashboardScreen from '../screens/client/DashboardScreen';
 import PaymentsScreen from '../screens/client/PaymentsScreen';
 import BudgetScreen from '../screens/client/BudgetScreen';
@@ -20,23 +32,21 @@ import {
   setupAndroidNotificationChannels,
   subscribeToRealtimeNotifications,
 } from '../services/notificationService';
+import {
+  AuthStackParamList,
+  MainTabParamList,
+  RoleContext,
+  RootStackParamList,
+  ThemeContext,
+} from './navigationTypes';
 
-// Types for navigation
-export type RootStackParamList = {
-  Auth: undefined;
-  Main: undefined;
-};
-
-export type AuthStackParamList = {
-  Login: undefined;
-};
-
-export type MainTabParamList = {
-  Dashboard: undefined;
-  Payments: undefined;
-  Budget: undefined;
-  Notifications: undefined;
-  Profile: undefined;
+// Map route names to Lucide icon components
+const TAB_ICONS: Record<string, LucideIcon> = {
+  Dashboard: Wallet,
+  Payments: Receipt,
+  Budget: PieChart,
+  Notifications: Bell,
+  Profile: User,
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -50,66 +60,63 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
-// Main Tab Navigator
-const MainNavigator = () => (
-  <Tab.Navigator
-    screenOptions={({ route }) => ({
-      tabBarIcon: ({ focused, color, size }) => {
-        let iconName: keyof typeof Ionicons.glyphMap = 'help-circle-outline';
+// Main Tab Navigator — consumes ThemeContext for dynamic tab bar styling
+const MainNavigator = () => {
+  const { isDarkMode } = React.useContext(ThemeContext);
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 12);
 
-        if (route.name === 'Dashboard') {
-          iconName = focused ? 'wallet' : 'wallet-outline';
-        } else if (route.name === 'Payments') {
-          iconName = focused ? 'receipt' : 'receipt-outline';
-        } else if (route.name === 'Budget') {
-          iconName = focused ? 'pie-chart' : 'pie-chart-outline';
-        } else if (route.name === 'Notifications') {
-          iconName = focused ? 'notifications' : 'notifications-outline';
-        } else if (route.name === 'Profile') {
-          iconName = focused ? 'person' : 'person-outline';
-        }
-
-        return <Ionicons name={iconName} size={size} color={color} />;
-      },
-      tabBarActiveTintColor: '#3b82f6', // Steel blue highlight
-      tabBarInactiveTintColor: '#64748b', // Slate-500
-      tabBarStyle: {
-        backgroundColor: '#0f172a', // Dark theme background
-        borderTopWidth: 1,
-        borderTopColor: '#1e293b', // Slate-800 divider
-        paddingBottom: 8,
-        paddingTop: 8,
-        height: 64,
-      },
-      tabBarLabelStyle: {
-        fontSize: 12,
-        fontWeight: '500',
-      },
-      headerStyle: {
-        backgroundColor: '#0f172a',
-        shadowColor: 'transparent',
-        borderBottomWidth: 1,
-        borderBottomColor: '#1e293b',
-      },
-      headerTitleStyle: {
-        color: '#f8fafc',
-        fontWeight: 'bold',
-        fontSize: 18,
-      },
-    })}
-  >
-    <Tab.Screen name="Dashboard" component={DashboardScreen} />
-    <Tab.Screen name="Payments" component={PaymentsScreen} />
-    <Tab.Screen name="Budget" component={BudgetScreen} />
-    <Tab.Screen name="Notifications" component={NotificationsScreen} />
-    <Tab.Screen name="Profile" component={ProfileScreen} />
-  </Tab.Navigator>
-);
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          const IconComponent = TAB_ICONS[route.name] ?? HelpCircle;
+          return (
+            <IconComponent
+              size={size}
+              color={color}
+              strokeWidth={focused ? 2.5 : 1.5}
+            />
+          );
+        },
+        tabBarActiveTintColor: '#ee4d2d',
+        tabBarInactiveTintColor: isDarkMode ? '#64748b' : '#94a3b8',
+        tabBarStyle: {
+          backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: isDarkMode ? '#1e293b' : '#e2e8f0',
+          paddingBottom: bottomInset,
+          paddingTop: 8,
+          height: 56 + bottomInset,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Payments" component={PaymentsScreen} />
+      <Tab.Screen name="Budget" component={BudgetScreen} />
+      <Tab.Screen name="Notifications" component={NotificationsScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+};
 
 export default function AppNavigator() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
   const navigationRef = React.useRef<any>(null);
+
+  // Theme state — defaults to dark mode
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
 
   useEffect(() => {
     // Get initial session
@@ -129,6 +136,52 @@ export default function AppNavigator() {
     };
   }, []);
 
+  const fetchProfileRole = async (userId: string, active: boolean) => {
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+
+      if (!active) return;
+      if (data?.role === 'ADMIN') {
+        setUserRole('ADMIN');
+      } else {
+        setUserRole('CLIENT');
+        setActiveRole('client');
+      }
+    } catch (error: any) {
+      console.warn('[AppNavigator] Failed to fetch profile role:', error);
+      if (!active) return;
+      setProfileError(error?.message || 'Failed to sync account role settings.');
+    } finally {
+      if (active) {
+        setProfileLoading(false);
+      }
+    }
+  };
+
+  // Fetch profile to check role
+  useEffect(() => {
+    let active = true;
+    if (session?.user?.id) {
+      fetchProfileRole(session.user.id, active);
+    } else {
+      setUserRole(null);
+      setActiveRole(null);
+      setProfileLoading(false);
+      setProfileError(null);
+    }
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
   useEffect(() => {
     void setupAndroidNotificationChannels();
   }, []);
@@ -136,7 +189,15 @@ export default function AppNavigator() {
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    void registerForTrayNotifications(session.user.id);
+    // Wrap notification registration to prevent PromiseLike catch method type error
+    (async () => {
+      try {
+        await registerForTrayNotifications(session.user.id);
+      } catch (error: any) {
+        console.warn('[Notifications] Registration skipped:', error?.message || error);
+      }
+    })();
+
     const unsubscribeRealtime = subscribeToRealtimeNotifications(session.user.id, (notification) => {
       void mirrorToLocalTray(notification);
     });
@@ -159,24 +220,102 @@ export default function AppNavigator() {
     };
   }, [session?.user?.id]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-      </View>
-    );
-  }
+  const [showOverlay, setShowOverlay] = useState(true);
+  const overlayOpacity = useRef(new Animated.Value(1)).current;
+
+  const isActuallyLoading = loading || (session && profileLoading) || profileError;
+
+  useEffect(() => {
+    if (!isActuallyLoading) {
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowOverlay(false);
+      });
+    } else {
+      setShowOverlay(true);
+      overlayOpacity.setValue(1);
+    }
+  }, [isActuallyLoading]);
+
+  const handleRetry = () => {
+    if (session?.user?.id) {
+      fetchProfileRole(session.user.id, true);
+    }
+  };
 
   return (
-    <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {session ? (
-          <Stack.Screen name="Main" component={MainNavigator} />
-        ) : (
-          <Stack.Screen name="Auth" component={AuthNavigator} />
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
+      <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
+        <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
+          <StatusBar
+            barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+            backgroundColor={isDarkMode ? '#0b0f19' : '#ffffff'}
+            translucent={false}
+            animated
+          />
+
+          {!loading && (
+            <NavigationContainer ref={navigationRef}>
+              <Stack.Navigator screenOptions={{ headerShown: false }}>
+                {session ? (
+                  userRole === 'ADMIN' && activeRole === null ? (
+                    <Stack.Screen name="RoleSelect">
+                      {(props) => (
+                        <RoleSelectionScreen
+                          {...props}
+                          onSelectRole={(role) => setActiveRole(role)}
+                          onSignOut={async () => {
+                            await supabase.auth.signOut();
+                          }}
+                        />
+                      )}
+                    </Stack.Screen>
+                  ) : activeRole === 'admin' ? (
+                    <Stack.Screen name="Admin">
+                      {(props) => (
+                        <AdminDashboardScreen
+                          {...props}
+                          onSwitchWorkspace={() => setActiveRole(null)}
+                          onSignOut={async () => {
+                            await supabase.auth.signOut();
+                          }}
+                        />
+                      )}
+                    </Stack.Screen>
+                  ) : (
+                    <Stack.Screen name="Main" component={MainNavigator} />
+                  )
+                ) : (
+                  <Stack.Screen name="Auth" component={AuthNavigator} />
+                )}
+              </Stack.Navigator>
+            </NavigationContainer>
+          )}
+
+          {showOverlay && (
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  opacity: overlayOpacity,
+                  zIndex: 9999,
+                },
+              ]}
+            >
+              <PremiumLoader
+                title={session ? 'Syncing Account Config' : 'Initializing Session'}
+                subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
+                error={profileError}
+                onRetry={handleRetry}
+              />
+            </Animated.View>
+          )}
+        </View>
+      </RoleContext.Provider>
+    </ThemeContext.Provider>
   );
 }
 

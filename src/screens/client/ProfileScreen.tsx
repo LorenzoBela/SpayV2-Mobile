@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,14 +7,15 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Mail, Phone, Fingerprint, LogOut, LayoutDashboard, Sun, Moon } from 'lucide-react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
+import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 
 interface UserProfile {
   name: string;
@@ -24,6 +25,8 @@ interface UserProfile {
 }
 
 export default function ProfileScreen() {
+  const { setActiveRole } = useContext(RoleContext);
+  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const [profile, setProfile] = useState<UserProfile>({
     name: 'Client Rider',
     email: 'rider@spay.com',
@@ -33,6 +36,22 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+
+  // Dynamic theme colors
+  const t = {
+    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
+    cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
+    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+    textMuted: isDarkMode ? '#64748b' : '#94a3b8',
+    iconBtnBg: isDarkMode ? 'rgba(148,163,184,0.06)' : '#f1f5f9',
+    iconBtnBorder: isDarkMode ? 'rgba(148,163,184,0.1)' : '#e2e8f0',
+    switchTrackFalse: isDarkMode ? '#334155' : '#cbd5e1',
+    switchThumbFalse: isDarkMode ? '#64748b' : '#94a3b8',
+  };
 
   const fetchProfileAndSettings = async () => {
     try {
@@ -138,74 +157,112 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
 
       {loading ? (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color="#ee4d2d" />
         </View>
       ) : (
-        <View style={styles.content}>
+        <>
+          {/* Premium Header Bar */}
+          <View style={[styles.webHeader, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
+            <View style={styles.webHeaderLeft}>
+              <Text style={styles.webHeaderSubtitle}>S-Pay Profile</Text>
+              <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Rider Settings</Text>
+              <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
+                Manage your personal account credentials, mobile numbers, and biometrics secure login.
+              </Text>
+            </View>
+            <View style={styles.webHeaderRight}>
+              <TouchableOpacity
+                style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+                onPress={toggleTheme}
+              >
+                {isDarkMode ? <Sun size={16} color="#fbbf24" /> : <Moon size={16} color="#475569" />}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.content}>
           {/* User info header card */}
-          <View style={styles.profileCard}>
+          <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.avatarLarge}>
               <Text style={styles.avatarLargeText}>
                 {profile.name.charAt(0).toUpperCase()}
               </Text>
             </View>
-            <Text style={styles.profileName}>{profile.name}</Text>
-            <Text style={styles.profileRole}>{profile.role}</Text>
+            <Text style={[styles.profileName, { color: t.textPrimary }]}>{profile.name}</Text>
+            <Text style={[styles.profileRole, { color: t.textMuted }]}>{profile.role}</Text>
           </View>
 
           {/* Details list */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Account Details</Text>
+          <View style={[styles.section, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <Text style={[styles.sectionTitle, { color: t.textSecondary }]}>Account Details</Text>
 
             <View style={styles.row}>
-              <Ionicons name="mail-outline" size={20} color="#64748b" />
+              <Mail size={20} color={t.textMuted} />
               <View style={styles.rowInfo}>
-                <Text style={styles.rowLabel}>Email Address</Text>
-                <Text style={styles.rowValue}>{profile.email}</Text>
+                <Text style={[styles.rowLabel, { color: t.textMuted }]}>Email Address</Text>
+                <Text style={[styles.rowValue, { color: t.textPrimary }]}>{profile.email}</Text>
               </View>
             </View>
 
             <View style={styles.row}>
-              <Ionicons name="call-outline" size={20} color="#64748b" />
+              <Phone size={20} color={t.textMuted} />
               <View style={styles.rowInfo}>
-                <Text style={styles.rowLabel}>Mobile Number</Text>
-                <Text style={styles.rowValue}>{profile.mobile}</Text>
+                <Text style={[styles.rowLabel, { color: t.textMuted }]}>Mobile Number</Text>
+                <Text style={[styles.rowValue, { color: t.textPrimary }]}>{profile.mobile}</Text>
               </View>
             </View>
           </View>
 
           {/* Security list */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Security Settings</Text>
+          <View style={[styles.section, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <Text style={[styles.sectionTitle, { color: t.textSecondary }]}>Security Settings</Text>
 
             <View style={styles.switchRow}>
               <View style={styles.switchLabelCol}>
-                <Ionicons name="finger-print" size={20} color="#3b82f6" />
+                <Fingerprint size={20} color="#ee4d2d" />
                 <View style={styles.switchLabelInfo}>
-                  <Text style={styles.switchTitle}>Biometric Sign-In</Text>
-                  <Text style={styles.switchSub}>Use FaceID / TouchID for logins</Text>
+                  <Text style={[styles.switchTitle, { color: t.textPrimary }]}>Biometric Sign-In</Text>
+                  <Text style={[styles.switchSub, { color: t.textMuted }]}>Use FaceID / TouchID for logins</Text>
                 </View>
               </View>
               <Switch
                 value={biometricsEnabled}
                 onValueChange={handleToggleBiometrics}
-                trackColor={{ false: '#334155', true: '#3b82f6' }}
-                thumbColor={biometricsEnabled ? '#ffffff' : '#64748b'}
+                trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
+                thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
               />
             </View>
           </View>
 
           {/* Actions */}
-          <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-            <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+          {profile.role === 'ADMIN' && (
+            <TouchableOpacity
+              style={[styles.switchWorkspaceBtn, !isDarkMode && { backgroundColor: 'rgba(238,77,45,0.04)' }]}
+              onPress={() => setActiveRole(null)}
+            >
+              <LayoutDashboard size={20} color="#ee4d2d" />
+              <Text style={styles.switchWorkspaceText}>Switch Workspace</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.signOutBtn,
+              !isDarkMode && { borderColor: '#fca5a5' },
+              profile.role === 'ADMIN' && { marginTop: 0 }
+            ]}
+            onPress={handleSignOut}
+          >
+            <LogOut size={20} color="#ef4444" />
             <Text style={styles.signOutText}>Sign Out Account</Text>
           </TouchableOpacity>
         </View>
+        </>
       )}
     </SafeAreaView>
   );
@@ -214,7 +271,51 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+  },
+  webHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
+    borderBottomWidth: 1.5,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  webHeaderLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  webHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  webHeaderSubtitle: {
+    color: '#ee4d2d',
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  webHeaderTitle: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 2,
+    letterSpacing: -0.3,
+  },
+  webHeaderDesc: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
@@ -226,10 +327,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   profileCard: {
-    backgroundColor: '#1e293b',
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderWidth: 1.5,
     padding: 24,
     alignItems: 'center',
     marginBottom: 24,
@@ -238,11 +337,11 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#ee4d2d',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#60a5fa',
+    borderColor: 'rgba(238, 77, 45, 0.3)',
     marginBottom: 16,
   },
   avatarLargeText: {
@@ -251,12 +350,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   profileName: {
-    color: '#f8fafc',
     fontSize: 20,
     fontWeight: '800',
   },
   profileRole: {
-    color: '#64748b',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
@@ -264,15 +361,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   section: {
-    backgroundColor: '#1e293b',
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#334155',
+    borderWidth: 1.5,
     padding: 16,
     marginBottom: 20,
   },
   sectionTitle: {
-    color: '#94a3b8',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
@@ -289,11 +383,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowLabel: {
-    color: '#64748b',
     fontSize: 11,
   },
   rowValue: {
-    color: '#f8fafc',
     fontSize: 14,
     fontWeight: '600',
     marginTop: 2,
@@ -313,12 +405,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   switchTitle: {
-    color: '#f8fafc',
     fontSize: 14,
     fontWeight: '600',
   },
   switchSub: {
-    color: '#64748b',
     fontSize: 11,
     marginTop: 2,
   },
@@ -336,6 +426,24 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#ef4444',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  switchWorkspaceBtn: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: '#ee4d2d',
+    borderRadius: 12,
+    height: 50,
+    marginTop: 'auto',
+    marginBottom: 12,
+    backgroundColor: 'rgba(238, 77, 45, 0.05)',
+  },
+  switchWorkspaceText: {
+    color: '#ee4d2d',
     fontSize: 15,
     fontWeight: '700',
   },
