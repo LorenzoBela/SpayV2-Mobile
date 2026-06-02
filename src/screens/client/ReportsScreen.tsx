@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   Modal,
   Alert,
   ActivityIndicator,
@@ -45,14 +44,14 @@ import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { ReportsSkeleton } from '../../components/SkeletonLoader';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CHART_WIDTH = SCREEN_WIDTH - 76;
+import { useResponsiveLayout } from '../../utils/responsive';
 
 export default function ReportsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { isDarkMode } = useContext(ThemeContext);
+  const layout = useResponsiveLayout();
+  const chartCanvasWidth = layout.getChartWidth(76);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -707,7 +706,7 @@ export default function ReportsScreen() {
     const paddingTop = 15;
     const paddingBottom = 20;
 
-    const chartW = CHART_WIDTH;
+    const chartW = chartCanvasWidth;
     const chartH = 160;
 
     const chartWidth = chartW - paddingLeft - paddingRight;
@@ -864,7 +863,7 @@ export default function ReportsScreen() {
     const paddingTop = 15;
     const paddingBottom = 20;
 
-    const chartW = CHART_WIDTH;
+    const chartW = chartCanvasWidth;
     const chartH = 150;
 
     const chartWidth = chartW - paddingLeft - paddingRight;
@@ -982,7 +981,7 @@ export default function ReportsScreen() {
     const paddingTop = 15;
     const paddingBottom = 20;
 
-    const chartW = CHART_WIDTH;
+    const chartW = chartCanvasWidth;
     const chartH = 160;
 
     const chartWidth = chartW - paddingLeft - paddingRight;
@@ -1136,7 +1135,7 @@ export default function ReportsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 20 }]} showsVerticalScrollIndicator={false}>
         {/* S-Pay Branding and Description */}
         <View style={styles.brandContainer}>
           <Text style={styles.brandSub}>S-Pay Client</Text>
@@ -1809,7 +1808,7 @@ export default function ReportsScreen() {
       >
         <View style={styles.modalOverlay}>
           <SwipeDismissModal onDismiss={() => setModals((prev) => ({ ...prev, compliance: false }))}>
-          <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16, width: SCREEN_WIDTH - 24 }]}>
+          <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16, width: layout.modalWidth, alignSelf: 'center' }]}>
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
               <View>
                 <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Detailed Compliance Ledger</Text>

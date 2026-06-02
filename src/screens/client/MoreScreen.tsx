@@ -7,7 +7,6 @@ import {
   ScrollView,
   Alert,
   StatusBar,
-  Dimensions,
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,14 +29,15 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 44) / 2; // Perfect 2-column layout width with padding
+import { useResponsiveLayout } from '../../utils/responsive';
 
 export default function MoreScreen() {
   const navigation = useNavigation<any>();
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const layout = useResponsiveLayout();
+  const gridColumns = layout.isTablet ? 3 : 2;
+  const gridCardWidth = layout.getGridItemWidth(gridColumns, 12);
   const [userName, setUserName] = useState('Client');
   const [userEmail, setUserEmail] = useState('');
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
@@ -158,7 +158,7 @@ export default function MoreScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} showsVerticalScrollIndicator={false}>
         
         {/* Profile Card */}
         <TouchableOpacity
@@ -209,7 +209,7 @@ export default function MoreScreen() {
             return (
               <TouchableOpacity
                 key={idx}
-                style={[styles.gridCard, { width: CARD_WIDTH, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                style={[styles.gridCard, { width: gridCardWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
                 onPress={item.action}
                 activeOpacity={0.8}
               >

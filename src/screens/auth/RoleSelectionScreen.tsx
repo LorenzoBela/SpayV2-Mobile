@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Image,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -23,9 +22,8 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import PremiumLoader from '../../components/PremiumLoader';
+import { useResponsiveLayout } from '../../utils/responsive';
 import dayjs from 'dayjs';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface RoleSelectionScreenProps {
   onSelectRole: (role: 'admin' | 'client') => void;
@@ -60,6 +58,7 @@ function useEntryAnimation(delay = 0, duration = 300) {
 }
 
 export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSelectionScreenProps) {
+  const layout = useResponsiveLayout();
   const [currentTime, setCurrentTime] = useState(dayjs());
   const [userName, setUserName] = useState('Administrator');
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
@@ -163,7 +162,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
       <StatusBar barStyle="light-content" backgroundColor="#0b0f19" />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
-        <View style={styles.contentContainer}>
+        <View style={[styles.contentContainer, layout.centeredContentStyle]}>
           
           {/* Header Row */}
           <Animated.View style={[styles.header, headerAnim.style]}>
@@ -177,7 +176,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
               )}
               <View style={styles.profileTextCol}>
                 <Text style={styles.greetingText}>Welcome back,</Text>
-                <Text style={styles.nameText} numberOfLines={1}>{firstName}</Text>
+                <Text style={[styles.nameText, { maxWidth: layout.contentWidth * 0.45 }]} numberOfLines={1}>{firstName}</Text>
               </View>
             </View>
 
@@ -355,7 +354,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: 'Outfit-Bold',
     letterSpacing: -0.5,
-    maxWidth: SCREEN_WIDTH * 0.45,
   },
   clockWidget: {
     alignItems: 'flex-end',

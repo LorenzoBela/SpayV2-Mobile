@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   StatusBar,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -38,8 +37,7 @@ import Svg, { Path, Circle as SvgCircle, Line, Text as SvgText, Defs, LinearGrad
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { useResponsiveLayout } from '../../utils/responsive';
 
 interface BudgetCategory {
   id: string;
@@ -91,6 +89,7 @@ export default function BudgetScreen() {
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 24);
+  const layout = useResponsiveLayout();
 
   // Data states
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
@@ -563,7 +562,7 @@ export default function BudgetScreen() {
   // Custom Chart Render
   const renderChart = () => {
     if (trendData.length === 0) return null;
-    const chartWidth = SCREEN_WIDTH - 76;
+    const chartWidth = layout.getChartWidth(76);
     const chartHeight = 150;
     const paddingLeft = 40;
     const paddingRight = 20;
@@ -692,7 +691,7 @@ export default function BudgetScreen() {
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} showsVerticalScrollIndicator={false}>
             {/* Global limits card mimicking web */}
             <View style={[styles.globalLimitsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.limitsGrid}>

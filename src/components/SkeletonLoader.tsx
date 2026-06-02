@@ -1,11 +1,11 @@
 import React, { useContext } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { createShimmerPlaceholder } from 'react-native-shimmer-placeholder';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemeContext } from '../navigation/navigationTypes';
+import { useResponsiveLayout } from '../utils/responsive';
 
 const ShimmerPlaceholder = createShimmerPlaceholder(LinearGradient);
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface ShimmerBlockProps {
   width?: number | string;
@@ -35,11 +35,12 @@ export const ShimmerBlock = ({ width = '100%', height = 20, borderRadius = 8, st
 export const PaymentsSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Next Billing Countdown Card */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
         <View style={styles.headerRow}>
@@ -110,11 +111,12 @@ export const PaymentsSkeleton = () => {
 export const OrdersSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* 4 Stats Cards */}
       <View style={styles.grid}>
         {[1, 2, 3, 4].map((i) => (
@@ -162,11 +164,12 @@ export const OrdersSkeleton = () => {
 export const BudgetSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Shared Credit limit exposure gauge card */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, paddingVertical: 24 }]}>
         <View style={{ alignItems: 'center', gap: 12 }}>
@@ -213,11 +216,12 @@ export const BudgetSkeleton = () => {
 export const ReportsSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Date selector shimmers */}
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
         <ShimmerBlock width="48%" height={38} borderRadius={10} />
@@ -261,11 +265,12 @@ export const ReportsSkeleton = () => {
 export const CalendarSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Calendar Card Shimmer */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, height: 320, justifyContent: 'center' }]}>
         <ShimmerBlock width={160} height={16} style={{ alignSelf: 'center', marginBottom: 20 }} />
@@ -303,11 +308,12 @@ export const CalendarSkeleton = () => {
 export const ProfileSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Profile Info Header */}
       <View style={{ alignItems: 'center', marginVertical: 20, gap: 10 }}>
         <ShimmerBlock width={80} height={80} borderRadius={40} />
@@ -332,11 +338,12 @@ export const ProfileSkeleton = () => {
 export const SettingsSkeleton = () => {
   const theme = useContext(ThemeContext);
   const isDarkMode = theme?.isDarkMode ?? true;
+  const layout = useResponsiveLayout();
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       <View style={{ gap: 20, marginTop: 10 }}>
         {/* Settings Group 1 */}
         <View style={{ gap: 10 }}>

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   Modal,
   TextInput,
   Alert,
@@ -37,9 +36,7 @@ import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { CalendarSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const cellWidth = (SCREEN_WIDTH - 32 - 12) / 7;
+import { useResponsiveLayout } from '../../utils/responsive';
 
 export interface CalendarEvent {
   id: string;
@@ -176,6 +173,8 @@ export default function CalendarScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { isDarkMode } = useContext(ThemeContext);
+  const layout = useResponsiveLayout();
+  const cellWidth = Math.floor((layout.contentInnerWidth - 12) / 7);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -725,7 +724,7 @@ export default function CalendarScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
+        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
@@ -834,7 +833,7 @@ export default function CalendarScreen() {
           {/* Weekday Titles */}
           <View style={styles.weekdayRow}>
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-              <Text key={day} style={styles.weekdayLabel}>
+              <Text key={day} style={[styles.weekdayLabel, { width: cellWidth }]}>
                 {day}
               </Text>
             ))}
@@ -854,6 +853,7 @@ export default function CalendarScreen() {
                   onPress={() => setSelectedDateKey(cell.dateKey)}
                   style={[
                     styles.cellButton,
+                    { width: cellWidth },
                     {
                       backgroundColor: cell.current ? t.cardBg : (isDarkMode ? '#131926' : '#f8fafc'),
                       borderColor: isToday ? '#3b82f6' : (isSelected ? t.accent : t.divider),
@@ -1506,7 +1506,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   weekdayLabel: {
-    width: cellWidth,
     textAlign: 'center',
     fontSize: 9,
     fontFamily: 'Jakarta-Bold',
@@ -1520,7 +1519,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cellButton: {
-    width: cellWidth,
     height: 58,
     borderRadius: 8,
     borderWidth: 1,

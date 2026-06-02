@@ -10,7 +10,6 @@ import {
   Image,
   Animated,
   Easing,
-  Dimensions,
   Modal,
   TextInput,
   Alert,
@@ -46,10 +45,9 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+import { useResponsiveLayout } from '../../utils/responsive';
 import dayjs from 'dayjs';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Interfaces
 interface NextMonthlyPayment {
@@ -389,6 +387,7 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
 // Custom SVG Spending Trend Area Chart Component
 function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
   const { isDarkMode } = React.useContext(ThemeContext);
+  const layout = useResponsiveLayout();
 
   if (!data || data.length === 0) {
     return (
@@ -398,7 +397,7 @@ function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
     );
   }
 
-  const chartWidth = SCREEN_WIDTH - 72; // Padding margins
+  const chartWidth = layout.getChartWidth(72);
   const chartHeight = 160;
   
   const paddingLeft = 45;
@@ -532,6 +531,9 @@ function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
+  const layout = useResponsiveLayout();
+  const quickActionColumns = layout.isTablet ? 4 : 2;
+  const quickActionWidth = layout.getGridItemWidth(quickActionColumns, 10);
 
   // Profile States
   const [userName, setUserName] = useState('Client User');
@@ -1083,7 +1085,7 @@ export default function DashboardScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
         }
@@ -1425,7 +1427,7 @@ export default function DashboardScreen() {
         <Text style={[styles.gridSectionTitle, { color: t.accent }]}>QUICK ACTIONS</Text>
         <View style={styles.gridContainer}>
           <TouchableOpacity
-            style={[styles.gridItem, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+            style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={() => navigation.navigate('Budget')}
           >
             <View style={styles.gridIconFrame}>
@@ -1436,7 +1438,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.gridItem, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+            style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={() => navigation.navigate('Payments')}
           >
             <View style={styles.gridIconFrame}>
@@ -1447,7 +1449,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.gridItem, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+            style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={handleUploadProof}
           >
             <View style={styles.gridIconFrame}>
@@ -1458,7 +1460,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.gridItem, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+            style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={openNootAi}
           >
             <View style={styles.gridIconFrame}>
@@ -2292,7 +2294,6 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   gridItem: {
-    width: (SCREEN_WIDTH - 42) / 2, // 2 column grid accounting for padding and gaps
     backgroundColor: '#161c2a',
     borderWidth: 1.5,
     borderColor: '#222d42',

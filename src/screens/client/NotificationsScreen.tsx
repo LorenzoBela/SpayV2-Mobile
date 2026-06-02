@@ -8,7 +8,6 @@ import {
   View,
   StatusBar,
   Modal,
-  Dimensions,
   Pressable,
   Platform,
 } from 'react-native';
@@ -46,8 +45,7 @@ import {
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-
-const { width, height } = Dimensions.get('window');
+import { useResponsiveLayout } from '../../utils/responsive';
 
 const CATEGORY_THEMES: Record<
   NotificationCategory,
@@ -121,6 +119,7 @@ export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<NotificationCategory>('PAYMENT_UPDATES');
   const [loading, setLoading] = useState(true);
@@ -449,7 +448,7 @@ export default function NotificationsScreen() {
           <ActivityIndicator size="small" color="#ee4d2d" />
         </View>
       ) : (
-        <View style={styles.listContainer}>
+        <View style={[styles.listContainer, layout.centeredContentStyle]}>
           <FlashList
             data={visibleItems}
             keyExtractor={(item) => item.id}
@@ -468,7 +467,7 @@ export default function NotificationsScreen() {
                 from={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: 'timing', duration: 400 }}
-                style={styles.empty}
+                style={[styles.empty, { paddingTop: layout.height * 0.15 }]}
               >
                 <View style={[styles.emptyIconCircle, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
                   <BellOff size={28} color={t.textMuted} />
@@ -508,7 +507,9 @@ export default function NotificationsScreen() {
                 {
                   backgroundColor: t.modalBg,
                   paddingBottom: Math.max(insets.bottom, 16) + 12,
-                  maxHeight: height - insets.top - 40,
+                  maxHeight: layout.height - insets.top - 40,
+                  width: layout.modalWidth,
+                  alignSelf: 'center',
                 },
               ]}
             >
@@ -786,7 +787,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    paddingTop: height * 0.15,
   },
   emptyIconCircle: {
     width: 64,

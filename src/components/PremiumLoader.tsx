@@ -5,12 +5,9 @@ import {
   View,
   Animated,
   TouchableOpacity,
-  Dimensions,
   Easing,
 } from 'react-native';
 import { AlertCircle, RefreshCw, Sparkles, Shield, Wifi, Bell, Wallet } from 'lucide-react-native';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export interface SlideItem {
   id: number;

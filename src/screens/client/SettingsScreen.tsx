@@ -42,6 +42,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
+import { useResponsiveLayout } from '../../utils/responsive';
 import {
   checkForUpdatesAndPromptAsync,
   downloadAndInstallConfiguredApkAsync,
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { userRole, setActiveRole } = useContext(RoleContext);
   const systemColorScheme = useColorScheme();
+  const layout = useResponsiveLayout();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -922,7 +924,7 @@ export default function SettingsScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1 }}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} keyboardShouldPersistTaps="handled">
             {/* Title Section */}
             <View style={styles.titleSection}>
               <Text style={styles.subtitleText}>S-PAY CLIENT</Text>

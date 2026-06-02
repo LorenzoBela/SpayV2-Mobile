@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,8 +36,7 @@ import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { OrdersSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-
-const { width } = Dimensions.get('window');
+import { useResponsiveLayout } from '../../utils/responsive';
 
 interface PaymentItem {
   id: string;
@@ -65,6 +63,8 @@ interface OrderItem {
 export default function OrdersScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
+  const layout = useResponsiveLayout();
+  const analyticsCardMinWidth = layout.getGridItemWidth(layout.isTablet ? 4 : 2, 10);
   
   // Loading & Data States
   const [loading, setLoading] = useState(true);
@@ -281,14 +281,14 @@ export default function OrdersScreen() {
         <OrdersSkeleton />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
           }
         >
           {/* Overview Analytics Widgets */}
           <View style={styles.analyticsGrid}>
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Total Orders</Text>
                 <Receipt size={14} color={t.textSecondary} />
@@ -296,7 +296,7 @@ export default function OrdersScreen() {
               <Text style={[styles.statValue, { color: t.textPrimary }]}>{analytics.totalOrders}</Text>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Total Spent</Text>
                 <TrendingUp size={14} color={t.textSecondary} />
@@ -304,7 +304,7 @@ export default function OrdersScreen() {
               <Text style={[styles.statValue, { color: t.textPrimary }]}>{formatCurrency(analytics.totalSpent)}</Text>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Streak</Text>
                 <Flame size={14} color={t.accent} />
@@ -312,7 +312,7 @@ export default function OrdersScreen() {
               <Text style={[styles.statValue, { color: t.textPrimary }]}>{analytics.paymentStreak}</Text>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>On-Time Rate</Text>
                 <CheckCircle2 size={14} color={t.textSecondary} />
@@ -921,7 +921,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    minWidth: (width - 42) / 2,
     borderWidth: 1,
     borderRadius: 16,
     padding: 14,

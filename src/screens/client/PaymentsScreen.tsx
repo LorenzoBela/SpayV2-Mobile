@@ -10,7 +10,6 @@ import {
   StatusBar,
   TextInput,
   Modal,
-  Dimensions,
   RefreshControl,
   Animated,
   Easing,
@@ -46,8 +45,7 @@ import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes
 import { supabase } from '../../utils/supabase';
 import { PaymentsSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-
-const { width } = Dimensions.get('window');
+import { useResponsiveLayout } from '../../utils/responsive';
 
 // --- DATABASE INTERFACES ---
 interface PaymentReschedule {
@@ -364,6 +362,8 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
 export default function PaymentsScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const layout = useResponsiveLayout();
+  const analyticsCardMinWidth = layout.getGridItemWidth(layout.isTablet ? 4 : 2, 10);
 
   // States
   const [loading, setLoading] = useState(true);
@@ -838,7 +838,7 @@ export default function PaymentsScreen() {
         <PaymentsSkeleton />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
           }
@@ -915,7 +915,7 @@ export default function PaymentsScreen() {
 
           {/* Analytics stats */}
           <View style={styles.analyticsGrid}>
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Total Dues</Text>
                 <CalendarIcon size={14} color={t.textSecondary} />
@@ -924,7 +924,7 @@ export default function PaymentsScreen() {
               <Text style={[styles.statSubText, { color: t.textSecondary }]}>Installments logged</Text>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Paid / Left</Text>
                 <CheckCircle2 size={14} color={t.successText} />
@@ -937,7 +937,7 @@ export default function PaymentsScreen() {
               </Text>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Streak</Text>
                 <Flame size={14} color={t.accent} />
@@ -948,7 +948,7 @@ export default function PaymentsScreen() {
               <Text style={[styles.statSubText, { color: t.textSecondary }]}>Consecutive on-time</Text>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={[styles.statCard, { minWidth: analyticsCardMinWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.statHeader}>
                 <Text style={styles.statLabel}>Overdue</Text>
                 <AlertTriangle size={14} color={analytics.overdueCount > 0 ? '#ef4444' : t.textSecondary} />
@@ -1845,7 +1845,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    minWidth: (width - 42) / 2,
     borderWidth: 1,
     borderRadius: 16,
     padding: 12,

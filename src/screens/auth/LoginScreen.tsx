@@ -5,7 +5,6 @@ import {
   View,
   ActivityIndicator,
   Alert,
-  Dimensions,
   Platform,
   Animated,
   Pressable,
@@ -22,8 +21,6 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Persistent storage key for the last logged-in user
 const LAST_ACCOUNT_KEY = 'spay-ledger:last-logged-account';
