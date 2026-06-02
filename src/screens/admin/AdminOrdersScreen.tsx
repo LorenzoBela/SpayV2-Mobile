@@ -11,17 +11,22 @@ import {
   Alert,
   Platform,
   StatusBar,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ShoppingBag,
   Search,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Sliders,
   Trash2,
   Calendar,
   CreditCard,
   User,
+  Users,
   FileText,
   X,
   Plus,
@@ -29,6 +34,10 @@ import {
   CheckCircle,
   Clock,
   MessageSquare,
+  List,
+  LayoutGrid,
+  Check,
+  CheckCircle2,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -66,10 +75,13 @@ export default function AdminOrdersScreen() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [limits, setLimits] = useState<any[]>([]);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'paid'>('all');
+  const [filterMonthKey, setFilterMonthKey] = useState<string | null>(null);
+  const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(false);
 
   // Modals state
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -86,6 +98,7 @@ export default function AdminOrdersScreen() {
   const [purchaseDate, setPurchaseDate] = useState(() => dayjs().format('YYYY-MM-DD'));
   const [firstPaymentDate, setFirstPaymentDate] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
 
   // Form states - Edit Order
   const [editItemName, setEditItemName] = useState('');
@@ -95,6 +108,11 @@ export default function AdminOrdersScreen() {
   const [editFirstPaymentDate, setEditFirstPaymentDate] = useState('');
   const [editRemarks, setEditRemarks] = useState('');
   const [editClientId, setEditClientId] = useState('');
+
+  // Layout and Pagination states
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 6;
 
   const loadData = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -107,6 +125,7 @@ export default function AdminOrdersScreen() {
       setProfiles(result.profiles || []);
       setOrders(result.orders || []);
       setPayments(result.payments || []);
+      setLimits(result.accountLimits || []);
     } catch (err: any) {
       console.warn('[AdminOrdersScreen] Load error:', err);
       setError(err?.message || 'Sync failed.');
@@ -119,6 +138,10 @@ export default function AdminOrdersScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeTab, filterMonthKey]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -153,18 +176,122 @@ export default function AdminOrdersScreen() {
   });
 
   const filteredOrders = processedOrders.filter(order => {
-    const matchesSearch = order.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = (order.item_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.clientName.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (!matchesSearch) return false;
 
     if (activeTab === 'active') {
-      return !order.is_paid;
+      if (order.is_paid) return false;
     } else if (activeTab === 'paid') {
-      return order.is_paid;
+      if (!order.is_paid) return false;
     }
+
+    if (filterMonthKey) {
+      if (!order.order_date) return false;
+      const orderDateObj = new Date(order.order_date);
+      const year = orderDateObj.getFullYear();
+      const month = String(orderDateObj.getMonth() + 1).padStart(2, '0');
+      const orderMonth = `${year}-${month}`;
+      if (orderMonth !== filterMonthKey) return false;
+    }
+
     return true;
   });
+
+  // Group orders by month
+  const getMonthlyOrdersBreakdown = () => {
+    const breakdownMap = new Map<string, {
+      monthKey: string;
+      monthName: string;
+      totalAmount: number;
+      paidAmount: number;
+      pendingAmount: number;
+      count: number;
+      paidCount: number;
+      partialCount: number;
+      pendingCount: number;
+    }>();
+
+    for (const order of processedOrders) {
+      if (!order.order_date) continue;
+      const orderDateObj = new Date(order.order_date);
+      if (Number.isNaN(orderDateObj.getTime())) continue;
+
+      const year = orderDateObj.getFullYear();
+      const month = String(orderDateObj.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${year}-${month}`;
+      
+      const monthName = orderDateObj.toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      });
+
+      if (!breakdownMap.has(monthKey)) {
+        breakdownMap.set(monthKey, {
+          monthKey,
+          monthName,
+          totalAmount: 0,
+          paidAmount: 0,
+          pendingAmount: 0,
+          count: 0,
+          paidCount: 0,
+          partialCount: 0,
+          pendingCount: 0,
+        });
+      }
+
+      const monthData = breakdownMap.get(monthKey)!;
+      monthData.count++;
+      monthData.totalAmount += Number(order.amount);
+
+      if (order.is_paid) {
+        monthData.paidCount++;
+        monthData.paidAmount += Number(order.amount);
+      } else {
+        if (order.paidCount > 0) {
+          monthData.partialCount++;
+          const installmentAmount = Number(order.amount) / Number(order.installment_months || 1);
+          const paidAmount = installmentAmount * order.paidCount;
+          monthData.paidAmount += paidAmount;
+          monthData.pendingAmount += (Number(order.amount) - paidAmount);
+        } else {
+          monthData.pendingCount++;
+          monthData.pendingAmount += Number(order.amount);
+        }
+      }
+    }
+
+    return Array.from(breakdownMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  };
+
+  const monthlyOrdersBreakdown = getMonthlyOrdersBreakdown();
+
+  // Exposure stats for Assign Modal
+  const outstandingBalance = payments.filter(p => !p.is_paid).reduce((sum, p) => sum + Number(p.amount_due), 0);
+  const activeLimitExposure = limits.reduce((sum, l) => sum + Number(l.credit_limit), 0);
+  
+  const parsedOrderAmount = Number(amount) || 0;
+  const parsedMonths = Number(installmentMonths) || 1;
+  const estimatedMonthlyDue = parsedOrderAmount / parsedMonths;
+  
+  const projectedOutstanding = outstandingBalance + parsedOrderAmount;
+  const projectedExposurePercent = activeLimitExposure > 0
+    ? Math.min(100, Math.round((projectedOutstanding / activeLimitExposure) * 100))
+    : 0;
+
+  // Selected client for Assign Modal
+  const selectedClient = profiles.find(p => p.id === selectedClientId);
+
+  // Filter client rail
+  const filteredClients = profiles.filter(client => {
+    const q = clientSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return `${client.name} ${client.email}`.toLowerCase().includes(q);
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const paginatedOrders = filteredOrders.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleAssignSubmit = async () => {
     if (!selectedClientId || !itemName || !amount) {
@@ -206,10 +333,10 @@ export default function AdminOrdersScreen() {
 
   const handleEditOpen = (order: any) => {
     setSelectedOrder(order);
-    setEditItemName(order.itemName);
+    setEditItemName(order.item_name || '');
     setEditAmount(order.amount.toString());
-    setEditMonths(order.installmentMonths.toString());
-    setEditPurchaseDate(dayjs(order.orderDate).format('YYYY-MM-DD'));
+    setEditMonths((order.installment_months || 6).toString());
+    setEditPurchaseDate(dayjs(order.order_date).format('YYYY-MM-DD'));
     
     const firstPayment = order.payments.find((p: any) => p.month_number === 1);
     setEditFirstPaymentDate(firstPayment ? dayjs(firstPayment.due_date).format('YYYY-MM-DD') : '');
@@ -227,7 +354,7 @@ export default function AdminOrdersScreen() {
 
     const hasPaidPayments = selectedOrder.payments.some((p: any) => p.is_paid);
     const amountChanged = parseFloat(editAmount) !== Number(selectedOrder.amount);
-    const termsChanged = parseInt(editMonths, 10) !== selectedOrder.installmentMonths;
+    const termsChanged = parseInt(editMonths, 10) !== selectedOrder.installment_months;
     const clientChanged = editClientId !== selectedOrder.user_id;
 
     if (hasPaidPayments && (amountChanged || termsChanged || clientChanged)) {
@@ -343,7 +470,19 @@ export default function AdminOrdersScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
-        <TouchableOpacity style={[styles.assignBtn, { backgroundColor: t.accent, marginTop: 0 }]} onPress={() => setIsAssignOpen(true)}>
+        <TouchableOpacity
+          style={[styles.assignBtn, { backgroundColor: t.accent, marginTop: 0 }]}
+          onPress={() => {
+            setClientSearchQuery('');
+            setSelectedClientId('');
+            setItemName('');
+            setAmount('');
+            setInstallmentMonths('6');
+            setRemarks('');
+            setFirstPaymentDate('');
+            setIsAssignOpen(true);
+          }}
+        >
           <Plus size={16} color="#fff" />
           <Text style={styles.assignBtnText}>Assign</Text>
         </TouchableOpacity>
@@ -372,56 +511,243 @@ export default function AdminOrdersScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
+        {/* Collapsible Monthly Orders Breakdown */}
+        {monthlyOrdersBreakdown.length > 0 && (
+          <View style={[styles.breakdownCollapsibleCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginBottom: 12 }]}>
+            <TouchableOpacity
+              style={styles.breakdownHeaderToggle}
+              onPress={() => setShowMonthlyBreakdown(prev => !prev)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Calendar size={16} color={t.accent} />
+                <Text style={[styles.breakdownTitle, { color: t.textPrimary }]}>Monthly Orders Breakdown</Text>
+              </View>
+              {showMonthlyBreakdown ? (
+                <ChevronUp size={14} color={t.textSecondary} />
+              ) : (
+                <ChevronDown size={14} color={t.textSecondary} />
+              )}
+            </TouchableOpacity>
+
+            {showMonthlyBreakdown && (
+              <View style={styles.breakdownContent}>
+                {/* Active Month filter badge */}
+                {filterMonthKey && (
+                  <View style={[styles.monthFilterBadge, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', borderColor: t.border }]}>
+                    <Text style={[styles.monthFilterBadgeText, { color: t.textPrimary }]}>
+                      Filtered: {monthlyOrdersBreakdown.find(m => m.monthKey === filterMonthKey)?.monthName}
+                    </Text>
+                    <TouchableOpacity onPress={() => setFilterMonthKey(null)}>
+                      <X size={12} color={t.accent} style={{ marginLeft: 6 }} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+                  {monthlyOrdersBreakdown.map((month) => {
+                    const rate = month.count > 0 ? Math.round((month.paidCount / month.count) * 100) : 0;
+                    const isSelected = filterMonthKey === month.monthKey;
+                    return (
+                      <TouchableOpacity
+                        key={month.monthKey}
+                        style={[
+                          styles.monthBreakdownItemCard,
+                          { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: isSelected ? t.accent : t.border }
+                        ]}
+                        onPress={() => {
+                          if (filterMonthKey === month.monthKey) {
+                            setFilterMonthKey(null);
+                          } else {
+                            setFilterMonthKey(month.monthKey);
+                          }
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <Text style={[styles.monthItemName, { color: t.textPrimary }]}>{month.monthName}</Text>
+                          <View style={[styles.monthRateBadge, { backgroundColor: t.accentLight }]}>
+                            <Text style={[styles.monthRateText, { color: t.accent }]}>{rate}% Cleared</Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.monthItemCount, { color: t.textSecondary }]}>{month.count} orders</Text>
+
+                        <View style={[styles.monthDivider, { backgroundColor: t.border }]} />
+
+                        <View style={styles.monthStatsGrid}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.monthStatLabel}>Total Volume</Text>
+                            <Text style={[styles.monthStatVal, { color: t.textPrimary }]}>{formatCurrency(month.totalAmount)}</Text>
+                          </View>
+                          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                            <Text style={styles.monthStatLabel}>Collected</Text>
+                            <Text style={[styles.monthStatVal, { color: '#10b981' }]}>{formatCurrency(month.paidAmount)}</Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* List Header and View Mode controls */}
+        <View style={styles.listHeaderRow}>
+          <Text style={styles.listHeaderTitle}>Active Directory ({filteredOrders.length})</Text>
+          <View style={[styles.viewModeContainer, { backgroundColor: isDarkMode ? '#161c2a' : '#f1f5f9', borderColor: t.cardBorder }]}>
+            <TouchableOpacity 
+              onPress={() => setViewMode('list')} 
+              style={[styles.viewModeBtn, viewMode === 'list' && { backgroundColor: isDarkMode ? '#223049' : '#ffffff' }]}
+            >
+              <List size={14} color={viewMode === 'list' ? t.accent : t.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => setViewMode('grid')} 
+              style={[styles.viewModeBtn, viewMode === 'grid' && { backgroundColor: isDarkMode ? '#223049' : '#ffffff' }]}
+            >
+              <LayoutGrid size={14} color={viewMode === 'grid' ? t.accent : t.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Orders list */}
-        <View style={styles.ordersList}>
-          {filteredOrders.length > 0 ? (
-            filteredOrders.map((order) => (
-              <TouchableOpacity
-                key={order.id}
-                style={[styles.orderCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-                onPress={() => {
-                  setSelectedOrder(order);
-                  setIsDetailsOpen(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.orderCardHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.itemName}</Text>
-                    <View style={styles.clientRow}>
-                      <User size={12} color={t.textSecondary} />
-                      <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
+        <View style={viewMode === 'grid' ? styles.orderGridContainer : styles.ordersList}>
+          {paginatedOrders.length > 0 ? (
+            paginatedOrders.map((order) => {
+              if (viewMode === 'grid') {
+                return (
+                  <TouchableOpacity
+                    key={order.id}
+                    style={[styles.orderGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                    onPress={() => {
+                      setSelectedOrder(order);
+                      setIsDetailsOpen(true);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.orderGridAvatarCircle}>
+                      <ShoppingBag size={20} color="#fff" />
+                    </View>
+                    <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>{order.item_name}</Text>
+                    <View style={[styles.clientRow, { justifyContent: 'center' }]}>
+                      <User size={10} color={t.textSecondary} />
+                      <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
+                    </View>
+
+                    <View style={[styles.statusBadge, { marginTop: 4, backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+                      <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d', fontSize: 8 }]}>
+                        {order.status}
+                      </Text>
+                    </View>
+                    
+                    <View style={[styles.clientGridDivider, { backgroundColor: t.border, marginVertical: 8 }]} />
+
+                    <View style={styles.clientGridDetails}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailCardLabel}>Value</Text>
+                        <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(order.amount)}</Text>
+                      </View>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={styles.detailCardLabel}>Progress</Text>
+                        <Text style={[styles.detailCardVal, { color: '#10b981', fontSize: 11 }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
+
+              // List Mode View
+              return (
+                <TouchableOpacity
+                  key={order.id}
+                  style={[styles.orderCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                  onPress={() => {
+                    setSelectedOrder(order);
+                    setIsDetailsOpen(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.orderCardHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.item_name}</Text>
+                      <View style={styles.clientRow}>
+                        <User size={12} color={t.textSecondary} />
+                        <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+                      <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
+                        {order.status}
+                      </Text>
                     </View>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                    <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
-                      {order.status}
-                    </Text>
-                  </View>
-                </View>
 
-                <View style={[styles.orderCardDivider, { backgroundColor: t.border }]} />
+                  <View style={[styles.orderCardDivider, { backgroundColor: t.border }]} />
 
-                <View style={styles.orderCardBottom}>
-                  <View>
-                    <Text style={styles.bottomLabel}>Principal Value</Text>
-                    <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
+                  <View style={styles.orderCardBottom}>
+                    <View>
+                      <Text style={styles.bottomLabel}>Principal Value</Text>
+                      <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.bottomLabel}>Amortization Terms</Text>
+                      <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{order.installment_months} Months</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.bottomLabel}>Settle Progress</Text>
+                      <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.bottomLabel}>Amortization Terms</Text>
-                    <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{order.installmentMonths} Months</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.bottomLabel}>Settle Progress</Text>
-                    <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.progressPercent}%</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+              );
+            })
           ) : (
             <Text style={styles.emptyText}>No orders match filters.</Text>
           )}
         </View>
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <View style={styles.paginationContainer}>
+            <TouchableOpacity
+              disabled={currentPage === 1}
+              onPress={() => setCurrentPage(1)}
+              style={[styles.paginationBtn, { borderColor: t.cardBorder, backgroundColor: t.cardBg }, currentPage === 1 && { opacity: 0.4 }]}
+            >
+              <Text style={[styles.paginationBtnText, { color: t.textPrimary }]}>First</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={currentPage === 1}
+              onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              style={[styles.paginationBtn, { borderColor: t.cardBorder, backgroundColor: t.cardBg }, currentPage === 1 && { opacity: 0.4 }]}
+            >
+              <Text style={[styles.paginationBtnText, { color: t.textPrimary }]}>Prev</Text>
+            </TouchableOpacity>
+            
+            <Text style={[styles.paginationInfo, { color: t.textSecondary }]}>
+              Page {currentPage} of {totalPages}
+            </Text>
+            
+            <TouchableOpacity
+              disabled={currentPage === totalPages}
+              onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              style={[styles.paginationBtn, { borderColor: t.cardBorder, backgroundColor: t.cardBg }, currentPage === totalPages && { opacity: 0.4 }]}
+            >
+              <Text style={[styles.paginationBtnText, { color: t.textPrimary }]}>Next</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={currentPage === totalPages}
+              onPress={() => setCurrentPage(totalPages)}
+              style={[styles.paginationBtn, { borderColor: t.cardBorder, backgroundColor: t.cardBg }, currentPage === totalPages && { opacity: 0.4 }]}
+            >
+              <Text style={[styles.paginationBtnText, { color: t.textPrimary }]}>Last</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Order Details Modal */}
@@ -430,32 +756,48 @@ export default function AdminOrdersScreen() {
           <SafeAreaView style={[styles.modalScrollContainer, { backgroundColor: t.bg }]}>
             <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
 
-            {/* Modal header */}
-            <View style={[styles.modalHeaderBar, { borderBottomColor: t.border }]}>
-              <Text style={[styles.modalHeaderTitle, { color: t.textPrimary }]}>Order Overview</Text>
-              <TouchableOpacity style={styles.closeBtn} onPress={() => setIsDetailsOpen(false)}>
-                <X size={20} color={t.textSecondary} />
-              </TouchableOpacity>
+            {/* Redesigned Premium Header Section */}
+            <View style={[styles.detailsHeroBanner, { backgroundColor: t.cardBg, borderBottomColor: t.border, borderBottomWidth: 1.5 }]}>
+              <View style={styles.detailsHeroTopRow}>
+                <View style={styles.detailsHeroTitleCluster}>
+                  <ShoppingBag size={18} color={t.accent} />
+                  <View>
+                    <Text style={[styles.detailsHeroEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>ORDER DETAILS</Text>
+                    <Text style={[styles.detailsHeroTitle, { color: t.textPrimary }]}>Order Overview</Text>
+                  </View>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.detailsHeroCloseBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', borderColor: t.cardBorder }]} 
+                  onPress={() => setIsDetailsOpen(false)}
+                >
+                  <X size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.detailsHeroCardRow}>
+                <View style={styles.detailsHeroAvatarWrapper}>
+                  <View style={[styles.detailsHeroAvatarPlaceholder, { backgroundColor: t.accentLight }]}>
+                    <ShoppingBag size={24} color={t.accent} />
+                  </View>
+                </View>
+
+                <View style={styles.detailsHeroMeta}>
+                  <Text style={[styles.detailsHeroName, { color: t.textPrimary }]} numberOfLines={1}>{selectedOrder.item_name}</Text>
+                  <View style={styles.detailsHeroSubRow}>
+                    <View style={[styles.statusBadge, { backgroundColor: selectedOrder.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)', marginTop: 0 }]}>
+                      <Text style={[styles.statusBadgeText, { color: selectedOrder.is_paid ? '#10b981' : '#ee4d2d' }]}>
+                        {selectedOrder.status}
+                      </Text>
+                    </View>
+                    <Text style={[styles.detailsHeroId, { color: t.textSecondary }]} numberOfLines={1}>{selectedOrder.clientName}</Text>
+                  </View>
+                </View>
+              </View>
             </View>
 
             <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              {/* Product and Status */}
-              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <View style={styles.modalAvatarCircle}>
-                  <ShoppingBag size={28} color="#fff" />
-                </View>
-                <Text style={[styles.modalName, { color: t.textPrimary }]}>{selectedOrder.itemName}</Text>
-                <Text style={styles.clientEmail}>{selectedOrder.clientName} ({selectedOrder.clientEmail})</Text>
-
-                <View style={[styles.statusBadge, { paddingHorizontal: 12, paddingVertical: 4, backgroundColor: selectedOrder.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                  <Text style={[styles.statusBadgeText, { fontSize: 11, color: selectedOrder.is_paid ? '#10b981' : '#ee4d2d' }]}>
-                    {selectedOrder.status}
-                  </Text>
-                </View>
-              </View>
-
               {/* Order Info Grid */}
-              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
                 <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Details & Limits</Text>
                 <View style={styles.detailsGrid}>
                   <View style={styles.detailBox}>
@@ -464,17 +806,17 @@ export default function AdminOrdersScreen() {
                   </View>
                   <View style={styles.detailBox}>
                     <Text style={styles.detailBoxLabel}>Installment Terms</Text>
-                    <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{selectedOrder.installmentMonths} Months</Text>
+                    <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{selectedOrder.installment_months} Months</Text>
                   </View>
                   <View style={styles.detailBox}>
                     <Text style={styles.detailBoxLabel}>Monthly Amortization</Text>
                     <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>
-                      {formatCurrency(Number(selectedOrder.amount) / selectedOrder.installmentMonths)}
+                      {formatCurrency(Number(selectedOrder.amount) / (selectedOrder.installment_months || 1))}
                     </Text>
                   </View>
                   <View style={styles.detailBox}>
                     <Text style={styles.detailBoxLabel}>Scheduled Purchase Date</Text>
-                    <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{formatDate(selectedOrder.orderDate)}</Text>
+                    <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{formatDate(selectedOrder.order_date)}</Text>
                   </View>
                 </View>
 
@@ -538,194 +880,448 @@ export default function AdminOrdersScreen() {
 
       {/* Assign Order Modal */}
       <Modal visible={isAssignOpen} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1e293b' : '#ffffff' }]}>
-            <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Schedule New Order</Text>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+            <LinearGradient
+              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+              style={styles.sheetHero}
+            >
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={styles.sheetIconBadge}>
+                    <Plus size={18} color="#ffffff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER OPERATIONS</Text>
+                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Schedule Order</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sheetMetricRow}>
+                <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
+                  <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Monthly due</Text>
+                  <Text
+                    style={[styles.sheetMetricValue, { color: isDarkMode ? '#ffffff' : t.textPrimary }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                  >
+                    {formatCurrency(estimatedMonthlyDue)}
+                  </Text>
+                </View>
+                <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
+                  <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Exposure</Text>
+                  <Text
+                    style={[styles.sheetMetricValue, { color: projectedExposurePercent > 80 ? '#f87171' : (isDarkMode ? '#ffffff' : t.textPrimary) }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                  >
+                    {projectedExposurePercent}%
+                  </Text>
+                </View>
+              </View>
+            </LinearGradient>
 
-            <ScrollView contentContainerStyle={styles.formContainer} showsVerticalScrollIndicator={false}>
-              <Text style={styles.label}>Select Client</Text>
-              <View style={[styles.selectBox, { borderColor: t.border }]}>
-                <ScrollView style={{ maxHeight: 120 }}>
-                  {profiles.map((client) => (
+            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+              <View style={styles.formSectionHeader}>
+                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
+                <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{profiles.length} accounts</Text>
+              </View>
+
+              <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
+                <Search size={15} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary }]}
+                  placeholder="Search name or email"
+                  placeholderTextColor={t.textSecondary}
+                  value={clientSearchQuery}
+                  onChangeText={setClientSearchQuery}
+                />
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
+                {filteredClients.map((client) => {
+                  const selected = selectedClientId === client.id;
+                  return (
                     <TouchableOpacity
                       key={client.id}
                       style={[
-                        styles.selectItem,
-                        selectedClientId === client.id && { backgroundColor: t.accentLight }
+                        styles.clientChoiceCard,
+                        { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
+                        selected && styles.clientChoiceCardActive,
                       ]}
                       onPress={() => setSelectedClientId(client.id)}
+                      activeOpacity={0.86}
                     >
-                      <Text style={[styles.selectItemText, { color: t.textPrimary }]}>{client.name} ({client.email})</Text>
+                      <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
+                        <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
+                          {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                      <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
+                <Users size={15} color={t.accent} />
+                <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
+                  {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
+                </Text>
               </View>
 
-              <Text style={styles.label}>Item / Product Name</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="e.g. iPhone 15 Pro Max"
-                placeholderTextColor={t.textSecondary}
-                value={itemName}
-                onChangeText={setItemName}
-              />
-
-              <Text style={styles.label}>Purchase Amount (PHP)</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="e.g. 72000"
-                keyboardType="numeric"
-                placeholderTextColor={t.textSecondary}
-                value={amount}
-                onChangeText={setAmount}
-              />
-
-              <Text style={styles.label}>Installment Terms (Months)</Text>
-              <View style={styles.monthsRow}>
-                {['3', '6', '12', '24'].map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.monthSelector, installmentMonths === m && { backgroundColor: t.accent }]}
-                    onPress={() => setInstallmentMonths(m)}
-                  >
-                    <Text style={[styles.monthSelectorText, installmentMonths === m && { color: '#fff' }]}>{m}M</Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.formSectionHeader}>
+                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
+                <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
               </View>
 
-              <Text style={styles.label}>Purchase Date</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={t.textSecondary}
-                value={purchaseDate}
-                onChangeText={setPurchaseDate}
-              />
+              <View style={styles.inputGrid}>
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary }]}
+                    placeholder="MacBook Pro M3"
+                    placeholderTextColor={t.textSecondary}
+                    value={itemName}
+                    onChangeText={setItemName}
+                  />
+                </View>
 
-              <Text style={styles.label}>First Payment Date (Optional)</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={t.textSecondary}
-                value={firstPaymentDate}
-                onChangeText={setFirstPaymentDate}
-              />
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
+                  <View style={styles.amountInputRow}>
+                    <Text style={styles.currencyPrefix}>PHP</Text>
+                    <TextInput
+                      style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
+                      placeholder="79,990"
+                      keyboardType="numeric"
+                      placeholderTextColor={t.textSecondary}
+                      value={amount}
+                      onChangeText={setAmount}
+                    />
+                  </View>
+                </View>
+              </View>
 
-              <Text style={styles.label}>Remarks / Descriptions</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border, height: 70, textAlignVertical: 'top', paddingTop: 10 }]}
-                placeholder="Write order details..."
-                placeholderTextColor={t.textSecondary}
-                multiline={true}
-                value={remarks}
-                onChangeText={setRemarks}
-              />
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: t.accent }]} onPress={handleAssignSubmit} disabled={actionLoading}>
-                <Text style={styles.confirmBtnText}>{actionLoading ? 'Assigning...' : 'Assign Order'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Edit Order Modal */}
-      <Modal visible={isEditOpen} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1e293b' : '#ffffff' }]}>
-            <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Edit Order Details</Text>
-
-            <ScrollView contentContainerStyle={styles.formContainer} showsVerticalScrollIndicator={false}>
-              <Text style={styles.label}>Item / Product Name</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="Product Name"
-                placeholderTextColor={t.textSecondary}
-                value={editItemName}
-                onChangeText={setEditItemName}
-              />
-
-              {/* Block limit edits if payments exist */}
-              <Text style={styles.label}>Purchase Amount (PHP)</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="Purchase Value"
-                keyboardType="numeric"
-                placeholderTextColor={t.textSecondary}
-                value={editAmount}
-                onChangeText={setEditAmount}
-                editable={selectedOrder && !selectedOrder.payments.some((p: any) => p.is_paid)}
-              />
-
-              <Text style={styles.label}>Installment Terms (Months)</Text>
-              <View style={styles.monthsRow}>
+              <View style={styles.termGrid}>
                 {['3', '6', '12', '24'].map((m) => {
-                  const editable = selectedOrder && !selectedOrder.payments.some((p: any) => p.is_paid);
+                  const selected = installmentMonths === m;
+                  const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
                   return (
                     <TouchableOpacity
                       key={m}
                       style={[
-                        styles.monthSelector,
-                        editMonths === m && { backgroundColor: t.accent },
-                        !editable && { opacity: 0.5 }
+                        styles.termCard,
+                        { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
                       ]}
-                      onPress={() => {
-                        if (editable) setEditMonths(m);
-                      }}
-                      disabled={!editable}
+                      onPress={() => setInstallmentMonths(m)}
+                      activeOpacity={0.86}
                     >
-                      <Text style={[styles.monthSelectorText, editMonths === m && { color: '#fff' }]}>{m}M</Text>
+                      <View style={styles.termTitleRow}>
+                        <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
+                        <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>Months</Text>
+                      </View>
+                      <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
+                        {monthly > 0 ? formatCurrency(monthly) : '--'}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              <Text style={styles.label}>Purchase Date</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={t.textSecondary}
-                value={editPurchaseDate}
-                onChangeText={setEditPurchaseDate}
-                editable={selectedOrder && !selectedOrder.payments.some((p: any) => p.is_paid)}
-              />
+              <View style={styles.dateGrid}>
+                <View style={[styles.dateCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Calendar size={16} color={t.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE DATE</Text>
+                    <TextInput
+                      style={[styles.dateInput, { color: t.textPrimary }]}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={t.textSecondary}
+                      value={purchaseDate}
+                      onChangeText={setPurchaseDate}
+                    />
+                  </View>
+                </View>
 
-              <Text style={styles.label}>First Payment Due Date</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={t.textSecondary}
-                value={editFirstPaymentDate}
-                onChangeText={setEditFirstPaymentDate}
-                editable={selectedOrder && !selectedOrder.payments.some((p: any) => p.is_paid)}
-              />
+                <View style={[styles.dateCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Clock size={16} color={t.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>FIRST DUE DATE (OPTIONAL)</Text>
+                    <TextInput
+                      style={[styles.dateInput, { color: t.textPrimary }]}
+                      placeholder="Auto: 5th next month"
+                      placeholderTextColor={t.textSecondary}
+                      value={firstPaymentDate}
+                      onChangeText={setFirstPaymentDate}
+                    />
+                  </View>
+                </View>
+              </View>
 
-              <Text style={styles.label}>Remarks</Text>
-              <TextInput
-                style={[styles.input, { color: t.textPrimary, borderColor: t.border, height: 70, textAlignVertical: 'top', paddingTop: 10 }]}
-                placeholder="Add notes..."
-                placeholderTextColor={t.textSecondary}
-                multiline={true}
-                value={editRemarks}
-                onChangeText={setEditRemarks}
-              />
+              <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS / SPECIFICATIONS</Text>
+                <TextInput
+                  style={[styles.premiumInput, { color: t.textPrimary, minHeight: 60, textAlignVertical: 'top' }]}
+                  placeholder="Write details or serial numbers..."
+                  placeholderTextColor={t.textSecondary}
+                  multiline={true}
+                  value={remarks}
+                  onChangeText={setRemarks}
+                />
+              </View>
+
+              <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
+                <View style={styles.exposurePreviewTop}>
+                  <Text style={[styles.previewTitle, { color: t.textPrimary }]}>Limit Impact Preview</Text>
+                  <Text style={[styles.previewPercent, { color: projectedExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>
+                    {projectedExposurePercent}%
+                  </Text>
+                </View>
+                <View style={[styles.previewTrack, { backgroundColor: isDarkMode ? '#1f2937' : '#e5e7eb' }]}>
+                  <View style={[styles.previewFill, { width: `${projectedExposurePercent}%`, backgroundColor: projectedExposurePercent > 80 ? '#ef4444' : t.accent }]} />
+                </View>
+                <Text style={[styles.previewCaption, { color: t.textSecondary }]}>
+                  Projected exposure after this order: {formatCurrency(projectedOutstanding)}
+                </Text>
+              </View>
             </ScrollView>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
+                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: t.accent }]} onPress={handleEditSubmit} disabled={actionLoading}>
-                <Text style={styles.confirmBtnText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
+              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleAssignSubmit} disabled={actionLoading}>
+                <CheckCircle2 size={16} color="#ffffff" />
+                <Text style={styles.primaryActionText}>{actionLoading ? 'Assigning...' : 'Assign Order'}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit Order Modal */}
+      <Modal visible={isEditOpen} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+            <LinearGradient
+              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+              style={styles.sheetHero}
+            >
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={styles.sheetIconBadge}>
+                    <Edit2 size={18} color="#ffffff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER OPERATIONS</Text>
+                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Edit Order Details</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.sheetHeroText, { color: t.textSecondary }]}>
+                Modify ledger record credentials. Note that terms and amounts lock once collections begin.
+              </Text>
+            </LinearGradient>
+
+            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+              <View style={styles.formSectionHeader}>
+                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Allocation</Text>
+              </View>
+
+              {/* Client Selection card - Display current or edit client if not locked */}
+              {selectedOrder && (
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, opacity: selectedOrder.payments.some((p: any) => p.is_paid) ? 0.65 : 1 }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}</Text>
+                  
+                  {selectedOrder.payments.some((p: any) => p.is_paid) ? (
+                    <View style={{ paddingVertical: 4 }}>
+                      <Text style={[styles.premiumInput, { color: t.textPrimary }]}>{selectedOrder.clientName}</Text>
+                      <Text style={[styles.clientSelectEmailText, { marginTop: 2 }]}>{selectedOrder.clientEmail}</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.clientSelectContainer, { borderColor: t.border, marginTop: 4 }]}>
+                      <ScrollView style={{ maxHeight: 100 }} nestedScrollEnabled={true}>
+                        {profiles.map((client) => (
+                          <TouchableOpacity
+                            key={client.id}
+                            style={[
+                              styles.clientSelectItem,
+                              editClientId === client.id && { backgroundColor: t.accentLight }
+                            ]}
+                            onPress={() => setEditClientId(client.id)}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                              <Text style={[styles.clientSelectItemText, { color: t.textPrimary, fontWeight: editClientId === client.id ? 'bold' : 'normal' }]}>
+                                {client.name}
+                              </Text>
+                              {editClientId === client.id && <Check size={14} color={t.accent} />}
+                            </View>
+                            <Text style={styles.clientSelectEmailText}>{client.email}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <View style={styles.formSectionHeader}>
+                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Purchase Specs</Text>
+              </View>
+
+              <View style={styles.inputGrid}>
+                {/* Product Name Input */}
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM / PRODUCT NAME</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary }]}
+                    placeholder="Product Name"
+                    placeholderTextColor={t.textSecondary}
+                    value={editItemName}
+                    onChangeText={setEditItemName}
+                  />
+                </View>
+
+                {/* Amount Input */}
+                {selectedOrder && (
+                  <View style={[
+                    styles.premiumInputCard, 
+                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
+                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                  ]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
+                      PURCHASE VALUE (PHP) {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                    </Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="Purchase Value"
+                      keyboardType="numeric"
+                      placeholderTextColor={t.textSecondary}
+                      value={editAmount}
+                      onChangeText={setEditAmount}
+                      editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
+                    />
+                  </View>
+                )}
+
+                {/* Installment terms */}
+                {selectedOrder && (
+                  <View style={[
+                    styles.premiumInputCard, 
+                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
+                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                  ]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
+                      INSTALLMENT TERM {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                    </Text>
+                    <View style={styles.monthsRow}>
+                      {['3', '6', '12', '24'].map((m) => {
+                        const editable = !selectedOrder.payments.some((p: any) => p.is_paid);
+                        return (
+                          <TouchableOpacity
+                            key={m}
+                            style={[
+                              styles.premiumMonthSelector,
+                              editMonths === m && { backgroundColor: t.accent },
+                              !editable && { opacity: 0.5 }
+                            ]}
+                            onPress={() => {
+                              if (editable) setEditMonths(m);
+                            }}
+                            disabled={!editable}
+                          >
+                            <Text style={[styles.premiumMonthSelectorText, editMonths === m && { color: '#fff' }]}>{m}M</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {/* Purchase Date */}
+                {selectedOrder && (
+                  <View style={[
+                    styles.premiumInputCard, 
+                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
+                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                  ]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
+                      PURCHASE DATE {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                    </Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={t.textSecondary}
+                      value={editPurchaseDate}
+                      onChangeText={setEditPurchaseDate}
+                      editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
+                    />
+                  </View>
+                )}
+
+                {/* First Payment Date */}
+                {selectedOrder && (
+                  <View style={[
+                    styles.premiumInputCard, 
+                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
+                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                  ]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
+                      FIRST PAYMENT DUE DATE {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                    </Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={t.textSecondary}
+                      value={editFirstPaymentDate}
+                      onChangeText={setEditFirstPaymentDate}
+                      editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
+                    />
+                  </View>
+                )}
+
+                {/* Remarks */}
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary, minHeight: 60, textAlignVertical: 'top' }]}
+                    placeholder="Add notes..."
+                    placeholderTextColor={t.textSecondary}
+                    multiline={true}
+                    value={editRemarks}
+                    onChangeText={setEditRemarks}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
+                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditSubmit} disabled={actionLoading}>
+                <CheckCircle2 size={16} color="#ffffff" />
+                <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -1125,5 +1721,595 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: 'bold',
+  },
+  // Layout views & view mode controls
+  listHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  viewModeContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: 1,
+  },
+  viewModeBtn: {
+    padding: 5,
+    borderRadius: 8,
+  },
+  orderGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  orderGridCard: {
+    width: '48%',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 14,
+    alignItems: 'center',
+    gap: 6,
+  },
+  orderGridAvatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ee4d2d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  orderGridItemName: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  clientGridDivider: {
+    height: 1,
+    alignSelf: 'stretch',
+  },
+  clientGridDetails: {
+    alignSelf: 'stretch',
+    paddingTop: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  detailCardLabel: {
+    fontSize: 9,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  detailCardVal: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  paginationBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  paginationBtnText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  paginationInfo: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Details Modal styles
+  detailsHeroBanner: {
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 16 : 24,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  detailsHeroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  detailsHeroTitleCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  detailsHeroEyebrow: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  detailsHeroTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  detailsHeroCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailsHeroCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  detailsHeroAvatarWrapper: {
+    position: 'relative',
+  },
+  detailsHeroAvatarPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailsHeroMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  detailsHeroName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  detailsHeroSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  detailsHeroId: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  // Bottom Sheet layout & Form styles
+  sheetContainer: {
+    borderRadius: 28,
+    borderWidth: 1.5,
+    width: '100%',
+    maxHeight: '92%',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 12,
+  },
+  sheetHero: {
+    padding: 18,
+    gap: 12,
+  },
+  sheetHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sheetTitleCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  sheetIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#ee4d2d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetEyebrow: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+  },
+  sheetTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    letterSpacing: 0,
+    marginTop: 1,
+  },
+  sheetCloseButton: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCloseText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  sheetHeroText: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  premiumFormContainer: {
+    padding: 18,
+    gap: 14,
+  },
+  formSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  formSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  inputGrid: {
+    gap: 10,
+  },
+  premiumInputCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 5,
+  },
+  premiumLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  premiumInput: {
+    minHeight: 32,
+    fontSize: 15,
+    fontWeight: '800',
+    paddingVertical: 0,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+  },
+  secondaryAction: {
+    flex: 1,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  primaryAction: {
+    flex: 1.5,
+    height: 48,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryActionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  clientSelectContainer: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    padding: 8,
+    marginTop: 4,
+  },
+  clientSelectItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  clientSelectItemText: {
+    fontSize: 12,
+  },
+  clientSelectEmailText: {
+    fontSize: 9,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  premiumMonthSelector: {
+    width: '22%',
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  premiumMonthSelectorText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#64748b',
+  },
+  breakdownCollapsibleCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+  },
+  breakdownHeaderToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  breakdownTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  breakdownContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  monthFilterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  monthFilterBadgeText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  monthBreakdownItemCard: {
+    width: 190,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 12,
+    gap: 4,
+  },
+  monthItemName: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  monthRateBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  monthRateText: {
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  monthItemCount: {
+    fontSize: 10,
+  },
+  monthDivider: {
+    height: 1,
+    marginVertical: 4,
+  },
+  monthStatsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  monthStatLabel: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  monthStatVal: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginTop: 1,
+  },
+  sheetMetricRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  sheetMetric: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+  },
+  sheetMetricLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  sheetMetricValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 4,
+  },
+  formSectionMeta: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  searchInputShell: {
+    height: 46,
+    borderRadius: 15,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clientRail: {
+    gap: 10,
+    paddingRight: 18,
+  },
+  clientChoiceCard: {
+    width: 148,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    gap: 8,
+  },
+  clientChoiceCardActive: {
+    shadowColor: '#ee4d2d',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  clientAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientAvatarText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  clientChoiceName: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  clientChoiceEmail: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  selectedClientStrip: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectedClientText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  amountInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currencyPrefix: {
+    borderRadius: 9,
+    backgroundColor: 'rgba(238,77,45,0.1)',
+    color: '#ee4d2d',
+    fontSize: 10,
+    fontWeight: '900',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  amountInput: {
+    flex: 1,
+  },
+  termGrid: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  termCard: {
+    flex: 1,
+    minHeight: 74,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+    justifyContent: 'space-between',
+  },
+  termTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
+    flexWrap: 'nowrap',
+  },
+  termMonths: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    lineHeight: 22,
+  },
+  termCaption: {
+    fontSize: 8,
+    fontWeight: '900',
+    lineHeight: 11,
+  },
+  termDue: {
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  dateGrid: {
+    gap: 10,
+  },
+  dateCard: {
+    minHeight: 64,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dateInput: {
+    minHeight: 30,
+    fontSize: 14,
+    fontWeight: '800',
+    paddingVertical: 0,
+  },
+  exposurePreview: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    gap: 9,
+  },
+  exposurePreviewTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  previewTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  previewPercent: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  previewTrack: {
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  previewFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  previewCaption: {
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
   },
 });

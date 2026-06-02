@@ -29,8 +29,10 @@ import {
   Calendar,
   ShieldAlert,
   Volume2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
@@ -131,6 +133,7 @@ export default function AdminNotificationsScreen() {
   const [annTarget, setAnnTarget] = useState('all_clients');
   const [annCategory, setAnnCategory] = useState<'ADS' | 'SYSTEM'>('ADS');
   const [sendingAnn, setSendingAnn] = useState(false);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
   // Detail Modal states
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
@@ -241,7 +244,15 @@ export default function AdminNotificationsScreen() {
       );
 
       if (res.success !== false) {
-        Alert.alert('Broadcast Completed', 'Announcement dispatch triggered successfully.');
+        const created = Number(res.processed?.created || 0);
+        const pushed = Number(res.processed?.pushed || 0);
+        const skipped = Number(res.processed?.skipped || 0);
+        Alert.alert(
+          created > 0 ? 'Broadcast Completed' : 'Broadcast Queued',
+          created > 0
+            ? `${created} inbox notification${created === 1 ? '' : 's'} created. ${pushed} push attempt${pushed === 1 ? '' : 's'} sent.`
+            : `No inbox rows were created. ${skipped > 0 ? `${skipped} recipient${skipped === 1 ? '' : 's'} skipped by preferences.` : 'Check the selected audience.'}`
+        );
         setAnnTitle('');
         setAnnBody('');
         await loadNotifications(false);
@@ -343,15 +354,29 @@ export default function AdminNotificationsScreen() {
 
         {/* Announcement Dispatcher Section */}
         <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <View style={styles.cardHeader}>
-            <Volume2 size={18} color={t.accent} />
-            <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Broadcast Notification</Text>
-          </View>
-          <Text style={[styles.cardDesc, { color: t.textSecondary }]}>
-            Send inbox logs and push alert messages to mobile clients in real-time.
-          </Text>
+          <TouchableOpacity
+            style={styles.cardHeader}
+            onPress={() => setBroadcastOpen(open => !open)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.cardHeaderLeft}>
+              <Volume2 size={18} color={t.accent} />
+              <View>
+                <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Broadcast Notification</Text>
+                <Text style={[styles.cardDesc, { color: t.textSecondary }]}>
+                  {broadcastOpen ? 'Send inbox and push alerts to selected recipients.' : 'Collapsed - tap to compose a message.'}
+                </Text>
+              </View>
+            </View>
+            {broadcastOpen ? (
+              <ChevronUp size={18} color={t.textSecondary} />
+            ) : (
+              <ChevronDown size={18} color={t.textSecondary} />
+            )}
+          </TouchableOpacity>
 
-          <View style={styles.form}>
+          {broadcastOpen && (
+            <View style={styles.form}>
             <TextInput
               value={annTitle}
               onChangeText={setAnnTitle}
@@ -367,6 +392,7 @@ export default function AdminNotificationsScreen() {
                 <View style={styles.segmentContainer}>
                   {([
                     { id: 'all_clients', label: 'Clients' },
+                    { id: 'all_users', label: 'All' },
                     { id: 'admins', label: 'Admins' },
                   ]).map(aud => {
                     const isSel = annTarget === aud.id;
@@ -439,6 +465,7 @@ export default function AdminNotificationsScreen() {
               )}
             </TouchableOpacity>
           </View>
+          )}
         </View>
 
         {/* Category Tabs */}
@@ -697,6 +724,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  cardHeaderLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

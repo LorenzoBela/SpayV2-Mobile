@@ -1,13 +1,15 @@
-import { Platform } from 'react-native';
 import { supabase } from '../utils/supabase';
+import {
+  fetchNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  clearNotification,
+} from './notificationService';
 
 const getApiUrl = () => {
-  const url = process.env.EXPO_PUBLIC_API_URL;
-  if (url) return url;
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
-  }
-  return 'http://localhost:3000';
+  const url = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (url) return url.replace(/\/$/, '');
+  return 'https://nootspaytracker.vercel.app';
 };
 
 export const callAdminApi = async (action: string, bodyData: any = {}) => {
@@ -102,8 +104,8 @@ export const fetchAllAdminData = async () => {
     // Fetch from Supabase
     // 1. Profiles (role = CLIENT or email lorenzo91145@gmail.com)
     const { data: profiles, error: pErr } = await supabase
-      .from('profiles')
-      .select('id, name, email, mobile_number, created_at, role')
+      .from('admin_profiles_view')
+      .select('id, name, email, mobile_number, created_at, role, avatar_url')
       .or(`role.eq.CLIENT,email.eq.lorenzo91145@gmail.com`);
 
     if (pErr) throw pErr;
@@ -147,6 +149,15 @@ export const fetchAllAdminData = async () => {
 
     if (resErr) throw resErr;
 
+    // 7. Payment Logs (web parity)
+    const { data: paymentLogs, error: plErr } = await supabase
+      .from('payment_logs')
+      .select('id, payment_id, action_type, action_description, performed_by_id, performed_at, old_values, new_values, ip_address, user_agent')
+      .order('performed_at', { ascending: false })
+      .limit(50);
+
+    if (plErr) throw plErr;
+
     return {
       success: true,
       profiles: profiles || [],
@@ -155,6 +166,7 @@ export const fetchAllAdminData = async () => {
       payments: payments || [],
       reminderLogs: reminderLogs || [],
       reschedules: reschedules || [],
+      paymentLogs: paymentLogs || [],
     };
   } catch (error: any) {
     console.error('[adminService] Error fetching all admin DB logs:', error);
@@ -164,22 +176,22 @@ export const fetchAllAdminData = async () => {
 
 export const getNotifications = async (limit = 100) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const apiUrl = getApiUrl();
-
-    const response = await fetch(`${apiUrl}/api/notifications/list?limit=${limit}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Server returned status ${response.status}`);
-    }
-
-    return await response.json();
+    const notifications = await fetchNotifications(limit);
+    return {
+      notifications: notifications.map((notification) => ({
+        id: notification.id,
+        title: notification.title,
+        body: notification.body,
+        type: notification.type,
+        category: notification.category,
+        priority: notification.priority,
+        data: notification.data,
+        read: Boolean(notification.read_at),
+        readAt: notification.read_at,
+        createdAt: notification.created_at,
+      })),
+      unreadCount: notifications.filter((notification) => !notification.read_at).length,
+    };
   } catch (error: any) {
     console.error('[adminService] Error fetching notifications:', error);
     return { success: false, error: error?.message || 'Failed to fetch notifications.' };
@@ -188,24 +200,17 @@ export const getNotifications = async (limit = 100) => {
 
 export const markNotificationsRead = async (notificationId?: string, all = false) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const apiUrl = getApiUrl();
-
-    const response = await fetch(`${apiUrl}/api/notifications/read`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(all ? { all: true } : { notificationId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Server returned status ${response.status}`);
+    if (all) {
+      await markAllNotificationsRead();
+      return { success: true };
     }
 
-    return await response.json();
+    if (!notificationId) {
+      throw new Error('notificationId is required');
+    }
+
+    await markNotificationRead(notificationId);
+    return { success: true };
   } catch (error: any) {
     console.error('[adminService] Error marking notifications read:', error);
     return { success: false, error: error?.message || 'Failed to mark notifications read.' };
@@ -214,24 +219,25 @@ export const markNotificationsRead = async (notificationId?: string, all = false
 
 export const clearNotifications = async (notificationId?: string, all = false) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const apiUrl = getApiUrl();
+    if (all) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: true, deletedCount: 0 };
 
-    const response = await fetch(`${apiUrl}/api/notifications/clear`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(all ? { all: true } : { notificationId }),
-    });
+      const { count, error } = await supabase
+        .from('notifications')
+        .delete({ count: 'exact' })
+        .eq('user_id', user.id);
 
-    if (!response.ok) {
-      throw new Error(`Server returned status ${response.status}`);
+      if (error) throw error;
+      return { success: true, deletedCount: count || 0 };
     }
 
-    return await response.json();
+    if (!notificationId) {
+      throw new Error('notificationId is required');
+    }
+
+    await clearNotification(notificationId);
+    return { success: true };
   } catch (error: any) {
     console.error('[adminService] Error clearing notifications:', error);
     return { success: false, error: error?.message || 'Failed to clear notifications.' };
@@ -262,14 +268,14 @@ export const sendAdminAnnouncement = async (title: string, body: string, target:
       }),
     });
 
+    const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(`Server returned status ${response.status}`);
+      throw new Error(result?.error || `Server returned status ${response.status}`);
     }
 
-    return await response.json();
+    return result;
   } catch (error: any) {
     console.error('[adminService] Error sending announcement:', error);
     return { success: false, error: error?.message || 'Failed to send announcement.' };
   }
 };
-

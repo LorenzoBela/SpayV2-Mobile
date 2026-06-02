@@ -11,8 +11,11 @@ import {
   Alert,
   Platform,
   StatusBar,
+  Image,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   Users,
   Search,
@@ -27,6 +30,13 @@ import {
   FileText,
   X,
   Plus,
+  Pencil,
+  List,
+  LayoutGrid,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  CheckCircle2,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -74,9 +84,35 @@ export default function AdminClientsScreen() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   // Action Modals
-  const [isAdjustLimitOpen, setIsAdjustLimitOpen] = useState(false);
-  const [newLimitValue, setNewLimitValue] = useState('');
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editMobile, setEditMobile] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Layout and Pagination states
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 6;
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+
+  const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [orderPage, setOrderPage] = useState(1);
+  const ORDER_PAGE_SIZE = 5;
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+
+  // Monthly breakdown calendar pagination & filtering states
+  const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'active' | 'pending' | 'settled'>('all');
+  const [monthlyPage, setMonthlyPage] = useState(1);
+  const [monthlyYearFilter, setMonthlyYearFilter] = useState<string>('');
+  const MONTHLY_PAGE_SIZE = 5;
+
+  const toggleOrderExpand = (orderId: string) => {
+    setExpandedOrders(prev => ({
+      ...prev,
+      [orderId]: !prev[orderId],
+    }));
+  };
 
   const loadData = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -102,6 +138,10 @@ export default function AdminClientsScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeTab]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -137,6 +177,72 @@ export default function AdminClientsScreen() {
     };
   };
 
+  const getMonthlyBreakdown = (clientOrders: any[]) => {
+    const monthlyBreakdownMap: Record<string, {
+      monthKey: string;
+      monthName: string;
+      activeOngoing: number;
+      pending: number;
+      settled: number;
+    }> = {};
+
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+
+    clientOrders.forEach(order => {
+      if (order.payments && Array.isArray(order.payments)) {
+        order.payments.forEach((payment: any) => {
+          const d = new Date(payment.due_date);
+          if (Number.isNaN(d.getTime())) return;
+          
+          const year = d.getFullYear();
+          const month = d.getMonth();
+          
+          const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+          const monthName = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+          if (!monthlyBreakdownMap[monthKey]) {
+            monthlyBreakdownMap[monthKey] = {
+              monthKey,
+              monthName,
+              activeOngoing: 0,
+              pending: 0,
+              settled: 0,
+            };
+          }
+
+          const amount = Number(payment.amount_due);
+          if (payment.is_paid) {
+            monthlyBreakdownMap[monthKey].settled += amount;
+          } else if (year < currentYear || (year === currentYear && month <= currentMonth)) {
+            monthlyBreakdownMap[monthKey].activeOngoing += amount;
+          } else {
+            monthlyBreakdownMap[monthKey].pending += amount;
+          }
+        });
+      }
+    });
+
+    let result = Object.values(monthlyBreakdownMap);
+
+    // Apply Year filter
+    if (monthlyYearFilter.trim()) {
+      result = result.filter(item => item.monthKey.startsWith(monthlyYearFilter.trim()));
+    }
+
+    // Apply Status filter
+    if (monthlyFilter === 'active') {
+      result = result.filter(item => item.activeOngoing > 0);
+    } else if (monthlyFilter === 'pending') {
+      result = result.filter(item => item.pending > 0);
+    } else if (monthlyFilter === 'settled') {
+      result = result.filter(item => item.settled > 0);
+    }
+
+    return result.sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+  };
+
   // Process data for rendering lists
   const processedClients = profiles.map(profile => {
     const stats = getClientStats(profile.id);
@@ -162,6 +268,9 @@ export default function AdminClientsScreen() {
     return true;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
+  const paginatedClients = filteredClients.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   // Calculate top spending clients
   const topSpenders = [...processedClients]
     .sort((a, b) => b.totalSpent - a.totalSpent)
@@ -170,29 +279,34 @@ export default function AdminClientsScreen() {
   const totalRevenue = processedClients.reduce((sum, c) => sum + c.totalSpent, 0);
   const totalOutstanding = processedClients.reduce((sum, c) => sum + c.totalOutstanding, 0);
 
-  const handleAdjustLimitSubmit = async () => {
-    const limitNum = parseFloat(newLimitValue);
-    if (isNaN(limitNum) || limitNum < 0) {
-      Alert.alert('Invalid Input', 'Please enter a valid credit limit.');
+  const handleEditProfileSubmit = async () => {
+    if (!editName || !editEmail) {
+      Alert.alert('Invalid Input', 'Name and Email are required.');
       return;
     }
 
     setActionLoading(true);
     try {
-      const response = await callAdminApi('adjust-limit', {
-        id: selectedClient.id,
-        limit: limitNum,
+      const response = await callAdminApi('update-client', {
+        clientId: selectedClient.id,
+        name: editName,
+        email: editEmail,
+        mobileNumber: editMobile,
       });
 
       if (response.success) {
-        Alert.alert('Success', `Credit limit for ${selectedClient.name} adjusted!`);
-        setIsAdjustLimitOpen(false);
-        setNewLimitValue('');
+        Alert.alert('Success', `Client profile updated successfully!`);
+        setIsEditProfileOpen(false);
         // Update local modal data
-        setSelectedClient((prev: any) => ({ ...prev, limit: limitNum }));
+        setSelectedClient((prev: any) => ({
+          ...prev,
+          name: editName,
+          email: editEmail,
+          mobile_number: editMobile,
+        }));
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to adjust credit limit.');
+        Alert.alert('Error', response.error || 'Failed to update client profile.');
       }
     } catch (e: any) {
       Alert.alert('Network Error', e?.message || 'Server connection failed.');
@@ -231,6 +345,38 @@ export default function AdminClientsScreen() {
       ]
     );
   };
+
+  const openClientDetails = (client: any) => {
+    setSelectedClient(client);
+    setOrderFilter('all');
+    setOrderPage(1);
+    setOrderSearchQuery('');
+    setMonthlyFilter('all');
+    setMonthlyPage(1);
+    setMonthlyYearFilter('');
+    if (client.orders && client.orders.length > 0) {
+      setExpandedOrders({ [client.orders[0].id]: true });
+    } else {
+      setExpandedOrders({});
+    }
+    setIsDetailsOpen(true);
+  };
+
+  const getFilteredOrders = () => {
+    if (!selectedClient || !selectedClient.orders) return [];
+    return selectedClient.orders.filter((order: any) => {
+      const matchesSearch = (order.item_name || '').toLowerCase().includes(orderSearchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      if (orderFilter === 'active') return !order.is_paid;
+      if (orderFilter === 'completed') return order.is_paid;
+      return true;
+    });
+  };
+
+  const filteredOrders = getFilteredOrders();
+  const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
+  const paginatedOrders = filteredOrders.slice((orderPage - 1) * ORDER_PAGE_SIZE, orderPage * ORDER_PAGE_SIZE);
 
   const t = {
     bg: isDarkMode ? '#0b0f19' : '#f8fafc',
@@ -324,16 +470,17 @@ export default function AdminClientsScreen() {
                 <TouchableOpacity
                   key={spender.id}
                   style={styles.spenderRow}
-                  onPress={() => {
-                    setSelectedClient(spender);
-                    setIsDetailsOpen(true);
-                  }}
+                  onPress={() => openClientDetails(spender)}
                   activeOpacity={0.8}
                 >
                   <View style={styles.spenderRowLeft}>
                     <View style={[styles.rankBadge, { backgroundColor: idx === 0 ? t.accent : 'rgba(255,255,255,0.06)' }]}>
                       <Text style={[styles.rankText, idx === 0 && { color: '#fff' }]}>{idx + 1}</Text>
                     </View>
+                    <Image
+                      source={{ uri: spender.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(spender.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                      style={styles.spenderAvatar}
+                    />
                     <View>
                       <Text style={[styles.spenderName, { color: t.textPrimary }]}>{spender.name}</Text>
                       <Text style={styles.spenderOrders}>{spender.orderCount} orders scheduled</Text>
@@ -345,51 +492,125 @@ export default function AdminClientsScreen() {
             </View>
           </View>
         )}
+        {/* Client List Header Row */}
+        <View style={styles.listHeaderRow}>
+          <Text style={styles.listHeaderTitle}>Active Directory ({filteredClients.length})</Text>
+          <View style={[styles.viewModeContainer, { backgroundColor: isDarkMode ? '#161c2a' : '#f1f5f9', borderColor: t.cardBorder }]}>
+            <TouchableOpacity 
+              onPress={() => setViewMode('list')} 
+              style={[styles.viewModeBtn, viewMode === 'list' && { backgroundColor: isDarkMode ? '#223049' : '#ffffff' }]}
+            >
+              <List size={14} color={viewMode === 'list' ? t.accent : t.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => setViewMode('grid')} 
+              style={[styles.viewModeBtn, viewMode === 'grid' && { backgroundColor: isDarkMode ? '#223049' : '#ffffff' }]}
+            >
+              <LayoutGrid size={14} color={viewMode === 'grid' ? t.accent : t.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
 
-        {/* Client List */}
-        <Text style={styles.listHeaderTitle}>Active Directory List ({filteredClients.length})</Text>
-        <View style={styles.clientsListContainer}>
-          {filteredClients.length > 0 ? (
-            filteredClients.map((client) => (
-              <TouchableOpacity
-                key={client.id}
-                style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-                onPress={() => {
-                  setSelectedClient(client);
-                  setIsDetailsOpen(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.clientCardHeader}>
-                  <View>
-                    <Text style={[styles.clientName, { color: t.textPrimary }]}>{client.name}</Text>
-                    <Text style={styles.clientEmail} numberOfLines={1}>{client.email}</Text>
-                  </View>
-                  <ChevronRight size={18} color={t.textSecondary} />
-                </View>
+        <View style={viewMode === 'grid' ? styles.clientGridContainer : styles.clientsListContainer}>
+          {paginatedClients.length > 0 ? (
+            paginatedClients.map((client) => {
+              if (viewMode === 'grid') {
+                return (
+                  <TouchableOpacity
+                    key={client.id}
+                    style={[styles.clientGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                    onPress={() => openClientDetails(client)}
+                    activeOpacity={0.8}
+                  >
+                    <Image
+                      source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                      style={styles.clientGridAvatar}
+                    />
+                    <Text style={[styles.clientGridName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                    <Text style={styles.clientGridEmail} numberOfLines={1}>{client.email}</Text>
+                    
+                    <View style={[styles.clientGridDivider, { backgroundColor: t.border }]} />
 
-                <View style={[styles.clientCardDivider, { backgroundColor: t.border }]} />
+                    <View style={styles.clientGridDetails}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailCardLabel}>Outstanding</Text>
+                        <Text style={[styles.detailCardVal, { color: t.accent, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(client.totalOutstanding)}</Text>
+                      </View>
+                      <View style={{ flex: 0.5, alignItems: 'flex-end' }}>
+                        <Text style={styles.detailCardLabel}>Plans</Text>
+                        <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]}>{client.activeOrders}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
 
-                <View style={styles.clientCardDetailsRow}>
-                  <View>
-                    <Text style={styles.detailCardLabel}>Limit Limit</Text>
-                    <Text style={[styles.detailCardVal, { color: t.textPrimary }]}>{formatCurrency(client.limit)}</Text>
+              // List View Mode
+              return (
+                <TouchableOpacity
+                  key={client.id}
+                  style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                  onPress={() => openClientDetails(client)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.clientCardHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                      <Image
+                        source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                        style={styles.clientListAvatar}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.clientName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                        <Text style={styles.clientEmail} numberOfLines={1}>{client.email}</Text>
+                      </View>
+                    </View>
+                    <ChevronRight size={18} color={t.textSecondary} />
                   </View>
-                  <View>
-                    <Text style={styles.detailCardLabel}>Outstanding</Text>
-                    <Text style={[styles.detailCardVal, { color: t.accent }]}>{formatCurrency(client.totalOutstanding)}</Text>
+
+                  <View style={[styles.clientCardDivider, { backgroundColor: t.border }]} />
+
+                  <View style={styles.clientCardDetailsRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailCardLabel}>Outstanding</Text>
+                      <Text style={[styles.detailCardVal, { color: t.accent }]}>{formatCurrency(client.totalOutstanding)}</Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={styles.detailCardLabel}>Active Plans</Text>
+                      <Text style={[styles.detailCardVal, { color: t.textPrimary }]}>{client.activeOrders}</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.detailCardLabel}>Active Plans</Text>
-                    <Text style={[styles.detailCardVal, { color: t.textPrimary }]}>{client.activeOrders}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+              );
+            })
           ) : (
             <Text style={styles.emptyText}>No clients match filters.</Text>
           )}
         </View>
+
+        {/* Pagination controls */}
+        {totalPages > 1 && (
+          <View style={styles.paginationContainer}>
+            <TouchableOpacity
+              disabled={currentPage === 1}
+              onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              style={[styles.paginationBtn, { borderColor: t.cardBorder, backgroundColor: t.cardBg }, currentPage === 1 && { opacity: 0.4 }]}
+            >
+              <Text style={[styles.paginationBtnText, { color: t.textPrimary }]}>Prev</Text>
+            </TouchableOpacity>
+            
+            <Text style={[styles.paginationInfo, { color: t.textSecondary }]}>
+              Page {currentPage} of {totalPages}
+            </Text>
+            
+            <TouchableOpacity
+              disabled={currentPage === totalPages}
+              onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              style={[styles.paginationBtn, { borderColor: t.cardBorder, backgroundColor: t.cardBg }, currentPage === totalPages && { opacity: 0.4 }]}
+            >
+              <Text style={[styles.paginationBtnText, { color: t.textPrimary }]}>Next</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Client Detail View Modal */}
@@ -398,35 +619,78 @@ export default function AdminClientsScreen() {
           <SafeAreaView style={[styles.modalScrollContainer, { backgroundColor: t.bg }]}>
             <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
 
-            {/* Modal header */}
-            <View style={[styles.modalHeaderBar, { borderBottomColor: t.border }]}>
-              <Text style={[styles.modalHeaderTitle, { color: t.textPrimary }]}>Client Overview</Text>
-              <TouchableOpacity style={styles.closeBtn} onPress={() => setIsDetailsOpen(false)}>
-                <X size={20} color={t.textSecondary} />
-              </TouchableOpacity>
+            {/* Enhanced Premium Modal Header & Banner */}
+            <View
+              style={[styles.detailsHeroBanner, { backgroundColor: t.cardBg, borderBottomColor: t.border, borderBottomWidth: 1.5 }]}
+            >
+              <View style={styles.detailsHeroTopRow}>
+                <View style={styles.detailsHeroTitleCluster}>
+                  <Users size={18} color={t.accent} />
+                  <View>
+                    <Text style={[styles.detailsHeroEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>CLIENT OVERVIEW</Text>
+                    <Text style={[styles.detailsHeroTitle, { color: t.textPrimary }]}>Account Profile</Text>
+                  </View>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.detailsHeroCloseBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', borderColor: t.cardBorder }]} 
+                  onPress={() => setIsDetailsOpen(false)}
+                >
+                  <X size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.detailsHeroCardRow}>
+                <View style={styles.detailsHeroAvatarWrapper}>
+                  <Image
+                    source={{ uri: selectedClient.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedClient.name)}&background=ee4d2d&color=fff&size=150&bold=true` }}
+                    style={styles.detailsHeroAvatar}
+                  />
+                  <View style={[styles.detailsHeroStatusDot, { borderColor: t.cardBg }]} />
+                </View>
+
+                <View style={styles.detailsHeroMeta}>
+                  <Text style={[styles.detailsHeroName, { color: t.textPrimary }]} numberOfLines={1}>{selectedClient.name}</Text>
+                  <View style={styles.detailsHeroSubRow}>
+                    <View style={[styles.modalRoleBadge, { backgroundColor: t.accentLight, marginTop: 0 }]}>
+                      <Text style={[styles.modalRoleBadgeText, { color: t.accent }]}>
+                        {selectedClient.role || 'CLIENT'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
             </View>
 
             <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              {/* Profile card summary */}
-              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <View style={styles.modalAvatarCircle}>
-                  <Text style={styles.modalAvatarText}>{selectedClient.name.charAt(0).toUpperCase()}</Text>
-                </View>
-                <Text style={[styles.modalName, { color: t.textPrimary }]}>{selectedClient.name}</Text>
-                <View style={styles.contactDetailsCol}>
-                  <View style={styles.contactRow}>
-                    <Mail size={14} color={t.textSecondary} />
-                    <Text style={[styles.contactText, { color: t.textSecondary }]}>{selectedClient.email}</Text>
-                  </View>
-                  {selectedClient.mobile_number && (
-                    <View style={styles.contactRow}>
-                      <Phone size={14} color={t.textSecondary} />
-                      <Text style={[styles.contactText, { color: t.textSecondary }]}>{selectedClient.mobile_number}</Text>
+              {/* Contact Details Container */}
+              <View style={[styles.contactCardContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 8 }]}>Contact & Registry</Text>
+                
+                <View style={styles.contactDetailsGrid}>
+                  <View style={[styles.contactCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                    <Mail size={13} color={t.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.contactLabel}>Email Address</Text>
+                      <Text style={[styles.contactVal, { color: t.textPrimary }]} numberOfLines={1}>{selectedClient.email}</Text>
                     </View>
-                  )}
-                  <View style={styles.contactRow}>
-                    <Calendar size={14} color={t.textSecondary} />
-                    <Text style={[styles.contactText, { color: t.textSecondary }]}>Registered: {formatDate(selectedClient.created_at)}</Text>
+                  </View>
+
+                  {(selectedClient.mobile_number || selectedClient.mobileNumber) ? (
+                    <View style={[styles.contactCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                      <Phone size={13} color={t.accent} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.contactLabel}>Mobile Number</Text>
+                        <Text style={[styles.contactVal, { color: t.textPrimary }]}>{selectedClient.mobile_number || selectedClient.mobileNumber}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View style={[styles.contactCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                    <Calendar size={13} color={t.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.contactLabel}>Date Registered</Text>
+                      <Text style={[styles.contactVal, { color: t.textPrimary }]}>{formatDate(selectedClient.created_at || selectedClient.createdAt)}</Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -436,10 +700,6 @@ export default function AdminClientsScreen() {
                 <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Amortization & Bounds</Text>
                 <View style={styles.detailsGrid}>
                   <View style={styles.detailBox}>
-                    <Text style={styles.detailBoxLabel}>Total Credit Limit</Text>
-                    <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{formatCurrency(selectedClient.limit)}</Text>
-                  </View>
-                  <View style={styles.detailBox}>
                     <Text style={styles.detailBoxLabel}>Ledger Outstanding</Text>
                     <Text style={[styles.detailBoxValue, { color: t.accent }]}>{formatCurrency(selectedClient.totalOutstanding)}</Text>
                   </View>
@@ -447,13 +707,151 @@ export default function AdminClientsScreen() {
                     <Text style={styles.detailBoxLabel}>Total Purchase Volume</Text>
                     <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{formatCurrency(selectedClient.totalSpent)}</Text>
                   </View>
-                  <View style={styles.detailBox}>
-                    <Text style={styles.detailBoxLabel}>Credit Remaining</Text>
-                    <Text style={[styles.detailBoxValue, { color: '#10b981' }]}>
-                      {formatCurrency(Math.max(0, selectedClient.limit - selectedClient.totalOutstanding))}
-                    </Text>
+                </View>
+              </View>
+
+              {/* Monthly Repayment Breakdown */}
+              <View style={[styles.monthlyBreakdownCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Calendar size={16} color={t.accent} />
+                  <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>Amortization Calendar</Text>
+                </View>
+
+                {/* Filter Toolbar */}
+                <View style={styles.monthlyFilterRow}>
+                  {/* Status Tabs */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthlyTabsScroll}>
+                    {(['all', 'active', 'pending', 'settled'] as const).map((filter) => (
+                      <TouchableOpacity
+                        key={filter}
+                        style={[
+                          styles.monthlyTabBtn,
+                          monthlyFilter === filter && { backgroundColor: t.accentLight, borderColor: t.accent }
+                        ]}
+                        onPress={() => {
+                          setMonthlyFilter(filter);
+                          setMonthlyPage(1);
+                        }}
+                      >
+                        <Text style={[styles.monthlyTabBtnText, { color: monthlyFilter === filter ? t.accent : t.textSecondary }]}>
+                          {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  {/* Year Input Filter */}
+                  <View style={[styles.monthlyYearInputBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                    <Search size={12} color={t.textSecondary} />
+                    <TextInput
+                      style={[styles.monthlyYearInput, { color: t.textPrimary }]}
+                      placeholder="Year"
+                      placeholderTextColor={t.textSecondary}
+                      keyboardType="numeric"
+                      value={monthlyYearFilter}
+                      onChangeText={(text) => {
+                        setMonthlyYearFilter(text);
+                        setMonthlyPage(1);
+                      }}
+                    />
+                    {monthlyYearFilter ? (
+                      <TouchableOpacity onPress={() => {
+                        setMonthlyYearFilter('');
+                        setMonthlyPage(1);
+                      }}>
+                        <X size={12} color={t.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
+
+                {(() => {
+                  const monthlyBreakdown = getMonthlyBreakdown(selectedClient.orders || []);
+                  const totalMonthlyItems = monthlyBreakdown.length;
+                  const monthlyTotalPages = Math.max(1, Math.ceil(totalMonthlyItems / MONTHLY_PAGE_SIZE));
+                  // Ensure page doesn't go out of bounds
+                  const safeMonthlyPage = Math.min(monthlyPage, monthlyTotalPages);
+                  const paginatedMonthly = monthlyBreakdown.slice((safeMonthlyPage - 1) * MONTHLY_PAGE_SIZE, safeMonthlyPage * MONTHLY_PAGE_SIZE);
+
+                  return (
+                    <>
+                      {paginatedMonthly.length > 0 ? (
+                        <View style={styles.monthlyBreakdownList}>
+                          {paginatedMonthly.map((row, idx) => {
+                            const total = row.activeOngoing + row.pending + row.settled;
+                            return (
+                              <View key={row.monthKey} style={[styles.monthlyBreakdownItem, idx > 0 && { borderTopWidth: 1, borderTopColor: t.border, paddingTop: 10 }]}>
+                                <View style={styles.monthlyBreakdownHeader}>
+                                  <Text style={[styles.monthlyMonthText, { color: t.textPrimary }]}>{row.monthName}</Text>
+                                  <Text style={[styles.monthlyTotalText, { color: t.textPrimary }]}>{formatCurrency(total)}</Text>
+                                </View>
+                                
+                                <View style={styles.monthlyStatusesContainer}>
+                                  {row.activeOngoing > 0 && (
+                                    <View style={[styles.monthlyStatusPill, { borderColor: t.border, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)' }]}>
+                                      <View style={[styles.statusMiniDot, { backgroundColor: '#f59e0b' }]} />
+                                      <Text style={styles.monthlyStatusLabel}>Active: </Text>
+                                      <Text style={[styles.monthlyStatusVal, { color: t.textPrimary }]}>{formatCurrency(row.activeOngoing)}</Text>
+                                    </View>
+                                  )}
+                                  {row.pending > 0 && (
+                                    <View style={[styles.monthlyStatusPill, { borderColor: t.border, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)' }]}>
+                                      <View style={[styles.statusMiniDot, { backgroundColor: '#3b82f6' }]} />
+                                      <Text style={styles.monthlyStatusLabel}>Pending: </Text>
+                                      <Text style={[styles.monthlyStatusVal, { color: t.textPrimary }]}>{formatCurrency(row.pending)}</Text>
+                                    </View>
+                                  )}
+                                  {row.settled > 0 && (
+                                    <View style={[styles.monthlyStatusPill, { borderColor: t.border, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)' }]}>
+                                      <View style={[styles.statusMiniDot, { backgroundColor: '#10b981' }]} />
+                                      <Text style={styles.monthlyStatusLabel}>Settled: </Text>
+                                      <Text style={[styles.monthlyStatusVal, { color: t.textPrimary }]}>{formatCurrency(row.settled)}</Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <Text style={[styles.emptyText, { paddingVertical: 10 }]}>No monthly repayments match filters.</Text>
+                      )}
+
+                      {/* Monthly Pagination Controls */}
+                      {monthlyTotalPages > 1 && (
+                        <View style={styles.monthlyPaginationContainer}>
+                          <TouchableOpacity
+                            disabled={safeMonthlyPage === 1}
+                            onPress={() => setMonthlyPage(prev => Math.max(1, prev - 1))}
+                            style={[
+                              styles.monthlyPaginationBtn, 
+                              { borderColor: t.cardBorder, backgroundColor: t.cardBg }, 
+                              safeMonthlyPage === 1 && { opacity: 0.4 }
+                            ]}
+                          >
+                            <Text style={[styles.monthlyPaginationBtnText, { color: t.textPrimary }]}>Prev</Text>
+                          </TouchableOpacity>
+                          
+                          <Text style={[styles.monthlyPaginationInfo, { color: t.textSecondary }]}>
+                            Page {safeMonthlyPage} of {monthlyTotalPages}
+                          </Text>
+                          
+                          <TouchableOpacity
+                            disabled={safeMonthlyPage === monthlyTotalPages}
+                            onPress={() => setMonthlyPage(prev => Math.min(monthlyTotalPages, prev + 1))}
+                            style={[
+                              styles.monthlyPaginationBtn, 
+                              { borderColor: t.cardBorder, backgroundColor: t.cardBg }, 
+                              safeMonthlyPage === monthlyTotalPages && { opacity: 0.4 }
+                            ]}
+                          >
+                            <Text style={[styles.monthlyPaginationBtnText, { color: t.textPrimary }]}>Next</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
+                  );
+                })()}
               </View>
 
               {/* Action Controls */}
@@ -461,12 +859,14 @@ export default function AdminClientsScreen() {
                 <TouchableOpacity
                   style={[styles.modalActionBtn, { backgroundColor: t.accentLight, borderColor: t.accent }]}
                   onPress={() => {
-                    setNewLimitValue(selectedClient.limit.toString());
-                    setIsAdjustLimitOpen(true);
+                    setEditName(selectedClient.name);
+                    setEditEmail(selectedClient.email);
+                    setEditMobile(selectedClient.mobile_number || selectedClient.mobileNumber || '');
+                    setIsEditProfileOpen(true);
                   }}
                 >
-                  <Sliders size={16} color={t.accent} />
-                  <Text style={[styles.modalActionText, { color: t.accent }]}>Adjust Credit Limit</Text>
+                  <Pencil size={16} color={t.accent} />
+                  <Text style={[styles.modalActionText, { color: t.accent }]}>Edit Client Profile</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -479,90 +879,248 @@ export default function AdminClientsScreen() {
               </View>
 
               {/* Active Orders Section */}
-              <Text style={styles.listHeaderTitle}>Installment Orders ({selectedClient.orders.length})</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <Text style={styles.listHeaderTitle}>Installment Orders ({filteredOrders.length})</Text>
+              </View>
+
+              {/* Order Search Bar */}
+              <View style={[styles.orderSearchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Search size={16} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.orderSearchInput, { color: t.textPrimary }]}
+                  placeholder="Search orders by item name..."
+                  placeholderTextColor={t.textSecondary}
+                  value={orderSearchQuery}
+                  onChangeText={(text) => {
+                    setOrderSearchQuery(text);
+                    setOrderPage(1);
+                  }}
+                />
+                {orderSearchQuery ? (
+                  <TouchableOpacity onPress={() => {
+                    setOrderSearchQuery('');
+                    setOrderPage(1);
+                  }}>
+                    <X size={14} color={t.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {/* Order Filter Tabs */}
+              <View style={styles.orderFilterTabsContainer}>
+                {(['all', 'active', 'completed'] as const).map((filter) => (
+                  <TouchableOpacity
+                    key={filter}
+                    style={[
+                      styles.orderTabBtn,
+                      orderFilter === filter && { backgroundColor: t.accentLight, borderColor: t.accent }
+                    ]}
+                    onPress={() => {
+                      setOrderFilter(filter);
+                      setOrderPage(1);
+                    }}
+                  >
+                    <Text style={[styles.orderTabBtnText, { color: orderFilter === filter ? t.accent : t.textSecondary }]}>
+                      {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <View style={styles.ordersListCol}>
-                {selectedClient.orders.length > 0 ? (
-                  selectedClient.orders.map((order: any) => (
-                    <View key={order.id} style={[styles.orderSubCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                      <View style={styles.orderSubCardHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.orderSubCardItem, { color: t.textPrimary }]}>{order.itemName}</Text>
-                          <Text style={styles.orderSubCardDate}>Assigned: {formatDate(order.orderDate)}</Text>
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: order.isPaid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                          <Text style={[styles.statusBadgeText, { color: order.isPaid ? '#10b981' : '#ee4d2d' }]}>
-                            {order.isPaid ? 'Paid' : 'Active'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={[styles.clientCardDivider, { backgroundColor: t.border }]} />
-
-                      {/* Payment Schedule listing */}
-                      <Text style={styles.scheduleTitleText}>Payments Breakdown ({order.installmentMonths} Terms)</Text>
-                      <View style={styles.paymentsDetailList}>
-                        {order.payments.map((payment: any, index: number) => {
-                          const isOverdue = !payment.is_paid && new Date(payment.due_date) < new Date();
-                          return (
-                            <View key={payment.id} style={styles.paymentDetailItem}>
-                              <View style={styles.paymentLeft}>
-                                <View style={[styles.paymentNumCircle, payment.is_paid ? { backgroundColor: '#10b981' } : (isOverdue ? { backgroundColor: '#ef4444' } : { backgroundColor: t.border })]}>
-                                  <Text style={styles.paymentNumText}>{payment.month_number}</Text>
-                                </View>
-                                <View>
-                                  <Text style={[styles.paymentDueText, { color: t.textPrimary }]}>Term {payment.month_number} Due Date</Text>
-                                  <Text style={styles.paymentDateText}>{formatDate(payment.due_date)}</Text>
-                                </View>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={[styles.paymentAmtText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
-                                <Text style={[styles.paymentStatusText, payment.is_paid ? { color: '#10b981' } : (isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })]}>
-                                  {payment.is_paid ? 'Cleared' : (isOverdue ? 'Overdue' : 'Unpaid')}
-                                </Text>
-                              </View>
+                {paginatedOrders.length > 0 ? (
+                  paginatedOrders.map((order: any) => {
+                    const isExpanded = expandedOrders[order.id];
+                    return (
+                      <View key={order.id} style={[styles.orderSubCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                        <TouchableOpacity
+                          style={styles.orderSubCardHeader}
+                          onPress={() => toggleOrderExpand(order.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.orderSubCardItem, { color: t.textPrimary }]}>{order.item_name}</Text>
+                            <Text style={styles.orderSubCardDate}>Assigned: {formatDate(order.order_date)}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+                              <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
+                                {order.is_paid ? 'Paid' : 'Active'}
+                              </Text>
                             </View>
-                          );
-                        })}
+                            {isExpanded ? (
+                              <ChevronUp size={16} color={t.textSecondary} />
+                            ) : (
+                              <ChevronDown size={16} color={t.textSecondary} />
+                            )}
+                          </View>
+                        </TouchableOpacity>
+
+                        {isExpanded && (
+                          <>
+                            <View style={[styles.clientCardDivider, { backgroundColor: t.border }]} />
+
+                            {/* Payment Schedule listing */}
+                            <Text style={styles.scheduleTitleText}>Payments Breakdown ({order.installment_months} Terms)</Text>
+                            <View style={styles.paymentsDetailList}>
+                              {order.payments.map((payment: any, index: number) => {
+                                const isOverdue = !payment.is_paid && new Date(payment.due_date) < new Date();
+                                return (
+                                  <View key={payment.id} style={styles.paymentDetailItem}>
+                                    <View style={styles.paymentLeft}>
+                                      <View style={[styles.paymentNumCircle, payment.is_paid ? { backgroundColor: '#10b981' } : (isOverdue ? { backgroundColor: '#ef4444' } : { backgroundColor: t.border })]}>
+                                        <Text style={styles.paymentNumText}>{payment.month_number}</Text>
+                                      </View>
+                                      <View>
+                                        <Text style={[styles.paymentDueText, { color: t.textPrimary }]}>Term {payment.month_number} Due Date</Text>
+                                        <Text style={styles.paymentDateText}>{formatDate(payment.due_date)}</Text>
+                                      </View>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                      <Text style={[styles.paymentAmtText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
+                                      <Text style={[styles.paymentStatusText, payment.is_paid ? { color: '#10b981' } : (isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })]}>
+                                        {payment.is_paid ? 'Cleared' : (isOverdue ? 'Overdue' : 'Unpaid')}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          </>
+                        )}
                       </View>
-                    </View>
-                  ))
+                    );
+                  })
                 ) : (
-                  <Text style={styles.emptyText}>No orders assigned to client.</Text>
+                  <Text style={styles.emptyText}>No orders match the selected filter.</Text>
                 )}
               </View>
+
+              {/* Order Pagination */}
+              {orderTotalPages > 1 && (
+                <View style={styles.orderPaginationContainer}>
+                  <TouchableOpacity
+                    disabled={orderPage === 1}
+                    onPress={() => setOrderPage(prev => Math.max(1, prev - 1))}
+                    style={[
+                      styles.orderPaginationBtn, 
+                      { borderColor: t.cardBorder, backgroundColor: t.cardBg }, 
+                      orderPage === 1 && { opacity: 0.4 }
+                    ]}
+                  >
+                    <Text style={[styles.orderPaginationBtnText, { color: t.textPrimary }]}>Prev</Text>
+                  </TouchableOpacity>
+                  
+                  <Text style={[styles.orderPaginationInfo, { color: t.textSecondary }]}>
+                    Page {orderPage} of {orderTotalPages}
+                  </Text>
+                  
+                  <TouchableOpacity
+                    disabled={orderPage === orderTotalPages}
+                    onPress={() => setOrderPage(prev => Math.min(orderTotalPages, prev + 1))}
+                    style={[
+                      styles.orderPaginationBtn, 
+                      { borderColor: t.cardBorder, backgroundColor: t.cardBg }, 
+                      orderPage === orderTotalPages && { opacity: 0.4 }
+                    ]}
+                  >
+                    <Text style={[styles.orderPaginationBtnText, { color: t.textPrimary }]}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </ScrollView>
           </SafeAreaView>
         </Modal>
       )}
 
-      {/* Adjust limit nested modal */}
-      <Modal visible={isAdjustLimitOpen} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1e293b' : '#ffffff' }]}>
-            <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Adjust Credit Limit</Text>
-            <Text style={[styles.modalDesc, { color: t.textSecondary }]}>
-              Set custom credit limit bounds for {selectedClient?.name}. Baseline allocation is typically ₱50,000.00.
-            </Text>
+      {/* Edit client profile nested modal - Redesigned to match Add New Order/Global Limit Modals */}
+      <Modal visible={isEditProfileOpen} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.editProfileSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+            <LinearGradient
+              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+              style={styles.sheetHero}
+            >
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={styles.sheetIconBadge}>
+                    <Pencil size={18} color="#ffffff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>CLIENT PROFILE</Text>
+                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Edit Credentials</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.editProfileHeroText, { color: t.textSecondary }]}>
+                Update profile credentials and contacts for {selectedClient?.name}.
+              </Text>
+            </LinearGradient>
 
-            <TextInput
-              style={[styles.input, { color: t.textPrimary, borderColor: t.border, marginTop: 16 }]}
-              placeholder="e.g. 75000"
-              keyboardType="numeric"
-              placeholderTextColor={t.textSecondary}
-              value={newLimitValue}
-              onChangeText={setNewLimitValue}
-            />
+            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+              <View style={styles.formSectionHeader}>
+                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Profile Details</Text>
+              </View>
 
-            <View style={[styles.modalButtons, { marginTop: 24 }]}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsAdjustLimitOpen(false)} disabled={actionLoading}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+              <View style={styles.inputGrid}>
+                {/* Full Name Input */}
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>FULL NAME</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary }]}
+                    placeholder="Full Name"
+                    placeholderTextColor={t.textSecondary}
+                    value={editName}
+                    onChangeText={setEditName}
+                  />
+                </View>
+
+                {/* Email Input */}
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>EMAIL ADDRESS</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary }]}
+                    placeholder="Email Address"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    placeholderTextColor={t.textSecondary}
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                  />
+                </View>
+
+                {/* Mobile Number Input */}
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>MOBILE NUMBER</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary }]}
+                    placeholder="Mobile Number"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={t.textSecondary}
+                    value={editMobile}
+                    onChangeText={setEditMobile}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
+                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: t.accent }]} onPress={handleAdjustLimitSubmit} disabled={actionLoading}>
-                <Text style={styles.confirmBtnText}>{actionLoading ? 'Updating...' : 'Save Limit'}</Text>
+              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditProfileSubmit} disabled={actionLoading}>
+                <CheckCircle2 size={16} color="#ffffff" />
+                <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -991,5 +1549,556 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: 'bold',
+  },
+  clientListAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  modalAvatarImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  spenderAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  listHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  viewModeContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: 1,
+  },
+  viewModeBtn: {
+    padding: 5,
+    borderRadius: 8,
+  },
+  clientGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  clientGridCard: {
+    width: '48%',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 14,
+    alignItems: 'center',
+    gap: 6,
+  },
+  clientGridAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginBottom: 4,
+  },
+  clientGridName: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  clientGridEmail: {
+    fontSize: 9,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  clientGridDivider: {
+    height: 1,
+    alignSelf: 'stretch',
+  },
+  clientGridDetails: {
+    alignSelf: 'stretch',
+    paddingTop: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  paginationBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  paginationBtnText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  paginationInfo: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  premiumProfileCard: {
+    borderRadius: 24,
+    borderWidth: 1.5,
+    padding: 20,
+    alignItems: 'center',
+  },
+  modalAvatarWrapper: {
+    position: 'relative',
+    marginBottom: 8,
+  },
+  statusDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+  },
+  modalRoleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginTop: 6,
+  },
+  modalRoleBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  premiumDivider: {
+    width: '100%',
+    height: 1,
+    marginVertical: 16,
+  },
+  contactDetailsGrid: {
+    alignSelf: 'stretch',
+    gap: 8,
+  },
+  contactCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  contactLabel: {
+    fontSize: 8,
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  contactVal: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  // Redesigned Detail & Edit Modal Styles
+  detailsHeroBanner: {
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 16 : 24,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  detailsHeroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  detailsHeroTitleCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  detailsHeroEyebrow: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  detailsHeroTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  detailsHeroCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailsHeroCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  detailsHeroAvatarWrapper: {
+    position: 'relative',
+  },
+  detailsHeroAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
+  detailsHeroStatusDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#10b981',
+    borderWidth: 2.5,
+  },
+  detailsHeroMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  detailsHeroName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  detailsHeroSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  detailsHeroId: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  contactCardContainer: {
+    borderRadius: 24,
+    borderWidth: 1.5,
+    padding: 20,
+    gap: 12,
+  },
+  editProfileSheet: {
+    borderRadius: 28,
+    borderWidth: 1.5,
+    width: '100%',
+    maxHeight: '92%',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 12,
+  },
+  sheetHero: {
+    padding: 18,
+    gap: 12,
+  },
+  sheetHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sheetTitleCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  sheetIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#ee4d2d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetEyebrow: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+  },
+  sheetTitle: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 0,
+    marginTop: 1,
+  },
+  sheetCloseButton: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCloseText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  editProfileHeroText: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  premiumFormContainer: {
+    padding: 18,
+    gap: 14,
+  },
+  formSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  formSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  inputGrid: {
+    gap: 10,
+  },
+  premiumInputCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 5,
+  },
+  premiumLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  premiumInput: {
+    minHeight: 32,
+    fontSize: 15,
+    fontWeight: '800',
+    paddingVertical: 0,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+  },
+  secondaryAction: {
+    flex: 1,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  primaryAction: {
+    flex: 1.5,
+    height: 48,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryActionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  orderFilterTabsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 10,
+  },
+  orderTabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  orderTabBtnText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  orderPaginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  orderPaginationBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  orderPaginationBtnText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  orderPaginationInfo: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  orderSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    height: 40,
+    paddingHorizontal: 12,
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  orderSearchInput: {
+    flex: 1,
+    fontSize: 12,
+    height: '100%',
+    paddingVertical: 0,
+  },
+  monthlyBreakdownCard: {
+    borderRadius: 24,
+    borderWidth: 1.5,
+    padding: 20,
+    gap: 8,
+  },
+  monthlyBreakdownList: {
+    gap: 12,
+  },
+  monthlyBreakdownItem: {
+    gap: 8,
+  },
+  monthlyBreakdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  monthlyMonthText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  monthlyTotalText: {
+    fontSize: 13,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+  },
+  monthlyStatusesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  monthlyStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  statusMiniDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  monthlyStatusLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  monthlyStatusVal: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  monthlyFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginVertical: 10,
+  },
+  monthlyTabsScroll: {
+    gap: 6,
+    alignItems: 'center',
+  },
+  monthlyTabBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  monthlyTabBtnText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  monthlyYearInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    height: 32,
+    paddingHorizontal: 8,
+    gap: 6,
+    width: 100,
+  },
+  monthlyYearInput: {
+    flex: 1,
+    fontSize: 10,
+    height: '100%',
+    paddingVertical: 0,
+  },
+  monthlyPaginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  monthlyPaginationBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  monthlyPaginationBtnText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  monthlyPaginationInfo: {
+    fontSize: 10,
+    fontWeight: '600',
   },
 });
