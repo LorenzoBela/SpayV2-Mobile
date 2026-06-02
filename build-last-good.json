@@ -1,9 +1,0 @@
-﻿{
-    "timestamp":  "2026-06-02T08:48:45.5721094+08:00",
-    "ndkVersion":  null,
-    "androidHome":  "C:\\Users\\Lorenzo Bela\\AppData\\Local\\Android\\Sdk",
-    "ndkHome":  "C:\\Users\\Lorenzo Bela\\AppData\\Local\\Android\\Sdk\\ndk\\26.1.10909125",
-    "javaHome":  "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\",
-    "nodeBinary":  "C:\\Program Files\\nodejs\\node.exe",
-    "androidStl":  "c++_shared"
-}

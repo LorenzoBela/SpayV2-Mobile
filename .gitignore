@@ -31,6 +31,8 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
 .env*.local
 
 # typescript
@@ -39,3 +41,20 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Build Cache
+.build-cache/
+
+# Local build configuration files
+build-config.json
+build-last-good.json
+
+# Build outputs and APKs
+APK/
+apk_backup/
+*.apk
+*.aab
+
+# Editor & AI settings
+.claude/
+
