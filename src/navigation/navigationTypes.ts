@@ -5,6 +5,11 @@ export type RootStackParamList = {
   Main: undefined;
   RoleSelect: undefined;
   Admin: undefined;
+  Reports: undefined;
+  Budget: undefined;
+  Calendar: undefined;
+  Settings: undefined;
+  Profile: undefined;
 };
 
 export type AuthStackParamList = {
@@ -13,10 +18,10 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Dashboard: undefined;
+  Orders: undefined;
   Payments: undefined;
-  Budget: undefined;
   Notifications: undefined;
-  Profile: undefined;
+  More: undefined;
 };
 
 export const RoleContext = React.createContext<{

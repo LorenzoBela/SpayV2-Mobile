@@ -145,9 +145,13 @@ export async function registerForTrayNotifications(userId: string) {
 }
 
 export async function fetchNotifications(limit = 100) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -156,28 +160,40 @@ export async function fetchNotifications(limit = 100) {
 }
 
 export async function markNotificationRead(notificationId: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
   const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
-    .eq('id', notificationId);
+    .eq('id', notificationId)
+    .eq('user_id', user.id);
 
   if (error) throw error;
 }
 
 export async function markAllNotificationsRead() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
   const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
+    .eq('user_id', user.id)
     .is('read_at', null);
 
   if (error) throw error;
 }
 
 export async function clearNotification(notificationId: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
   const { error } = await supabase
     .from('notifications')
     .delete()
-    .eq('id', notificationId);
+    .eq('id', notificationId)
+    .eq('user_id', user.id);
 
   if (error) throw error;
 }
@@ -211,8 +227,9 @@ export function subscribeToRealtimeNotifications(
   userId: string,
   onNotification: (notification: AppNotification) => void
 ) {
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const channel = supabase
-    .channel(`mobile-notifications-${userId}`)
+    .channel(`mobile-notifications-${userId}-${uniqueId}`)
     .on(
       'postgres_changes',
       {

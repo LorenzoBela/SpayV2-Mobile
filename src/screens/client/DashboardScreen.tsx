@@ -9,6 +9,7 @@ import {
   StatusBar,
   Image,
   Animated,
+  Easing,
   Dimensions,
   Modal,
   TextInput,
@@ -195,6 +196,11 @@ interface FlipCardProps {
   label: string;
 }
 
+const FLIP_PHASE_MS = 330;
+const FLIP_TOTAL_MS = FLIP_PHASE_MS * 2;
+const flipEaseIn = Easing.bezier(0.42, 0, 1, 1);
+const flipEaseOut = Easing.bezier(0, 0, 0.58, 1);
+
 const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   const format = (val: number) => String(val).padStart(2, '0');
   const newValue = format(value);
@@ -206,10 +212,11 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [topRevealed, setTopRevealed] = useState(false);
 
-  const animatedValue = useRef(new Animated.Value(1)).current;
+  const topFlipProgress = useRef(new Animated.Value(1)).current;
+  const bottomFlipProgress = useRef(new Animated.Value(1)).current;
   const lastValueRef = useRef(newValue);
   const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const topTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (newValue !== lastValueRef.current) {
@@ -217,25 +224,39 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
       setCurrent(newValue);
       setIsAnimating(true);
       setTopRevealed(false);
-      animatedValue.setValue(0);
+      topFlipProgress.stopAnimation();
+      bottomFlipProgress.stopAnimation();
+      topFlipProgress.setValue(0);
+      bottomFlipProgress.setValue(0);
 
-      Animated.timing(animatedValue, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.timing(topFlipProgress, {
+          toValue: 1,
+          duration: FLIP_PHASE_MS,
+          easing: flipEaseIn,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.delay(FLIP_PHASE_MS),
+          Animated.timing(bottomFlipProgress, {
+            toValue: 1,
+            duration: FLIP_PHASE_MS,
+            easing: flipEaseOut,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
 
-      // Reveal new number on top half only after the old flap has folded away
-      if (topTimerRef.current) clearTimeout(topTimerRef.current);
-      topTimerRef.current = setTimeout(() => {
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = setTimeout(() => {
         setTopRevealed(true);
-      }, 300);
+      }, FLIP_PHASE_MS);
 
-      // Clear animation state after the full flip completes
       if (animTimerRef.current) clearTimeout(animTimerRef.current);
       animTimerRef.current = setTimeout(() => {
         setIsAnimating(false);
-      }, 620);
+        setTopRevealed(false);
+      }, FLIP_TOTAL_MS);
 
       lastValueRef.current = newValue;
     }
@@ -244,14 +265,15 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   useEffect(() => {
     return () => {
       if (animTimerRef.current) clearTimeout(animTimerRef.current);
-      if (topTimerRef.current) clearTimeout(topTimerRef.current);
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      topFlipProgress.stopAnimation();
+      bottomFlipProgress.stopAnimation();
     };
   }, []);
 
-  // Top static shows previous until the old flap has folded away, then reveals current
-  const topStaticValue = topRevealed || !isAnimating ? current : previous;
-  // Bottom static shows previous during animation, then current after
   const showFlip = previous !== current;
+  const activeFlip = showFlip && isAnimating;
+  const topStaticValue = isAnimating && !topRevealed ? previous : current;
   const bottomStaticValue = isAnimating ? previous : current;
 
   // Theme-derived card layout variables
@@ -262,46 +284,44 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   const cardBorderColor = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
   const labelColor = isDarkMode ? '#64748b' : '#475569';
 
-  // Rotations — split into two halves of the animation timeline
-  const rotateTop = animatedValue.interpolate({
-    inputRange: [0, 0.5],
+  // Rotations mirror the web card's separate top and bottom phases.
+  const rotateTop = topFlipProgress.interpolate({
+    inputRange: [0, 1],
     outputRange: ['0deg', '-90deg'],
-    extrapolate: 'clamp',
   });
 
-  const rotateBottom = animatedValue.interpolate({
-    inputRange: [0.5, 1],
+  const rotateBottom = bottomFlipProgress.interpolate({
+    inputRange: [0, 1],
     outputRange: ['90deg', '0deg'],
-    extrapolate: 'clamp',
   });
 
-  // Opacity: top flap visible first half, bottom flap visible second half
-  const opacityTop = animatedValue.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [1, 0, 0],
+  // Keep each flap visible through its own phase to avoid midpoint flicker.
+  const opacityTop = topFlipProgress.interpolate({
+    inputRange: [0, 0.98, 1],
+    outputRange: [1, 1, 0],
   });
 
-  const opacityBottom = animatedValue.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 0, 1],
+  const opacityBottom = bottomFlipProgress.interpolate({
+    inputRange: [0, 0.02, 1],
+    outputRange: [0, 1, 1],
   });
 
   return (
     <View style={styles.flipCardCol}>
       <View style={styles.flipCard}>
         <View style={[styles.flipCardOuter, { backgroundColor: cardBgTop, borderColor: cardBorderColor }]}>
-          {/* 1. Top Static — shows previous until halfway, then reveals current */}
+          {/* 1. Top Static - reveal the new value only after the top flap folds away */}
           <View style={[styles.topHalfContainer, { backgroundColor: cardBgTop }]}>
             <Text style={[styles.topText, { color: textColorTop }]}>{topStaticValue}</Text>
           </View>
 
-          {/* 2. Bottom Static — shows previous during animation, current after */}
+          {/* 2. Bottom Static - web keeps the old bottom half until the flip ends */}
           <View style={[styles.bottomHalfContainer, { backgroundColor: cardBgBottom }]}>
             <Text style={[styles.bottomText, { color: textColorBottom }]}>{bottomStaticValue}</Text>
           </View>
 
           {/* 3. Animated Top Flap (old value flipping away) */}
-          {showFlip && (
+          {activeFlip && (
             <Animated.View
               style={[
                 {
@@ -311,8 +331,12 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
                   right: 0,
                   height: 26,
                   opacity: opacityTop,
-                  transform: [{ rotateX: rotateTop }],
-                  transformOrigin: 'bottom',
+                  transform: [
+                    { perspective: 400 },
+                    { translateY: 13 },
+                    { rotateX: rotateTop },
+                    { translateY: -13 },
+                  ],
                   zIndex: 3,
                   backfaceVisibility: 'hidden',
                 } as any
@@ -325,7 +349,7 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
           )}
 
           {/* 4. Animated Bottom Flap (new value flipping into place) */}
-          {showFlip && (
+          {activeFlip && (
             <Animated.View
               style={[
                 {
@@ -335,8 +359,12 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
                   right: 0,
                   height: 26,
                   opacity: opacityBottom,
-                  transform: [{ rotateX: rotateBottom }],
-                  transformOrigin: 'top',
+                  transform: [
+                    { perspective: 400 },
+                    { translateY: -13 },
+                    { rotateX: rotateBottom },
+                    { translateY: 13 },
+                  ],
                   zIndex: 2,
                   backfaceVisibility: 'hidden',
                 } as any
@@ -501,11 +529,11 @@ function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
 
 // Main Component
 export default function DashboardScreen() {
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
+  const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
 
   // Profile States
-  const [userName, setUserName] = useState('Client Rider');
+  const [userName, setUserName] = useState('Client User');
   const [userEmail, setUserEmail] = useState('client@spay.com');
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
 
@@ -602,7 +630,7 @@ export default function DashboardScreen() {
   }, [loading, error]);
 
   // Demo Fallback Data Setup
-  const setDemoData = (name = 'Client Rider', email = 'client@spay.com', photo: string | null = null) => {
+  const setDemoData = (name = 'Client User', email = 'client@spay.com', photo: string | null = null) => {
     setUserName(name);
     setUserEmail(email);
     setUserPhoto(photo);
@@ -688,14 +716,15 @@ export default function DashboardScreen() {
       const profileEmail = profile?.email || user.email || 'client@spay.com';
       const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
 
-      // Check account limit
-      const { data: limitData } = await supabase
-        .from('account_limits')
-        .select('credit_limit')
-        .eq('user_id', user.id)
-        .single();
+      // Fetch global shared credit limit and global available credit matching web
+      const { data: globalStats, error: globalStatsErr } = await supabase
+        .rpc('get_global_shared_limits');
 
-      const creditLimit = limitData ? parseFloat(limitData.credit_limit) : 150000.0;
+      if (globalStatsErr) throw globalStatsErr;
+
+      const globalLimit = globalStats && globalStats[0] ? parseFloat(globalStats[0].credit_limit_total) : 250000.0;
+      const globalUnpaid = globalStats && globalStats[0] ? parseFloat(globalStats[0].unpaid_amount_total) : 65000.0;
+      const globalAvailable = Math.max(0, globalLimit - globalUnpaid);
 
       // Check orders
       const { data: dbOrders, error: ordersError } = await supabase
@@ -744,13 +773,12 @@ export default function DashboardScreen() {
       });
 
       const unpaidAmount = allPayments.reduce((sum, p) => p.isPaid ? sum : sum + p.amountDue, 0);
-      const availableCredit = Math.max(0, creditLimit - unpaidAmount);
 
       setUserName(profileName);
       setUserEmail(profileEmail);
       setUserPhoto(photoUrl);
-      setGlobalCreditLimit(creditLimit);
-      setGlobalAvailableCredit(availableCredit);
+      setGlobalCreditLimit(globalLimit);
+      setGlobalAvailableCredit(globalAvailable);
       setIsDemo(false);
 
       // Process next monthly payment
@@ -996,7 +1024,7 @@ export default function DashboardScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
 
       {/* Premium Header Bar */}

@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   Alert,
   StatusBar,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Phone, Fingerprint, LogOut, LayoutDashboard, Sun, Moon } from 'lucide-react-native';
@@ -16,6 +18,11 @@ import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+
+const BIOMETRIC_EMAIL_KEY = 'biometric_email';
+const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
+const BIOMETRIC_PROVIDER_KEY = 'biometric_provider';
+const BIOMETRIC_PIN_KEY = 'biometric_pin';
 
 interface UserProfile {
   name: string;
@@ -28,14 +35,18 @@ export default function ProfileScreen() {
   const { setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const [profile, setProfile] = useState<UserProfile>({
-    name: 'Client Rider',
-    email: 'rider@spay.com',
+    name: 'Client User',
+    email: 'client@spay.com',
     role: 'CLIENT',
     mobile: '+63 912 345 6789',
   });
   const [loading, setLoading] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [savingBiometrics, setSavingBiometrics] = useState(false);
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
 
   // Dynamic theme colors
   const t = {
@@ -78,9 +89,8 @@ export default function ProfileScreen() {
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
       setIsBiometricSupported(hasHardware && isEnrolled);
 
-      const savedEmail = await SecureStore.getItemAsync('biometric_email');
-      const savedPassword = await SecureStore.getItemAsync('biometric_password');
-      setBiometricsEnabled(!!(savedEmail && savedPassword));
+      const savedEmail = await SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY);
+      setBiometricsEnabled(!!savedEmail);
     } catch (error) {
       console.warn('Error loading profile settings, using fallback placeholders:', error);
     } finally {
@@ -99,48 +109,72 @@ export default function ProfileScreen() {
     }
 
     if (value) {
-      // User is enabling biometrics. We prompt for current password to save it securely
-      Alert.prompt(
-        'Confirm Password',
-        'Enter your S-Pay account password to enable secure biometric login.',
-        async (password) => {
-          if (!password) {
-            setBiometricsEnabled(false);
-            return;
-          }
-
-          // Test biometrics first
-          const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: 'Verify identity to enable biometrics',
-          });
-
-          if (result.success) {
-            try {
-              await SecureStore.setItemAsync('biometric_email', profile.email);
-              await SecureStore.setItemAsync('biometric_password', password);
-              setBiometricsEnabled(true);
-              Alert.alert('Biometrics Enabled', 'You can now sign in with biometric authentication.');
-            } catch (err) {
-              Alert.alert('Error', 'Failed to store security credentials.');
-              setBiometricsEnabled(false);
-            }
-          } else {
-            setBiometricsEnabled(false);
-          }
-        },
-        'secure-text'
-      );
+      setPin('');
+      setConfirmPin('');
+      setPinModalVisible(true);
     } else {
       // Disable biometrics by deleting stored credentials
       try {
-        await SecureStore.deleteItemAsync('biometric_email');
-        await SecureStore.deleteItemAsync('biometric_password');
+        await SecureStore.deleteItemAsync(BIOMETRIC_EMAIL_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PROVIDER_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PIN_KEY);
         setBiometricsEnabled(false);
         Alert.alert('Biometrics Disabled', 'Secure credentials have been cleared.');
       } catch (err) {
         Alert.alert('Error', 'Failed to clear security credentials.');
       }
     }
+  };
+
+  const handleEnableBiometrics = async () => {
+    if (!/^\d{6}$/.test(pin)) {
+      Alert.alert('PIN Required', 'Enter a 6-digit fallback PIN.');
+      return;
+    }
+
+    if (pin !== confirmPin) {
+      Alert.alert('PIN Mismatch', 'Enter the same 6-digit PIN in both fields.');
+      return;
+    }
+
+    try {
+      setSavingBiometrics(true);
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Verify identity to enable biometrics',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        setBiometricsEnabled(false);
+        return;
+      }
+
+      await SecureStore.setItemAsync(BIOMETRIC_EMAIL_KEY, profile.email);
+      await SecureStore.setItemAsync(BIOMETRIC_PROVIDER_KEY, 'google');
+      await SecureStore.setItemAsync(BIOMETRIC_PIN_KEY, pin);
+      await SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY);
+      setBiometricsEnabled(true);
+      setPinModalVisible(false);
+      setPin('');
+      setConfirmPin('');
+      Alert.alert('Biometrics Enabled', 'You can now unlock Google sign-in with biometrics or your fallback PIN.');
+    } catch (err: any) {
+      setBiometricsEnabled(false);
+      Alert.alert('Biometrics Not Enabled', err?.message || 'Failed to enable biometric sign-in.');
+    } finally {
+      setSavingBiometrics(false);
+    }
+  };
+
+  const closePinModal = () => {
+    if (savingBiometrics) return;
+    setPinModalVisible(false);
+    setPin('');
+    setConfirmPin('');
+    setBiometricsEnabled(false);
   };
 
   const handleSignOut = async () => {
@@ -157,7 +191,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
 
       {loading ? (
@@ -170,7 +204,7 @@ export default function ProfileScreen() {
           <View style={[styles.webHeader, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
             <View style={styles.webHeaderLeft}>
               <Text style={styles.webHeaderSubtitle}>S-Pay Profile</Text>
-              <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Rider Settings</Text>
+              <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Customer Settings</Text>
               <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
                 Manage your personal account credentials, mobile numbers, and biometrics secure login.
               </Text>
@@ -233,6 +267,7 @@ export default function ProfileScreen() {
               <Switch
                 value={biometricsEnabled}
                 onValueChange={handleToggleBiometrics}
+                disabled={savingBiometrics}
                 trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
                 thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
               />
@@ -262,6 +297,78 @@ export default function ProfileScreen() {
             <Text style={styles.signOutText}>Sign Out Account</Text>
           </TouchableOpacity>
         </View>
+
+          <Modal
+            visible={pinModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={closePinModal}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={[styles.pinModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Create Fallback PIN</Text>
+                <Text style={[styles.modalBody, { color: t.textSecondary }]}>
+                  Set a 6-digit PIN for this device in case biometric unlock fails.
+                </Text>
+                <TextInput
+                  value={pin}
+                  onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6-digit PIN"
+                  placeholderTextColor={t.textMuted}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={6}
+                  editable={!savingBiometrics}
+                  style={[
+                    styles.pinInput,
+                    {
+                      color: t.textPrimary,
+                      borderColor: t.cardBorder,
+                      backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+                    },
+                  ]}
+                />
+                <TextInput
+                  value={confirmPin}
+                  onChangeText={(value) => setConfirmPin(value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Confirm PIN"
+                  placeholderTextColor={t.textMuted}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={6}
+                  editable={!savingBiometrics}
+                  style={[
+                    styles.pinInput,
+                    {
+                      color: t.textPrimary,
+                      borderColor: t.cardBorder,
+                      backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+                    },
+                  ]}
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalCancelButton]}
+                    onPress={closePinModal}
+                    disabled={savingBiometrics}
+                  >
+                    <Text style={[styles.modalCancelText, { color: t.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalConfirmButton]}
+                    onPress={handleEnableBiometrics}
+                    disabled={savingBiometrics}
+                  >
+                    {savingBiometrics ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.modalConfirmText}>Enable</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
         </>
       )}
     </SafeAreaView>
@@ -446,5 +553,65 @@ const styles = StyleSheet.create({
     color: '#ee4d2d',
     fontSize: 15,
     fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pinModal: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  modalBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+  pinInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 14,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 3,
+    marginBottom: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalButton: {
+    minWidth: 92,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  modalCancelButton: {
+    backgroundColor: 'transparent',
+  },
+  modalConfirmButton: {
+    backgroundColor: '#ee4d2d',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalConfirmText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

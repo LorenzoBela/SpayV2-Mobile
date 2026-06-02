@@ -10,12 +10,16 @@ import {
   Animated,
   Pressable,
   Image,
+  Modal,
+  TextInput,
 } from 'react-native';
-import { Wallet, ShieldCheck, ChevronRight } from 'lucide-react-native';
+import { Wallet, ShieldCheck, ChevronRight, Fingerprint } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { GoogleAuth } from 'react-native-google-auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
 
@@ -23,6 +27,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Persistent storage key for the last logged-in user
 const LAST_ACCOUNT_KEY = 'spay-ledger:last-logged-account';
+const BIOMETRIC_EMAIL_KEY = 'biometric_email';
+const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
+const BIOMETRIC_PROVIDER_KEY = 'biometric_provider';
+const BIOMETRIC_PIN_KEY = 'biometric_pin';
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
 interface LastAccount {
@@ -83,16 +91,44 @@ function useEntryAnimation(delay = 0, duration = 320) {
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [lastAccount, setLastAccount] = useState<LastAccount | null>(null);
+  const [biometricEmail, setBiometricEmail] = useState<string | null>(null);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [fallbackPin, setFallbackPin] = useState('');
 
   // Load last logged-in account details on mount
   useEffect(() => {
-    AsyncStorage.getItem(LAST_ACCOUNT_KEY)
-      .then((raw) => {
+    let active = true;
+
+    const loadSavedSignInOptions = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(LAST_ACCOUNT_KEY);
         if (raw) {
           setLastAccount(JSON.parse(raw));
         }
-      })
-      .catch((err) => console.warn('Failed to load last account:', err));
+
+        const [hasHardware, isEnrolled, savedEmail, savedPassword, savedProvider, savedPin] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+          SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY),
+          SecureStore.getItemAsync(BIOMETRIC_PASSWORD_KEY),
+          SecureStore.getItemAsync(BIOMETRIC_PROVIDER_KEY),
+          SecureStore.getItemAsync(BIOMETRIC_PIN_KEY),
+        ]);
+
+        if (!active) return;
+        setBiometricEmail(savedEmail);
+        setBiometricAvailable(!!(hasHardware && isEnrolled && savedEmail && (savedPin || savedPassword || savedProvider === 'google')));
+      } catch (err) {
+        console.warn('Failed to load saved sign-in options:', err);
+      }
+    };
+
+    void loadSavedSignInOptions();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -192,6 +228,107 @@ export default function LoginScreen() {
     }
   };
 
+  const completeLocalUnlockSignIn = async () => {
+    const [email, password] = await Promise.all([
+      SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY),
+      SecureStore.getItemAsync(BIOMETRIC_PASSWORD_KEY),
+    ]);
+
+    if (!email) {
+      setBiometricAvailable(false);
+      setBiometricEmail(null);
+      Alert.alert('Sign-In Unavailable', 'Enable biometric sign-in again from your client settings.');
+      return;
+    }
+
+    if (!password) {
+      if (!GOOGLE_WEB_CLIENT_ID) {
+        throw new Error('Google Sign-In is missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.');
+      }
+
+      await handleGoogleSignIn({ silent: true });
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    await saveGoogleAccount({ email, name: email.split('@')[0] });
+  };
+
+  const handleBiometricSignIn = async () => {
+    try {
+      setLoading(true);
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Sign in to S-Pay',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) {
+        setLoading(false);
+        setFallbackPin('');
+        setPinModalVisible(true);
+        return;
+      }
+
+      await completeLocalUnlockSignIn();
+    } catch (error: any) {
+      if (error?.message?.toLowerCase?.().includes('invalid login credentials')) {
+        await SecureStore.deleteItemAsync(BIOMETRIC_EMAIL_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PROVIDER_KEY);
+        await SecureStore.deleteItemAsync(BIOMETRIC_PIN_KEY);
+        setBiometricAvailable(false);
+        setBiometricEmail(null);
+        Alert.alert('Biometric Sign-In Reset', 'Your saved password no longer works. Sign in with Google and enable biometrics again.');
+        return;
+      }
+
+      Alert.alert('Biometric Sign-In Failed', error?.message || 'Unable to sign in with biometrics.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFallbackPinSignIn = async () => {
+    try {
+      if (!/^\d{6}$/.test(fallbackPin)) {
+        Alert.alert('PIN Required', 'Enter your 6-digit fallback PIN.');
+        return;
+      }
+
+      setLoading(true);
+      const savedPin = await SecureStore.getItemAsync(BIOMETRIC_PIN_KEY);
+      if (!savedPin) {
+        setPinModalVisible(false);
+        setFallbackPin('');
+        Alert.alert('PIN Unavailable', 'Set up biometric sign-in again from your client settings.');
+        return;
+      }
+
+      if (fallbackPin !== savedPin) {
+        Alert.alert('Incorrect PIN', 'The fallback PIN you entered is incorrect.');
+        return;
+      }
+
+      setPinModalVisible(false);
+      setFallbackPin('');
+      await completeLocalUnlockSignIn();
+    } catch (error: any) {
+      Alert.alert('PIN Sign-In Failed', error?.message || 'Unable to sign in with your fallback PIN.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closePinModal = () => {
+    if (loading) return;
+    setPinModalVisible(false);
+    setFallbackPin('');
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -214,7 +351,9 @@ export default function LoginScreen() {
           </Text>
           <Text style={styles.welcomeSubtitle}>
             {lastAccount
-              ? 'Tap below to resume your secure session.'
+              ? biometricAvailable
+                ? 'Unlock your saved session with device biometrics.'
+                : 'Tap below to resume your secure session.'
               : 'Initialize a secure session to manage installments.'}
           </Text>
         </Animated.View>
@@ -222,7 +361,7 @@ export default function LoginScreen() {
         {/* Tappable Account Persistence Card or General Welcome Card */}
         {lastAccount ? (
           <Pressable
-            onPress={() => handleGoogleSignIn({ silent: true })}
+            onPress={() => biometricAvailable ? handleBiometricSignIn() : handleGoogleSignIn({ silent: true })}
             disabled={loading}
             style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: '100%' })}
           >
@@ -256,6 +395,14 @@ export default function LoginScreen() {
 
         {/* Bottom Actions Section with Premium Spring button */}
         <Animated.View style={[styles.bottomSection, bottomAnim.style]}>
+          {biometricAvailable && (
+            <BiometricSignInButton
+              email={biometricEmail}
+              onPress={handleBiometricSignIn}
+              loading={loading}
+              disabled={loading}
+            />
+          )}
           <GoogleSignInButton
             onPress={() => handleGoogleSignIn()}
             loading={loading && !lastAccount}
@@ -267,10 +414,57 @@ export default function LoginScreen() {
         <View style={styles.footer}>
           <ShieldCheck size={14} color="#64748b" style={styles.footerIcon} />
           <Text style={styles.footerText}>
-            Secure Sign-In via Google
+            Secure Sign-In via Google{biometricAvailable ? ', Biometrics, or PIN' : ''}
           </Text>
         </View>
       </View>
+
+      <Modal
+        visible={pinModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closePinModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.pinModal}>
+            <Text style={styles.pinModalTitle}>Use Fallback PIN</Text>
+            <Text style={styles.pinModalBody}>
+              Enter your 6-digit device PIN to unlock your saved Google sign-in.
+            </Text>
+            <TextInput
+              value={fallbackPin}
+              onChangeText={(value) => setFallbackPin(value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="6-digit PIN"
+              placeholderTextColor="#64748b"
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              editable={!loading}
+              style={styles.pinInput}
+            />
+            <View style={styles.pinModalActions}>
+              <Pressable
+                onPress={closePinModal}
+                disabled={loading}
+                style={({ pressed }) => [styles.pinCancelButton, { opacity: pressed ? 0.75 : 1 }]}
+              >
+                <Text style={styles.pinCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleFallbackPinSignIn}
+                disabled={loading}
+                style={({ pressed }) => [styles.pinConfirmButton, { opacity: loading ? 0.75 : pressed ? 0.86 : 1 }]}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.pinConfirmText}>Unlock</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -330,6 +524,47 @@ const GoogleSignInButton = ({ onPress, loading, disabled }: GoogleSignInButtonPr
           </View>
         )}
       </Animated.View>
+    </Pressable>
+  );
+};
+
+interface BiometricSignInButtonProps {
+  email: string | null;
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+}
+
+const BiometricSignInButton = ({ email, onPress, loading, disabled }: BiometricSignInButtonProps) => {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.biometricButton,
+        {
+          opacity: disabled ? 0.75 : pressed ? 0.86 : 1,
+        },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color="#ffffff" />
+      ) : (
+        <>
+          <View style={styles.biometricIconBadge}>
+            <Fingerprint size={20} color="#ffffff" />
+          </View>
+          <View style={styles.biometricTextWrap}>
+            <Text style={styles.biometricTitle}>Sign in with Biometrics</Text>
+            {!!email && (
+              <Text style={styles.biometricEmail} numberOfLines={1}>
+                {email}
+              </Text>
+            )}
+          </View>
+          <ChevronRight size={18} color="#fed7aa" />
+        </>
+      )}
     </Pressable>
   );
 };
@@ -522,6 +757,44 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     marginBottom: 16,
   },
+  biometricButton: {
+    backgroundColor: '#ee4d2d',
+    borderColor: '#fb8a6f',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    minHeight: 60,
+    width: '100%',
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  biometricIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  biometricTextWrap: {
+    flex: 1,
+    marginRight: 10,
+  },
+  biometricTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 0.2,
+  },
+  biometricEmail: {
+    color: '#fed7aa',
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 2,
+  },
   googleButton: {
     backgroundColor: '#161c2a',
     borderColor: '#2d3748',
@@ -559,5 +832,74 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'Jakarta-SemiBold',
     letterSpacing: 0.5,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  pinModal: {
+    backgroundColor: '#161c2a',
+    borderColor: '#2d3748',
+    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 20,
+  },
+  pinModalTitle: {
+    color: '#f8fafc',
+    fontSize: 18,
+    fontFamily: 'Outfit-Bold',
+    marginBottom: 8,
+  },
+  pinModalBody: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+  pinInput: {
+    color: '#f8fafc',
+    backgroundColor: '#0b0f19',
+    borderColor: '#2d3748',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    height: 50,
+    paddingHorizontal: 14,
+    fontSize: 18,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 3,
+    marginBottom: 18,
+  },
+  pinModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  pinCancelButton: {
+    minWidth: 92,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pinConfirmButton: {
+    minWidth: 92,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#ee4d2d',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pinCancelText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
+  },
+  pinConfirmText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
   },
 });

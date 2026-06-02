@@ -186,7 +186,7 @@ export default function BudgetScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
 
       {loading ? (

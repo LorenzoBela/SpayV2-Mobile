@@ -10,6 +10,8 @@ import {
   PieChart,
   Bell,
   User,
+  Menu,
+  ShoppingBag,
   HelpCircle,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -26,6 +28,11 @@ import PaymentsScreen from '../screens/client/PaymentsScreen';
 import BudgetScreen from '../screens/client/BudgetScreen';
 import ProfileScreen from '../screens/client/ProfileScreen';
 import NotificationsScreen from '../screens/client/NotificationsScreen';
+import ReportsScreen from '../screens/client/ReportsScreen';
+import OrdersScreen from '../screens/client/OrdersScreen';
+import CalendarScreen from '../screens/client/CalendarScreen';
+import SettingsScreen from '../screens/client/SettingsScreen';
+import MoreScreen from '../screens/client/MoreScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
@@ -43,10 +50,10 @@ import {
 // Map route names to Lucide icon components
 const TAB_ICONS: Record<string, LucideIcon> = {
   Dashboard: Wallet,
+  Orders: ShoppingBag,
   Payments: Receipt,
-  Budget: PieChart,
   Notifications: Bell,
-  Profile: User,
+  More: Menu,
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -97,10 +104,10 @@ const MainNavigator = () => {
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Orders" component={OrdersScreen} />
       <Tab.Screen name="Payments" component={PaymentsScreen} />
-      <Tab.Screen name="Budget" component={BudgetScreen} />
       <Tab.Screen name="Notifications" component={NotificationsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="More" component={MoreScreen} />
     </Tab.Navigator>
   );
 };
@@ -204,14 +211,18 @@ export default function AppNavigator() {
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
-      const target =
-        screen === 'Payments' || screen === 'Orders'
-          ? 'Payments'
-          : screen === 'Budget'
-            ? 'Budget'
-            : 'Notifications';
+      if (screen === 'Budget') {
+        navigationRef.current?.navigate('Budget');
+      } else {
+        const target =
+          screen === 'Payments'
+            ? 'Payments'
+            : screen === 'Orders'
+              ? 'Orders'
+              : 'Notifications';
 
-      navigationRef.current?.navigate('Main', { screen: target });
+        navigationRef.current?.navigate('Main', { screen: target });
+      }
     });
 
     return () => {
@@ -286,7 +297,14 @@ export default function AppNavigator() {
                       )}
                     </Stack.Screen>
                   ) : (
-                    <Stack.Screen name="Main" component={MainNavigator} />
+                    <>
+                      <Stack.Screen name="Main" component={MainNavigator} />
+                      <Stack.Screen name="Reports" component={ReportsScreen} />
+                      <Stack.Screen name="Budget" component={BudgetScreen} />
+                      <Stack.Screen name="Calendar" component={CalendarScreen} />
+                      <Stack.Screen name="Settings" component={SettingsScreen} />
+                      <Stack.Screen name="Profile" component={ProfileScreen} />
+                    </>
                   )
                 ) : (
                   <Stack.Screen name="Auth" component={AuthNavigator} />

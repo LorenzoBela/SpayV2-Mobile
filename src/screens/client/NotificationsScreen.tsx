@@ -1,15 +1,18 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   StatusBar,
+  Modal,
+  Dimensions,
+  Pressable,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Receipt,
   ShieldCheck,
@@ -20,8 +23,17 @@ import {
   BellOff,
   Sun,
   Moon,
+  X,
+  ExternalLink,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { FlashList } from '@shopify/flash-list';
+import { MotiView, AnimatePresence } from 'moti';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
 import {
   AppNotification,
   clearNotification,
@@ -34,11 +46,46 @@ import {
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 
-const TAB_ICONS: Record<NotificationCategory, LucideIcon> = {
-  PAYMENT_UPDATES: Receipt,
-  ALERTS: ShieldCheck,
-  ADS: Megaphone,
-  SYSTEM: Bell,
+const { width, height } = Dimensions.get('window');
+
+const CATEGORY_THEMES: Record<
+  NotificationCategory,
+  {
+    color: string;
+    bgColorLight: string;
+    bgColorDark: string;
+    label: string;
+    icon: LucideIcon;
+  }
+> = {
+  PAYMENT_UPDATES: {
+    color: '#ee4d2d',
+    bgColorLight: 'rgba(238, 77, 45, 0.06)',
+    bgColorDark: 'rgba(238, 77, 45, 0.12)',
+    label: 'Payments',
+    icon: Receipt,
+  },
+  ALERTS: {
+    color: '#ef4444',
+    bgColorLight: 'rgba(239, 68, 68, 0.06)',
+    bgColorDark: 'rgba(239, 68, 68, 0.12)',
+    label: 'Alerts',
+    icon: ShieldCheck,
+  },
+  ADS: {
+    color: '#3b82f6',
+    bgColorLight: 'rgba(59, 130, 246, 0.06)',
+    bgColorDark: 'rgba(59, 130, 246, 0.12)',
+    label: 'Ads',
+    icon: Megaphone,
+  },
+  SYSTEM: {
+    color: '#10b981',
+    bgColorLight: 'rgba(16, 185, 129, 0.06)',
+    bgColorDark: 'rgba(16, 185, 129, 0.12)',
+    label: 'System',
+    icon: Bell,
+  },
 };
 
 const TABS: Array<{ id: NotificationCategory; label: string }> = [
@@ -58,28 +105,50 @@ function formatTime(value: string) {
   return `${Math.floor(diffHours / 24)}d ago`;
 }
 
+function formatFullDate(value: string) {
+  const date = new Date(value);
+  return date.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function NotificationsScreen() {
+  const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<NotificationCategory>('PAYMENT_UPDATES');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
 
   // Dynamic theme colors
-  const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
-    headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
-    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
-    cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
-    cardUnreadBg: isDarkMode ? '#231f25' : '#fff7ed',
-    tabBorder: isDarkMode ? '#222d42' : '#e2e8f0',
-    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
-    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    textMuted: isDarkMode ? '#64748b' : '#94a3b8',
-    iconBtnBg: isDarkMode ? 'rgba(148,163,184,0.06)' : '#f1f5f9',
-    iconBtnBorder: isDarkMode ? 'rgba(148,163,184,0.1)' : '#e2e8f0',
-  };
+  const t = useMemo(
+    () => ({
+      bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+      headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+      headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
+      cardBg: isDarkMode ? '#131926' : '#ffffff',
+      cardBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
+      cardUnreadBg: isDarkMode ? 'rgba(238, 77, 45, 0.03)' : 'rgba(238, 77, 45, 0.02)',
+      cardUnreadBorder: isDarkMode ? 'rgba(238, 77, 45, 0.25)' : 'rgba(238, 77, 45, 0.15)',
+      textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
+      textSecondary: isDarkMode ? '#94a3b8' : '#475569',
+      textMuted: isDarkMode ? '#64748b' : '#94a3b8',
+      iconBtnBg: isDarkMode ? '#1e293b' : '#f1f5f9',
+      iconBtnBorder: isDarkMode ? '#334155' : '#e2e8f0',
+      tabBarBg: isDarkMode ? '#131926' : '#f1f5f9',
+      tabInactiveText: isDarkMode ? '#64748b' : '#64748b',
+      modalBg: isDarkMode ? '#131926' : '#ffffff',
+      modalOverlay: isDarkMode ? 'rgba(3, 7, 18, 0.65)' : 'rgba(15, 23, 42, 0.4)',
+      dragHandle: isDarkMode ? '#334155' : '#cbd5e1',
+    }),
+    [isDarkMode]
+  );
 
   const load = useCallback(async () => {
     try {
@@ -113,11 +182,14 @@ export default function NotificationsScreen() {
     };
   }, []);
 
+  // Compute unread counts per tab
   const counts = useMemo(
     () =>
       items.reduce(
         (acc, item) => {
-          acc[item.category] += 1;
+          if (!item.read_at) {
+            acc[item.category] += 1;
+          }
           return acc;
         },
         { PAYMENT_UPDATES: 0, ALERTS: 0, ADS: 0, SYSTEM: 0 } as Record<NotificationCategory, number>
@@ -125,28 +197,34 @@ export default function NotificationsScreen() {
     [items]
   );
 
-  const unreadCount = items.filter((item) => !item.read_at).length;
-  const visibleItems = items.filter((item) => item.category === activeTab);
+  const unreadCount = useMemo(() => items.filter((item) => !item.read_at).length, [items]);
+  const visibleItems = useMemo(() => items.filter((item) => item.category === activeTab), [items, activeTab]);
 
   const onRefresh = () => {
     setRefreshing(true);
     void load();
   };
 
-  const handleMarkRead = async (item: AppNotification) => {
-    if (item.read_at) return;
-    try {
-      await markNotificationRead(item.id);
-      setItems((current) =>
-        current.map((row) => (row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row))
-      );
-    } catch (error) {
-      console.warn('[NotificationsScreen] mark read failed:', error);
+  const handleItemPress = async (item: AppNotification) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedNotification(item);
+
+    if (!item.read_at) {
+      try {
+        await markNotificationRead(item.id);
+        setItems((current) =>
+          current.map((row) => (row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row))
+        );
+      } catch (error) {
+        console.warn('[NotificationsScreen] mark read failed:', error);
+      }
     }
   };
 
   const handleMarkAll = async () => {
+    if (unreadCount === 0) return;
     try {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await markAllNotificationsRead();
       const readAt = new Date().toISOString();
       setItems((current) => current.map((row) => ({ ...row, read_at: row.read_at || readAt })));
@@ -157,110 +235,367 @@ export default function NotificationsScreen() {
 
   const handleClear = async (id: string) => {
     try {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await clearNotification(id);
       setItems((current) => current.filter((row) => row.id !== id));
+      if (selectedNotification?.id === id) {
+        setSelectedNotification(null);
+      }
     } catch (error) {
       console.warn('[NotificationsScreen] clear failed:', error);
     }
   };
 
-  const renderItem = ({ item }: { item: AppNotification }) => {
+  const handleClearAllRead = async () => {
+    const readOfTab = visibleItems.filter((item) => item.read_at);
+    if (readOfTab.length === 0) return;
+
+    try {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      for (const item of readOfTab) {
+        await clearNotification(item.id);
+      }
+      setItems((current) =>
+        current.filter((row) => !(row.category === activeTab && row.read_at))
+      );
+    } catch (error) {
+      console.warn('[NotificationsScreen] clear all read failed:', error);
+    }
+  };
+
+  const handleTakeAction = () => {
+    if (
+      selectedNotification &&
+      selectedNotification.data &&
+      typeof selectedNotification.data.screen === 'string'
+    ) {
+      const screen = selectedNotification.data.screen;
+      const params = selectedNotification.data.params as any;
+      setSelectedNotification(null);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      navigation.navigate(screen, params);
+    }
+  };
+
+  const renderItem = ({ item, index }: { item: AppNotification; index: number }) => {
     const unread = !item.read_at;
+    const catTheme = CATEGORY_THEMES[item.category];
+    const IconComponent = catTheme.icon;
 
     return (
-      <TouchableOpacity
-        style={[
-          styles.card,
-          { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-          unread && { borderColor: 'rgba(238,77,45,0.7)', backgroundColor: t.cardUnreadBg },
-        ]}
-        activeOpacity={0.8}
-        onPress={() => handleMarkRead(item)}
+      <MotiView
+        from={{ opacity: 0, translateY: 20 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        transition={{ type: 'timing', duration: 400, delay: Math.min(index * 60, 400) }}
+        style={styles.cardContainer}
       >
-        <View style={styles.cardIcon}>
-          {React.createElement(TAB_ICONS[item.category] ?? Bell, { size: 20, color: '#ee4d2d' })}
-        </View>
-        <View style={styles.cardBody}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: t.textPrimary }]} numberOfLines={1}>{item.title}</Text>
-            {unread && <View style={styles.unreadDot} />}
+        <TouchableOpacity
+          style={[
+            styles.card,
+            { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+            unread && {
+              borderColor: t.cardUnreadBorder,
+              backgroundColor: t.cardUnreadBg,
+            },
+          ]}
+          activeOpacity={0.7}
+          onPress={() => handleItemPress(item)}
+        >
+          {/* Vertical Color Indicator */}
+          <View style={[styles.cardLeftAccent, { backgroundColor: catTheme.color }]} />
+
+          <View style={[styles.cardIcon, { backgroundColor: isDarkMode ? catTheme.bgColorDark : catTheme.bgColorLight }]}>
+            <IconComponent size={18} color={catTheme.color} />
           </View>
-          <Text style={[styles.cardText, { color: t.textSecondary }]}>{item.body}</Text>
-          <Text style={[styles.cardTime, { color: t.textMuted }]}>{formatTime(item.created_at)}</Text>
-        </View>
-        <TouchableOpacity style={styles.clearButton} onPress={() => handleClear(item.id)}>
-          <Trash2 size={17} color={t.textSecondary} />
+
+          <View style={styles.cardBody}>
+            <View style={styles.cardHeader}>
+              <Text
+                style={[
+                  styles.cardTitle,
+                  { color: t.textPrimary },
+                  unread && styles.cardTitleUnread,
+                ]}
+                numberOfLines={1}
+              >
+                {item.title}
+              </Text>
+              {unread && <View style={[styles.unreadBadge, { backgroundColor: catTheme.color }]} />}
+            </View>
+            <Text style={[styles.cardText, { color: t.textSecondary }]} numberOfLines={2}>
+              {item.body}
+            </Text>
+            <Text style={[styles.cardTime, { color: t.textMuted }]}>{formatTime(item.created_at)}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.clearButton, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }]}
+            onPress={() => handleClear(item.id)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Trash2 size={14} color={t.textMuted} />
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
+      </MotiView>
     );
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.headerBg} />
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
 
-      {/* Premium Header Bar */}
-      <View style={[styles.webHeader, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
-        <View style={styles.webHeaderLeft}>
-          <Text style={styles.webHeaderSubtitle}>S-Pay Messaging</Text>
-          <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Notifications</Text>
-          <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
-            Stay updated on auto-payment reminders, ledger approvals, and system notifications.
-          </Text>
+      {/* Premium Header */}
+      <View style={[styles.header, { borderColor: t.headerBorder }]}>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerSubtitle}>S-Pay Account</Text>
+          <View style={styles.titleRow}>
+            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Inbox</Text>
+            {unreadCount > 0 && (
+              <MotiView
+                from={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                style={styles.unreadCounterBadge}
+              >
+                <Text style={styles.unreadCounterText}>{unreadCount} new</Text>
+              </MotiView>
+            )}
+          </View>
         </View>
-        <View style={styles.webHeaderRight}>
+
+        <View style={styles.headerActions}>
           <TouchableOpacity
             style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
             onPress={toggleTheme}
+            activeOpacity={0.7}
           >
-            {isDarkMode ? <Sun size={16} color="#fbbf24" /> : <Moon size={16} color="#475569" />}
+            {isDarkMode ? <Sun size={15} color="#fbbf24" /> : <Moon size={15} color="#475569" />}
           </TouchableOpacity>
+
           {unreadCount > 0 && (
-            <TouchableOpacity style={styles.readAllButton} onPress={handleMarkAll}>
-              <CheckCheck size={18} color="#ffffff" />
+            <TouchableOpacity
+              style={[styles.headerIconBtn, { backgroundColor: 'rgba(238, 77, 45, 0.1)', borderColor: 'rgba(238, 77, 45, 0.2)' }]}
+              onPress={handleMarkAll}
+              activeOpacity={0.7}
+            >
+              <CheckCheck size={15} color="#ee4d2d" />
+            </TouchableOpacity>
+          )}
+
+          {visibleItems.some((i) => i.read_at) && (
+            <TouchableOpacity
+              style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+              onPress={handleClearAllRead}
+              activeOpacity={0.7}
+            >
+              <Trash2 size={15} color={t.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      <View style={styles.tabs}>
+      {/* Category Pills Slider */}
+      <View style={styles.tabsContainer}>
         {TABS.map((tab) => {
           const selected = activeTab === tab.id;
+          const catTheme = CATEGORY_THEMES[tab.id];
+          const unreadForCategory = counts[tab.id];
+
           return (
             <TouchableOpacity
               key={tab.id}
-              style={[styles.tab, { borderColor: t.tabBorder }, selected && styles.tabSelected]}
-              onPress={() => setActiveTab(tab.id)}
+              activeOpacity={0.8}
+              style={[
+                styles.tab,
+                { backgroundColor: t.tabBarBg },
+                selected && {
+                  backgroundColor: catTheme.color,
+                  shadowColor: catTheme.color,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.25,
+                  shadowRadius: 8,
+                  elevation: 4,
+                },
+              ]}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActiveTab(tab.id);
+              }}
             >
-              {React.createElement(TAB_ICONS[tab.id], { size: 15, color: selected ? '#ffffff' : t.textSecondary })}
-              <Text style={[styles.tabText, { color: t.textSecondary }, selected && styles.tabTextSelected]}>
-                {tab.label} {counts[tab.id] > 0 ? counts[tab.id] : ''}
+              <Text
+                style={[
+                  styles.tabText,
+                  { color: t.textSecondary },
+                  selected && styles.tabTextSelected,
+                ]}
+              >
+                {tab.label}
               </Text>
+              {unreadForCategory > 0 && (
+                <View style={[styles.tabBadge, selected ? styles.tabBadgeSelected : { backgroundColor: catTheme.color }]}>
+                  <Text style={[styles.tabBadgeText, selected && { color: catTheme.color }]}>
+                    {unreadForCategory}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           );
         })}
       </View>
 
+      {/* Main List Area */}
       {loading ? (
-        <View style={styles.loader}>
-          <ActivityIndicator color="#3b82f6" />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="small" color="#ee4d2d" />
         </View>
       ) : (
-        <FlatList
-          data={visibleItems}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />}
-          contentContainerStyle={[styles.listContent, visibleItems.length === 0 && styles.emptyList]}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <BellOff size={36} color={t.textMuted} />
-              <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>No notifications here</Text>
-              <Text style={[styles.emptyText, { color: t.textMuted }]}>New S-Pay updates will appear in this inbox and in your Android tray.</Text>
-            </View>
-          }
-        />
+        <View style={styles.listContainer}>
+          <FlashList
+            data={visibleItems}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#ee4d2d"
+                colors={['#ee4d2d']}
+              />
+            }
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <MotiView
+                from={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'timing', duration: 400 }}
+                style={styles.empty}
+              >
+                <View style={[styles.emptyIconCircle, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+                  <BellOff size={28} color={t.textMuted} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>All caught up</Text>
+                <Text style={[styles.emptyText, { color: t.textSecondary }]}>
+                  No notifications found under {CATEGORY_THEMES[activeTab].label.toLowerCase()}.
+                </Text>
+              </MotiView>
+            }
+          />
+        </View>
       )}
+
+      {/* Detail Slide-Up Modal */}
+      <Modal
+        visible={selectedNotification !== null}
+        transparent={true}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setSelectedNotification(null)}
+      >
+        <View style={styles.modalContainer}>
+          {Platform.OS === 'ios' ? (
+            <BlurView intensity={35} style={StyleSheet.absoluteFill} tint="dark" />
+          ) : (
+            <View style={[styles.modalOverlay, { backgroundColor: t.modalOverlay }]} />
+          )}
+
+          <Pressable style={styles.modalDismissClickArea} onPress={() => setSelectedNotification(null)} />
+
+          {selectedNotification && (
+            <View
+              style={[
+                styles.modalContent,
+                {
+                  backgroundColor: t.modalBg,
+                  paddingBottom: Math.max(insets.bottom, 16) + 12,
+                  maxHeight: height - insets.top - 40,
+                },
+              ]}
+            >
+              {/* Drag Handle Bar */}
+              <View style={[styles.modalHandle, { backgroundColor: t.dragHandle }]} />
+
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderTitleCol}>
+                  <View
+                    style={[
+                      styles.modalCategoryBadge,
+                      {
+                        backgroundColor: isDarkMode
+                          ? CATEGORY_THEMES[selectedNotification.category].bgColorDark
+                          : CATEGORY_THEMES[selectedNotification.category].bgColorLight,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.modalDot,
+                        { backgroundColor: CATEGORY_THEMES[selectedNotification.category].color },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.modalCategoryText,
+                        { color: CATEGORY_THEMES[selectedNotification.category].color },
+                      ]}
+                    >
+                      {CATEGORY_THEMES[selectedNotification.category].label.toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={[styles.modalFullDate, { color: t.textMuted }]}>
+                    {formatFullDate(selectedNotification.created_at)}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.closeButton, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}
+                  onPress={() => setSelectedNotification(null)}
+                  activeOpacity={0.7}
+                >
+                  <X size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.modalTitle, { color: t.textPrimary }]}>{selectedNotification.title}</Text>
+
+              <Text style={[styles.modalBody, { color: t.textSecondary }]}>{selectedNotification.body}</Text>
+
+              <View style={styles.modalFooterActions}>
+                {selectedNotification.data && typeof selectedNotification.data.screen === 'string' && (
+                  <TouchableOpacity
+                    style={styles.modalActionBtn}
+                    onPress={handleTakeAction}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={['#ee4d2d', '#ff6647']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.modalActionGradient}
+                    >
+                      <Text style={styles.modalActionBtnText}>View details</Text>
+                      <ChevronRight size={16} color="#ffffff" style={styles.actionIcon} />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.modalDeleteBtn,
+                    {
+                      borderColor: isDarkMode ? '#222d42' : '#e2e8f0',
+                      width: selectedNotification.data?.screen ? '32%' : '100%',
+                    },
+                  ]}
+                  onPress={() => handleClear(selectedNotification.id)}
+                  activeOpacity={0.7}
+                >
+                  <Trash2 size={16} color="#ef4444" />
+                  <Text style={styles.modalDeleteBtnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -269,167 +604,330 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  webHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
-    borderBottomWidth: 1.5,
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
   },
-  webHeaderLeft: {
+  headerTitleContainer: {
     flex: 1,
-    paddingRight: 12,
   },
-  webHeaderRight: {
+  headerSubtitle: {
+    fontSize: 10,
+    fontFamily: 'Jakarta-Bold',
+    color: '#ee4d2d',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: -0.5,
+  },
+  unreadCounterBadge: {
+    backgroundColor: 'rgba(238, 77, 45, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  unreadCounterText: {
+    color: '#ee4d2d',
+    fontSize: 11,
+    fontFamily: 'Jakarta-Bold',
+  },
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  webHeaderSubtitle: {
-    color: '#ee4d2d',
-    fontSize: 9,
-    fontFamily: 'Jakarta-Bold',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  webHeaderTitle: {
-    fontSize: 22,
-    fontFamily: 'Outfit-Bold',
-    marginTop: 2,
-    letterSpacing: -0.3,
-  },
-  webHeaderDesc: {
-    fontSize: 11,
-    fontFamily: 'Jakarta-Medium',
-    marginTop: 4,
-    lineHeight: 15,
-  },
   headerIconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  readAllButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: '#ee4d2d',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabs: {
+  tabsContainer: {
     flexDirection: 'row',
-    gap: 8,
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 12,
+    gap: 8,
   },
   tab: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 14,
-    borderWidth: 1,
+    flexDirection: 'row',
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 4,
-  },
-  tabSelected: {
-    backgroundColor: '#ee4d2d',
-    borderColor: '#ee4d2d',
+    paddingHorizontal: 8,
+    gap: 4,
   },
   tabText: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: 'Jakarta-Bold',
   },
   tabTextSelected: {
     color: '#ffffff',
   },
-  loader: {
+  tabBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  tabBadgeSelected: {
+    backgroundColor: '#ffffff',
+  },
+  tabBadgeText: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    color: '#ffffff',
+  },
+  centerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
+  listContainer: {
+    flex: 1,
   },
-  emptyList: {
-    flexGrow: 1,
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 40,
+  },
+  cardContainer: {
+    marginBottom: 10,
   },
   card: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  cardLeftAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   cardIcon: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: 'rgba(238,77,45,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   cardBody: {
     flex: 1,
+    paddingRight: 8,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
     flex: 1,
   },
-  unreadDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#ee4d2d',
+  cardTitleUnread: {
+    fontFamily: 'Jakarta-Bold',
+  },
+  unreadBadge: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   cardText: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 4,
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 2,
+    lineHeight: 16,
   },
   cardTime: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 8,
+    fontSize: 10,
+    fontFamily: 'Jakarta-Bold',
+    marginTop: 6,
   },
   clearButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
   },
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 32,
+    paddingTop: height * 0.15,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    marginTop: 12,
+    fontSize: 18,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 8,
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 18,
     marginTop: 6,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalDismissClickArea: {
+    flex: 1,
+  },
+  modalContent: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 20,
+  },
+  modalHandle: {
+    width: 36,
+    height: 5,
+    borderRadius: 2.5,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalHeaderTitleCol: {
+    flex: 1,
+  },
+  modalCategoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 5,
+  },
+  modalDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  modalCategoryText: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+  },
+  modalFullDate: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 6,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Outfit-Bold',
+    lineHeight: 26,
+    marginBottom: 12,
+  },
+  modalBody: {
+    fontSize: 13,
+    fontFamily: 'Jakarta-Medium',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalFooterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalActionBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  modalActionGradient: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  modalActionBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
+  },
+  actionIcon: {
+    marginTop: 1,
+  },
+  modalDeleteBtn: {
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  modalDeleteBtnText: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
   },
 });
