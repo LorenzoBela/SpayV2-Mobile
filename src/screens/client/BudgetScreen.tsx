@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import {
   StyleSheet,
@@ -38,6 +39,7 @@ import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes
 import { supabase } from '../../utils/supabase';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+
 
 interface BudgetCategory {
   id: string;
@@ -375,7 +377,7 @@ export default function BudgetScreen() {
   // Category Target Actions
   const handleAddCategory = async () => {
     if (!categoryName || !monthlyLimit) {
-      Alert.alert('Validation Error', 'Category name and limit are required.');
+      PremiumAlert.alert('Validation Error', 'Category name and limit are required.');
       return;
     }
     try {
@@ -395,7 +397,7 @@ export default function BudgetScreen() {
       }).select();
 
       if (error) throw error;
-      Alert.alert('Success', `Category "${categoryName}" added.`);
+      PremiumAlert.alert('Success', `Category "${categoryName}" added.`);
       setCatModalVisible(false);
       setCategoryName('');
       setMonthlyLimit('');
@@ -418,7 +420,7 @@ export default function BudgetScreen() {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    Alert.alert('Confirm Delete', 'Delete this budget category target?', [
+    PremiumAlert.alert('Confirm Delete', 'Delete this budget category target?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -439,7 +441,7 @@ export default function BudgetScreen() {
   // Savings Goals Actions
   const handleAddGoal = async () => {
     if (!goalName || !goalTarget) {
-      Alert.alert('Validation Error', 'Goal name and target amount are required.');
+      PremiumAlert.alert('Validation Error', 'Goal name and target amount are required.');
       return;
     }
     try {
@@ -460,7 +462,7 @@ export default function BudgetScreen() {
       });
 
       if (error) throw error;
-      Alert.alert('Success', `Savings goal "${goalName}" established.`);
+      PremiumAlert.alert('Success', `Savings goal "${goalName}" established.`);
       setGoalModalVisible(false);
       setGoalName('');
       setGoalTarget('');
@@ -487,7 +489,7 @@ export default function BudgetScreen() {
   };
 
   const handleDeleteGoal = async (id: string) => {
-    Alert.alert('Confirm Delete', 'Delete this savings goal?', [
+    PremiumAlert.alert('Confirm Delete', 'Delete this savings goal?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -535,7 +537,7 @@ export default function BudgetScreen() {
 
   const handleAddPlannedPurchase = () => {
     if (!plannerItemName || !plannerAmount) {
-      Alert.alert('Validation Error', 'Please enter item name and amount.');
+      PremiumAlert.alert('Validation Error', 'Please enter item name and amount.');
       return;
     }
 
@@ -556,7 +558,7 @@ export default function BudgetScreen() {
     setPlannerItemName('');
     setPlannerAmount('');
     setPlannerVisible(false);
-    Alert.alert('Added to Plan', `"${plannerItemName}" added to planned purchases.`);
+    PremiumAlert.alert('Added to Plan', `"${plannerItemName}" added to planned purchases.`);
   };
 
   // Custom Chart Render

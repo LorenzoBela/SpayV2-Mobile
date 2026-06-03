@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   StyleSheet,
@@ -46,8 +47,11 @@ import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes
 import PremiumLoader from '../../components/PremiumLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
+import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import dayjs from 'dayjs';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
+
 
 // Interfaces
 interface NextMonthlyPayment {
@@ -531,6 +535,7 @@ function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
+  const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
   const quickActionColumns = layout.isTablet ? 4 : 2;
   const quickActionWidth = layout.getGridItemWidth(quickActionColumns, 10);
@@ -944,13 +949,13 @@ export default function DashboardScreen() {
 
   // Quick Action Triggers
   const handleUploadProof = () => {
-    Alert.alert(
+    PremiumAlert.alert(
       'Upload Proof of Payment',
       'Select active payment to attach proof of ledger transfer.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Attach Proof Photo', onPress: () => {
-          Alert.alert('Success', 'Proof successfully uploaded. Verification is being processed by administration.');
+          PremiumAlert.alert('Success', 'Proof successfully uploaded. Verification is being processed by administration.');
         }}
       ]
     );
@@ -1559,6 +1564,12 @@ export default function DashboardScreen() {
           />
         </Animated.View>
       )}
+
+      <ExitConfirmationModal
+        visible={showExitModal}
+        onDismiss={() => setShowExitModal(false)}
+        onConfirm={handleExit}
+      />
     </SafeAreaView>
   );
 }

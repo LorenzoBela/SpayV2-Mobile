@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import {
   StyleSheet,
@@ -59,11 +60,14 @@ import { supabase } from '../../utils/supabase';
 import { useNavigation } from '@react-navigation/native';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
+import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import PremiumLoader from '../../components/PremiumLoader';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
 import dayjs from 'dayjs';
+
 
 // Helper functions
 const formatCurrency = (val: number | string) => {
@@ -265,6 +269,7 @@ export default function AdminDashboardScreen() {
   const navigation = useNavigation<any>();
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
 
   const [loading, setLoading] = useState(true);
@@ -744,7 +749,7 @@ export default function AdminDashboardScreen() {
 
   const handleScheduleOrderSubmit = async () => {
     if (!selectedClientId || !itemName || !orderAmount) {
-      Alert.alert('Incomplete Form', 'Please provide client selection, item name, and amount.');
+      PremiumAlert.alert('Incomplete Form', 'Please provide client selection, item name, and amount.');
       return;
     }
 
@@ -760,7 +765,7 @@ export default function AdminDashboardScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', `Installment scheduled for ${itemName}!`);
+        PremiumAlert.alert('Success', `Installment scheduled for ${itemName}!`);
         setIsNewOrderOpen(false);
         // Clear fields
         setSelectedClientId('');
@@ -770,10 +775,10 @@ export default function AdminDashboardScreen() {
         setFirstPaymentDate('');
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to schedule installment plan.');
+        PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server did not respond.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
     }
@@ -782,7 +787,7 @@ export default function AdminDashboardScreen() {
   const handleGlobalLimitSubmit = async () => {
     const limit = parseFloat(globalLimitAmount);
     if (isNaN(limit) || limit <= 0) {
-      Alert.alert('Invalid Input', 'Please provide a valid baseline limit amount.');
+      PremiumAlert.alert('Invalid Input', 'Please provide a valid baseline limit amount.');
       return;
     }
 
@@ -790,15 +795,15 @@ export default function AdminDashboardScreen() {
     try {
       const response = await callAdminApi('adjust-global-limit', { limit });
       if (response.success) {
-        Alert.alert('Success', `Global baseline limits allocated!`);
+        PremiumAlert.alert('Success', `Global baseline limits allocated!`);
         setIsGlobalLimitOpen(false);
         setGlobalLimitAmount('');
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to adjust global limits.');
+        PremiumAlert.alert('Error', response.error || 'Failed to adjust global limits.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server did not respond.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
     }
@@ -1763,6 +1768,12 @@ export default function AdminDashboardScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ExitConfirmationModal
+        visible={showExitModal}
+        onDismiss={() => setShowExitModal(false)}
+        onConfirm={handleExit}
+      />
     </SafeAreaView>
   );
 }

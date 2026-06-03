@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   View,
@@ -45,6 +46,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { ReportsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
+
 
 export default function ReportsScreen() {
   const navigation = useNavigation<any>();
@@ -648,7 +650,7 @@ export default function ReportsScreen() {
   // Native File sharing for CSV
   const handleExportCSV = async () => {
     if (compliancePayments.length === 0) {
-      Alert.alert('No Data', 'No payments found in current timeframe.');
+      PremiumAlert.alert('No Data', 'No payments found in current timeframe.');
       return;
     }
 
@@ -685,11 +687,11 @@ export default function ReportsScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export Ledger' });
       } else {
-        Alert.alert('Unavailable', 'Native sharing is not supported on this device.');
+        PremiumAlert.alert('Unavailable', 'Native sharing is not supported on this device.');
       }
     } catch (err) {
       console.warn('Failed to export CSV:', err);
-      Alert.alert('Error', 'An error occurred while generating the CSV ledger.');
+      PremiumAlert.alert('Error', 'An error occurred while generating the CSV ledger.');
     }
   };
 

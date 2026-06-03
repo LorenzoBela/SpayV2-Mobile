@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import {
   View,
@@ -37,6 +38,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { CalendarSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+
 
 export interface CalendarEvent {
   id: string;
@@ -523,7 +525,7 @@ export default function CalendarScreen() {
   // Native JSON Ledger Export
   const handleExportJSON = async () => {
     if (events.length === 0) {
-      Alert.alert('No Data', 'No payment schedules found to export.');
+      PremiumAlert.alert('No Data', 'No payment schedules found to export.');
       return;
     }
 
@@ -549,11 +551,11 @@ export default function CalendarScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Export Calendar Ledger' });
       } else {
-        Alert.alert('Unavailable', 'Native sharing is not supported on this device.');
+        PremiumAlert.alert('Unavailable', 'Native sharing is not supported on this device.');
       }
     } catch (err) {
       console.warn('Failed to export calendar ledger:', err);
-      Alert.alert('Error', 'An error occurred while generating the JSON ledger.');
+      PremiumAlert.alert('Error', 'An error occurred while generating the JSON ledger.');
     }
   };
 
@@ -569,12 +571,12 @@ export default function CalendarScreen() {
   // Submit Reschedule Proposal
   const handleSubmitReschedule = async () => {
     if (!reschedulePayment || !rescheduleDate || !rescheduleReason.trim()) {
-      Alert.alert('Validation Error', 'Please select a date and enter a reason.');
+      PremiumAlert.alert('Validation Error', 'Please select a date and enter a reason.');
       return;
     }
 
     if (!validateDate(rescheduleDate)) {
-      Alert.alert('Validation Error', 'Proposed due date must be in the future (YYYY-MM-DD).');
+      PremiumAlert.alert('Validation Error', 'Proposed due date must be in the future (YYYY-MM-DD).');
       return;
     }
 
@@ -649,7 +651,7 @@ export default function CalendarScreen() {
         }
       }
 
-      Alert.alert('Success', 'Reschedule request submitted successfully.');
+      PremiumAlert.alert('Success', 'Reschedule request submitted successfully.');
       setReschedulePayment(null);
       setSelectedEvent(null);
       setRescheduleDate('');
@@ -657,7 +659,7 @@ export default function CalendarScreen() {
       fetchCalendarPayments(); // refresh data
     } catch (e: any) {
       console.warn('Error rescheduling payment:', e);
-      Alert.alert('Error', e.message || 'An error occurred while submitting the request.');
+      PremiumAlert.alert('Error', e.message || 'An error occurred while submitting the request.');
     } finally {
       setSubmittingReschedule(false);
     }

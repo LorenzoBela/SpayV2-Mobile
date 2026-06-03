@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useContext, useEffect, useState } from 'react';
 import {
   StyleSheet,
@@ -31,6 +32,7 @@ import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 
+
 export default function MoreScreen() {
   const navigation = useNavigation<any>();
   const { userRole, setActiveRole } = useContext(RoleContext);
@@ -53,7 +55,7 @@ export default function MoreScreen() {
   }, []);
 
   const handleSignOut = async () => {
-    Alert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
+    PremiumAlert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',

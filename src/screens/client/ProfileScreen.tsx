@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useContext, useEffect, useState } from 'react';
 import {
   StyleSheet,
@@ -20,6 +21,7 @@ import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { ProfileSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+
 
 const BIOMETRIC_EMAIL_KEY = 'biometric_email';
 const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
@@ -106,7 +108,7 @@ export default function ProfileScreen() {
 
   const handleToggleBiometrics = async (value: boolean) => {
     if (!isBiometricSupported) {
-      Alert.alert('Unsupported', 'Biometric hardware is not available or enrolled on this device.');
+      PremiumAlert.alert('Unsupported', 'Biometric hardware is not available or enrolled on this device.');
       return;
     }
 
@@ -122,21 +124,21 @@ export default function ProfileScreen() {
         await SecureStore.deleteItemAsync(BIOMETRIC_PROVIDER_KEY);
         await SecureStore.deleteItemAsync(BIOMETRIC_PIN_KEY);
         setBiometricsEnabled(false);
-        Alert.alert('Biometrics Disabled', 'Secure credentials have been cleared.');
+        PremiumAlert.alert('Biometrics Disabled', 'Secure credentials have been cleared.');
       } catch (err) {
-        Alert.alert('Error', 'Failed to clear security credentials.');
+        PremiumAlert.alert('Error', 'Failed to clear security credentials.');
       }
     }
   };
 
   const handleEnableBiometrics = async () => {
     if (!/^\d{6}$/.test(pin)) {
-      Alert.alert('PIN Required', 'Enter a 6-digit fallback PIN.');
+      PremiumAlert.alert('PIN Required', 'Enter a 6-digit fallback PIN.');
       return;
     }
 
     if (pin !== confirmPin) {
-      Alert.alert('PIN Mismatch', 'Enter the same 6-digit PIN in both fields.');
+      PremiumAlert.alert('PIN Mismatch', 'Enter the same 6-digit PIN in both fields.');
       return;
     }
 
@@ -162,10 +164,10 @@ export default function ProfileScreen() {
       setPinModalVisible(false);
       setPin('');
       setConfirmPin('');
-      Alert.alert('Biometrics Enabled', 'You can now unlock Google sign-in with biometrics or your fallback PIN.');
+      PremiumAlert.alert('Biometrics Enabled', 'You can now unlock Google sign-in with biometrics or your fallback PIN.');
     } catch (err: any) {
       setBiometricsEnabled(false);
-      Alert.alert('Biometrics Not Enabled', err?.message || 'Failed to enable biometric sign-in.');
+      PremiumAlert.alert('Biometrics Not Enabled', err?.message || 'Failed to enable biometric sign-in.');
     } finally {
       setSavingBiometrics(false);
     }
@@ -180,7 +182,7 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
-    Alert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
+    PremiumAlert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',

@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   StyleSheet,
@@ -226,13 +227,13 @@ export default function AdminReportsScreen() {
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export Collections Ledger CSV' });
         } else {
-          Alert.alert('Export Complete', 'Ledger exported successfully to local documents folder.');
+          PremiumAlert.alert('Export Complete', 'Ledger exported successfully to local documents folder.');
         }
       } else {
-        Alert.alert('Export Failed', response.error || 'Failed to download report data.');
+        PremiumAlert.alert('Export Failed', response.error || 'Failed to download report data.');
       }
     } catch (e: any) {
-      Alert.alert('Export Error', e?.message || 'Error occurred while saving CSV file.');
+      PremiumAlert.alert('Export Error', e?.message || 'Error occurred while saving CSV file.');
     } finally {
       setActionLoading(false);
     }
@@ -612,12 +613,12 @@ export default function AdminReportsScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Reminder Queued', 'Payment alert email reminder has been sent.');
+        PremiumAlert.alert('Reminder Queued', 'Payment alert email reminder has been sent.');
       } else {
-        Alert.alert('Alert Failed', response.error || 'Failed to dispatch email.');
+        PremiumAlert.alert('Alert Failed', response.error || 'Failed to dispatch email.');
       }
     } catch (e: any) {
-      Alert.alert('Sync Error', e?.message || 'Error occurred during reminder dispatch.');
+      PremiumAlert.alert('Sync Error', e?.message || 'Error occurred during reminder dispatch.');
     } finally {
       setRemindingMap(prev => ({ ...prev, [clientId]: false }));
     }
@@ -626,11 +627,11 @@ export default function AdminReportsScreen() {
   // Preview Bulk queue handler
   const handlePreviewBulkReminders = async () => {
     if (bulkType === 'month' && (!selectedBulkMonth || !selectedBulkYear)) {
-      Alert.alert('Fields Required', 'Please select both target month and year.');
+      PremiumAlert.alert('Fields Required', 'Please select both target month and year.');
       return;
     }
     if (bulkType === 'selected' && selectedClientIds.length === 0) {
-      Alert.alert('Recipients Required', 'Please select at least one client recipient.');
+      PremiumAlert.alert('Recipients Required', 'Please select at least one client recipient.');
       return;
     }
 
@@ -650,11 +651,11 @@ export default function AdminReportsScreen() {
       if (response.status === 'success' || response.status === 'info') {
         setPreviewData(response);
       } else {
-        Alert.alert('Error', response.message || 'Failed to compile email layout previews.');
+        PremiumAlert.alert('Error', response.message || 'Failed to compile email layout previews.');
         setModalStep('select');
       }
     } catch (e) {
-      Alert.alert('Error', 'Network error occurred while fetching layout previews.');
+      PremiumAlert.alert('Error', 'Network error occurred while fetching layout previews.');
       setModalStep('select');
     } finally {
       setIsPreviewLoading(false);
@@ -664,11 +665,11 @@ export default function AdminReportsScreen() {
   // Dispatch Bulk execution
   const handleSendBulkReminders = async () => {
     if (bulkType === 'month' && (!selectedBulkMonth || !selectedBulkYear)) {
-      Alert.alert('Fields Required', 'Month and year must be specified.');
+      PremiumAlert.alert('Fields Required', 'Month and year must be specified.');
       return;
     }
     if (bulkType === 'selected' && selectedClientIds.length === 0) {
-      Alert.alert('Clients Required', 'Select at least one client.');
+      PremiumAlert.alert('Clients Required', 'Select at least one client.');
       return;
     }
 
@@ -682,15 +683,15 @@ export default function AdminReportsScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Dispatched Successfully', response.message || 'Bulk reminder emails queued.');
+        PremiumAlert.alert('Dispatched Successfully', response.message || 'Bulk reminder emails queued.');
         setIsBulkModalOpen(false);
         setModalStep('select');
         loadData(false);
       } else {
-        Alert.alert('Dispatch Failure', response.error || 'Failed to process bulk reminders.');
+        PremiumAlert.alert('Dispatch Failure', response.error || 'Failed to process bulk reminders.');
       }
     } catch (e) {
-      Alert.alert('Dispatch Error', 'Network error executing bulk dispatch.');
+      PremiumAlert.alert('Dispatch Error', 'Network error executing bulk dispatch.');
     } finally {
       setIsSendingBulk(false);
     }

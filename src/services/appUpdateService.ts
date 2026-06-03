@@ -1,9 +1,11 @@
+import { PremiumAlert } from '../services/PremiumAlertService';
 import { Alert, Linking, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as Updates from 'expo-updates';
 import RNExitApp from 'react-native-exit-app';
+
 
 type UpdateStatus = 'disabled' | 'available' | 'downloaded' | 'not-available' | 'error';
 
@@ -131,7 +133,7 @@ const showApkFallbackPrompt = (message: string) => {
   if (promptVisible) return;
   promptVisible = true;
 
-  Alert.alert('Download latest app', message, [
+  PremiumAlert.alert('Download latest app', message, [
     {
       text: 'Later',
       style: 'cancel',
@@ -145,7 +147,7 @@ const showApkFallbackPrompt = (message: string) => {
         try {
           await downloadAndInstallConfiguredApkAsync();
         } catch (error: any) {
-          Alert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
+          PremiumAlert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
         } finally {
           promptVisible = false;
         }
@@ -158,7 +160,7 @@ const showDownloadedUpdatePrompt = () => {
   if (promptVisible) return;
   promptVisible = true;
 
-  Alert.alert(
+  PremiumAlert.alert(
     'Update ready',
     'S-Pay downloaded an update. Close the app now, then reopen it to run the fresh version.',
     [
@@ -206,18 +208,18 @@ export const checkForUpdatesAndPromptAsync = async (manual = false): Promise<App
             text: 'Download latest APK',
             onPress: () => {
               void downloadAndInstallConfiguredApkAsync().catch((error: any) => {
-                Alert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
+                PremiumAlert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
               });
             },
           },
         ]
       : [{ text: 'Close', style: 'cancel' as const }];
 
-    Alert.alert('No OTA update', result.message, buttons);
+    PremiumAlert.alert('No OTA update', result.message, buttons);
   } else if ((result.status === 'disabled' || result.status === 'error') && result.canInstallApk) {
     showApkFallbackPrompt(`${result.message} Download the latest Android build instead.`);
   } else if (manual) {
-    Alert.alert(
+    PremiumAlert.alert(
       result.status === 'error' ? 'Update check failed' : 'Updates unavailable',
       result.error ? `${result.message}\n\n${result.error}` : result.message,
     );

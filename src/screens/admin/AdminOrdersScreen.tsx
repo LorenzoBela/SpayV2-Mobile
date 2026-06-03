@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   StyleSheet,
@@ -46,6 +47,7 @@ import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
+
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -296,7 +298,7 @@ export default function AdminOrdersScreen() {
 
   const handleAssignSubmit = async () => {
     if (!selectedClientId || !itemName || !amount) {
-      Alert.alert('Incomplete Form', 'Please provide a client, item name, and purchase amount.');
+      PremiumAlert.alert('Incomplete Form', 'Please provide a client, item name, and purchase amount.');
       return;
     }
 
@@ -313,7 +315,7 @@ export default function AdminOrdersScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', `Installment scheduled for ${itemName}!`);
+        PremiumAlert.alert('Success', `Installment scheduled for ${itemName}!`);
         setIsAssignOpen(false);
         // Clear fields
         setSelectedClientId('');
@@ -323,10 +325,10 @@ export default function AdminOrdersScreen() {
         setRemarks('');
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to schedule installment plan.');
+        PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
@@ -349,7 +351,7 @@ export default function AdminOrdersScreen() {
 
   const handleEditSubmit = async () => {
     if (!editItemName || !editAmount) {
-      Alert.alert('Incomplete Form', 'Please provide item name and purchase amount.');
+      PremiumAlert.alert('Incomplete Form', 'Please provide item name and purchase amount.');
       return;
     }
 
@@ -359,7 +361,7 @@ export default function AdminOrdersScreen() {
     const clientChanged = editClientId !== selectedOrder.user_id;
 
     if (hasPaidPayments && (amountChanged || termsChanged || clientChanged)) {
-      Alert.alert(
+      PremiumAlert.alert(
         'Locked Fields',
         'Cannot modify client, terms, or purchase amount because payment collections have already started for this order.'
       );
@@ -380,22 +382,22 @@ export default function AdminOrdersScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', `Order details updated!`);
+        PremiumAlert.alert('Success', `Order details updated!`);
         setIsEditOpen(false);
         setIsDetailsOpen(false);
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to update order details.');
+        PremiumAlert.alert('Error', response.error || 'Failed to update order details.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDeleteSubmit = (orderId: string, itemName: string) => {
-    Alert.alert(
+    PremiumAlert.alert(
       'Delete Order Ledger',
       `Are you sure you want to permanently delete order "${itemName}" and all associated payments? This will restore client credit capacity.`,
       [
@@ -408,14 +410,14 @@ export default function AdminOrdersScreen() {
             try {
               const response = await callAdminApi('delete-order', { id: orderId });
               if (response.success) {
-                Alert.alert('Deleted', 'Order successfully removed.');
+                PremiumAlert.alert('Deleted', 'Order successfully removed.');
                 setIsDetailsOpen(false);
                 loadData(false);
               } else {
-                Alert.alert('Error', response.error || 'Failed to delete order.');
+                PremiumAlert.alert('Error', response.error || 'Failed to delete order.');
               }
             } catch (e: any) {
-              Alert.alert('Network Error', e?.message || 'Server connection failed.');
+              PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
             } finally {
               setActionLoading(false);
             }

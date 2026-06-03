@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   StyleSheet,
@@ -290,13 +291,13 @@ export default function AdminRemindersScreen() {
     try {
       const response = await callAdminApi('send-reminder', { id: paymentId });
       if (response.success) {
-        Alert.alert('Success', `Manual reminder email sent to ${clientName} for ${itemName}!`);
+        PremiumAlert.alert('Success', `Manual reminder email sent to ${clientName} for ${itemName}!`);
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to dispatch email.');
+        PremiumAlert.alert('Error', response.error || 'Failed to dispatch email.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
@@ -320,11 +321,11 @@ export default function AdminRemindersScreen() {
 
   const handlePreviewBulkReminders = async () => {
     if (bulkType === 'month' && (!selectedBulkMonth || !selectedBulkYear)) {
-      Alert.alert('Fields Required', 'Please select both target month and year.');
+      PremiumAlert.alert('Fields Required', 'Please select both target month and year.');
       return;
     }
     if (bulkType === 'selected' && selectedClientIds.length === 0) {
-      Alert.alert('Recipients Required', 'Please select at least one client.');
+      PremiumAlert.alert('Recipients Required', 'Please select at least one client.');
       return;
     }
 
@@ -344,11 +345,11 @@ export default function AdminRemindersScreen() {
       if (response.status === 'success' || response.status === 'info') {
         setPreviewData(response);
       } else {
-        Alert.alert('Error', response.message || 'Failed to generate bulk preview.');
+        PremiumAlert.alert('Error', response.message || 'Failed to generate bulk preview.');
         setModalStep('select');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
       setModalStep('select');
     } finally {
       setIsPreviewLoading(false);
@@ -357,11 +358,11 @@ export default function AdminRemindersScreen() {
 
   const handleSendBulkReminders = async () => {
     if (bulkType === 'month' && (!selectedBulkMonth || !selectedBulkYear)) {
-      Alert.alert('Fields Required', 'Please select both target month and year.');
+      PremiumAlert.alert('Fields Required', 'Please select both target month and year.');
       return;
     }
     if (bulkType === 'selected' && selectedClientIds.length === 0) {
-      Alert.alert('Recipients Required', 'Please select at least one client.');
+      PremiumAlert.alert('Recipients Required', 'Please select at least one client.');
       return;
     }
 
@@ -375,15 +376,15 @@ export default function AdminRemindersScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', response.message || 'Bulk reminders processed successfully!');
+        PremiumAlert.alert('Success', response.message || 'Bulk reminders processed successfully!');
         setIsBulkModalOpen(false);
         setModalStep('select');
         loadData(false);
       } else {
-        Alert.alert('Error', response.error || 'Failed to dispatch bulk reminders.');
+        PremiumAlert.alert('Error', response.error || 'Failed to dispatch bulk reminders.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setIsSendingBulk(false);
     }

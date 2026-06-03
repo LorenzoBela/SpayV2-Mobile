@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AppNavigator from './src/navigation/AppNavigator';
 import PremiumLoader from './src/components/PremiumLoader';
 import AppUpdateGate from './src/components/AppUpdateGate';
+import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
 
 // Import Google Fonts loaders
 import {
@@ -75,6 +76,7 @@ export default function App() {
           <SafeAreaProvider>
             <AppUpdateGate />
             <AppNavigator />
+            <GlobalPremiumAlert />
           </SafeAreaProvider>
         </PaperProvider>
       </QueryClientProvider>

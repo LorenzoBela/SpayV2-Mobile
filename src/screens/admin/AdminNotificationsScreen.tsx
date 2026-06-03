@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   View,
@@ -38,6 +39,7 @@ import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import {
+
   getNotifications,
   markNotificationsRead,
   clearNotifications,
@@ -165,13 +167,13 @@ export default function AdminNotificationsScreen() {
       setRefreshing(true);
       const res = await markNotificationsRead(undefined, true);
       if (res.success !== false) {
-        Alert.alert('Success', 'All alerts marked as read.');
+        PremiumAlert.alert('Success', 'All alerts marked as read.');
         await loadNotifications(false);
       } else {
         throw new Error(res.error);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Action failed.');
+      PremiumAlert.alert('Error', e.message || 'Action failed.');
       setRefreshing(false);
     }
   };
@@ -190,7 +192,7 @@ export default function AdminNotificationsScreen() {
   };
 
   const handleClearAll = () => {
-    Alert.alert('Clear History', 'Are you sure you want to delete all audit logs in this database partition?', [
+    PremiumAlert.alert('Clear History', 'Are you sure you want to delete all audit logs in this database partition?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear All',
@@ -200,13 +202,13 @@ export default function AdminNotificationsScreen() {
             setRefreshing(true);
             const res = await clearNotifications(undefined, true);
             if (res.success !== false) {
-              Alert.alert('Cleared', 'All system log history cleared.');
+              PremiumAlert.alert('Cleared', 'All system log history cleared.');
               await loadNotifications(false);
             } else {
               throw new Error(res.error);
             }
           } catch (e: any) {
-            Alert.alert('Error', e.message || 'Action failed.');
+            PremiumAlert.alert('Error', e.message || 'Action failed.');
             setRefreshing(false);
           }
         },
@@ -219,18 +221,18 @@ export default function AdminNotificationsScreen() {
       const res = await clearNotifications(id, false);
       if (res.success !== false) {
         setItems(prev => prev.filter(x => x.id !== id));
-        Alert.alert('Deleted', 'System log item removed.');
+        PremiumAlert.alert('Deleted', 'System log item removed.');
       } else {
         throw new Error(res.error);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to remove log.');
+      PremiumAlert.alert('Error', e.message || 'Failed to remove log.');
     }
   };
 
   const handleBroadcast = async () => {
     if (!annTitle.trim() || !annBody.trim()) {
-      Alert.alert('Validation Error', 'Title and message body are required.');
+      PremiumAlert.alert('Validation Error', 'Title and message body are required.');
       return;
     }
 
@@ -247,7 +249,7 @@ export default function AdminNotificationsScreen() {
         const created = Number(res.processed?.created || 0);
         const pushed = Number(res.processed?.pushed || 0);
         const skipped = Number(res.processed?.skipped || 0);
-        Alert.alert(
+        PremiumAlert.alert(
           created > 0 ? 'Broadcast Completed' : 'Broadcast Queued',
           created > 0
             ? `${created} inbox notification${created === 1 ? '' : 's'} created. ${pushed} push attempt${pushed === 1 ? '' : 's'} sent.`
@@ -260,7 +262,7 @@ export default function AdminNotificationsScreen() {
         throw new Error(res.error || 'Failed to dispatch broadcast.');
       }
     } catch (e: any) {
-      Alert.alert('Broadcast Error', e.message || 'Action failed.');
+      PremiumAlert.alert('Broadcast Error', e.message || 'Action failed.');
     } finally {
       setSendingAnn(false);
     }

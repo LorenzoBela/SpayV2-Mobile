@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
@@ -21,6 +22,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
+
 
 // Persistent storage key for the last logged-in user
 const LAST_ACCOUNT_KEY = 'spay-ledger:last-logged-account';
@@ -212,13 +214,13 @@ export default function LoginScreen() {
       } else if (response.type === 'cancelled') {
         console.log('[Auth] Google Sign-In cancelled by user');
       } else if (response.type === 'noSavedCredentialFound') {
-        Alert.alert('Sign In Failed', 'No saved Google credential was found on this device.');
+        PremiumAlert.alert('Sign In Failed', 'No saved Google credential was found on this device.');
       }
     } catch (error: any) {
       if (error?.code === 'SIGN_IN_CANCELLED' || error?.message?.toLowerCase?.().includes('cancel')) {
         console.log('[Auth] Google Sign-In cancelled by user');
       } else {
-        Alert.alert('Sign In Failed', error.message || 'An error occurred during Google Sign In.');
+        PremiumAlert.alert('Sign In Failed', error.message || 'An error occurred during Google Sign In.');
       }
     } finally {
       setLoading(false);
@@ -234,7 +236,7 @@ export default function LoginScreen() {
     if (!email) {
       setBiometricAvailable(false);
       setBiometricEmail(null);
-      Alert.alert('Sign-In Unavailable', 'Enable biometric sign-in again from your client settings.');
+      PremiumAlert.alert('Sign-In Unavailable', 'Enable biometric sign-in again from your client settings.');
       return;
     }
 
@@ -279,11 +281,11 @@ export default function LoginScreen() {
         await SecureStore.deleteItemAsync(BIOMETRIC_PIN_KEY);
         setBiometricAvailable(false);
         setBiometricEmail(null);
-        Alert.alert('Biometric Sign-In Reset', 'Your saved password no longer works. Sign in with Google and enable biometrics again.');
+        PremiumAlert.alert('Biometric Sign-In Reset', 'Your saved password no longer works. Sign in with Google and enable biometrics again.');
         return;
       }
 
-      Alert.alert('Biometric Sign-In Failed', error?.message || 'Unable to sign in with biometrics.');
+      PremiumAlert.alert('Biometric Sign-In Failed', error?.message || 'Unable to sign in with biometrics.');
     } finally {
       setLoading(false);
     }
@@ -292,7 +294,7 @@ export default function LoginScreen() {
   const handleFallbackPinSignIn = async () => {
     try {
       if (!/^\d{6}$/.test(fallbackPin)) {
-        Alert.alert('PIN Required', 'Enter your 6-digit fallback PIN.');
+        PremiumAlert.alert('PIN Required', 'Enter your 6-digit fallback PIN.');
         return;
       }
 
@@ -301,12 +303,12 @@ export default function LoginScreen() {
       if (!savedPin) {
         setPinModalVisible(false);
         setFallbackPin('');
-        Alert.alert('PIN Unavailable', 'Set up biometric sign-in again from your client settings.');
+        PremiumAlert.alert('PIN Unavailable', 'Set up biometric sign-in again from your client settings.');
         return;
       }
 
       if (fallbackPin !== savedPin) {
-        Alert.alert('Incorrect PIN', 'The fallback PIN you entered is incorrect.');
+        PremiumAlert.alert('Incorrect PIN', 'The fallback PIN you entered is incorrect.');
         return;
       }
 
@@ -314,7 +316,7 @@ export default function LoginScreen() {
       setFallbackPin('');
       await completeLocalUnlockSignIn();
     } catch (error: any) {
-      Alert.alert('PIN Sign-In Failed', error?.message || 'Unable to sign in with your fallback PIN.');
+      PremiumAlert.alert('PIN Sign-In Failed', error?.message || 'Unable to sign in with your fallback PIN.');
     } finally {
       setLoading(false);
     }

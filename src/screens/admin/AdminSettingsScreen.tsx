@@ -1,3 +1,4 @@
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
@@ -180,7 +181,7 @@ export default function AdminSettingsScreen() {
 
   const handleSaveProfile = async () => {
     if (!displayName.trim()) {
-      Alert.alert('Validation Error', 'Display Name is required.');
+      PremiumAlert.alert('Validation Error', 'Display Name is required.');
       return;
     }
 
@@ -201,9 +202,9 @@ export default function AdminSettingsScreen() {
         mobileNumber: mobileNumber.trim(),
       }));
 
-      Alert.alert('Success', 'Admin profile details updated successfully.');
+      PremiumAlert.alert('Success', 'Admin profile details updated successfully.');
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update profile.');
+      PremiumAlert.alert('Error', e.message || 'Failed to update profile.');
     } finally {
       setSaving(false);
     }
@@ -239,7 +240,7 @@ export default function AdminSettingsScreen() {
       } else {
         setLanguage(prevVal);
       }
-      Alert.alert('Error', 'Failed to update settings preference.');
+      PremiumAlert.alert('Error', 'Failed to update settings preference.');
     }
   };
 
@@ -269,7 +270,7 @@ export default function AdminSettingsScreen() {
 
   const handleToggleBiometrics = async (value: boolean) => {
     if (!isBiometricSupported) {
-      Alert.alert('Unsupported', 'Biometric hardware is not available or enrolled on this device.');
+      PremiumAlert.alert('Unsupported', 'Biometric hardware is not available or enrolled on this device.');
       return;
     }
 
@@ -284,21 +285,21 @@ export default function AdminSettingsScreen() {
         await SecureStore.deleteItemAsync(BIOMETRIC_PROVIDER_KEY);
         await SecureStore.deleteItemAsync(BIOMETRIC_PIN_KEY);
         setBiometricsEnabled(false);
-        Alert.alert('Biometrics Disabled', 'Secure credentials have been cleared.');
+        PremiumAlert.alert('Biometrics Disabled', 'Secure credentials have been cleared.');
       } catch (err) {
-        Alert.alert('Error', 'Failed to clear security credentials.');
+        PremiumAlert.alert('Error', 'Failed to clear security credentials.');
       }
     }
   };
 
   const handleEnableBiometrics = async () => {
     if (!/^\d{6}$/.test(pin)) {
-      Alert.alert('PIN Required', 'Enter a 6-digit fallback PIN.');
+      PremiumAlert.alert('PIN Required', 'Enter a 6-digit fallback PIN.');
       return;
     }
 
     if (pin !== confirmPin) {
-      Alert.alert('PIN Mismatch', 'Enter the same 6-digit PIN in both fields.');
+      PremiumAlert.alert('PIN Mismatch', 'Enter the same 6-digit PIN in both fields.');
       return;
     }
 
@@ -324,10 +325,10 @@ export default function AdminSettingsScreen() {
       setPinModalVisible(false);
       setPin('');
       setConfirmPin('');
-      Alert.alert('Biometrics Enabled', 'You can now unlock Google sign-in with biometrics or your fallback PIN.');
+      PremiumAlert.alert('Biometrics Enabled', 'You can now unlock Google sign-in with biometrics or your fallback PIN.');
     } catch (err: any) {
       setBiometricsEnabled(false);
-      Alert.alert('Biometrics Not Enabled', err?.message || 'Failed to enable biometric sign-in.');
+      PremiumAlert.alert('Biometrics Not Enabled', err?.message || 'Failed to enable biometric sign-in.');
     } finally {
       setSavingBiometrics(false);
     }
@@ -342,7 +343,7 @@ export default function AdminSettingsScreen() {
   };
 
   const handleSignOut = async () => {
-    Alert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
+    PremiumAlert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
@@ -370,7 +371,7 @@ export default function AdminSettingsScreen() {
     try {
       await downloadAndInstallConfiguredApkAsync();
     } catch (error: any) {
-      Alert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
+      PremiumAlert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
     } finally {
       setInstallingApk(false);
     }
