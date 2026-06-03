@@ -42,6 +42,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { ReportsSkeleton } from '../../components/SkeletonLoader';
@@ -98,14 +99,14 @@ export default function ReportsScreen() {
 
   const fetchReportsData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
       // 1. Fetch Orders
       const { data: dbOrders, error: ordersErr } = await supabase
         .from('orders')
         .select('id, item_name, amount, installment_months, order_date, is_paid')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       if (ordersErr) throw ordersErr;
       const ordersList = dbOrders || [];

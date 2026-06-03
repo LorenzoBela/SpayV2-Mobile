@@ -42,6 +42,7 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { PaymentsSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -415,14 +416,14 @@ export default function PaymentsScreen() {
   // Fetch Payments from Supabase
   const fetchPayments = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
       // 1. Fetch user orders first to filter payments
       const { data: userOrders, error: ordersErr } = await supabase
         .from('orders')
         .select('id')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       if (ordersErr) throw ordersErr;
 

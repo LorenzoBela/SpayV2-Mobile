@@ -34,6 +34,7 @@ import {
   CreditCard,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
@@ -686,20 +687,11 @@ export default function DashboardScreen() {
     setLoading(true);
     setError(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profile, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) {
         setDemoData();
         return;
       }
-
-      // Check profiles
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profileErr) throw profileErr;
 
       const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
       const profileEmail = profile?.email || user.email || 'client@spay.com';
@@ -719,7 +711,7 @@ export default function DashboardScreen() {
       const { data: dbOrders, error: ordersError } = await supabase
         .from('orders')
         .select('id, item_name, amount, installment_months, order_date, is_paid')
-        .eq('user_id', user.id)
+        .eq('user_id', profileId)
         .order('order_date', { ascending: false });
 
       if (ordersError) throw ordersError;

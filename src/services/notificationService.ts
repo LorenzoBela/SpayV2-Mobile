@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { supabase } from '../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../utils/authProfile';
 
 export type NotificationCategory = 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -145,13 +146,13 @@ export async function registerForTrayNotifications(userId: string) {
 }
 
 export async function fetchNotifications(limit = 100) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return [];
 
   const { data, error } = await supabase
     .from('notifications')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', profileId)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -160,40 +161,40 @@ export async function fetchNotifications(limit = 100) {
 }
 
 export async function markNotificationRead(notificationId: string) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return;
 
   const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
     .eq('id', notificationId)
-    .eq('user_id', user.id);
+    .eq('user_id', profileId);
 
   if (error) throw error;
 }
 
 export async function markAllNotificationsRead() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return;
 
   const { error } = await supabase
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
-    .eq('user_id', user.id)
+    .eq('user_id', profileId)
     .is('read_at', null);
 
   if (error) throw error;
 }
 
 export async function clearNotification(notificationId: string) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return;
 
   const { error } = await supabase
     .from('notifications')
     .delete()
     .eq('id', notificationId)
-    .eq('user_id', user.id);
+    .eq('user_id', profileId);
 
   if (error) throw error;
 }

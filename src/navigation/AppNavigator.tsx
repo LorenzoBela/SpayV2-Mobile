@@ -21,6 +21,7 @@ import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
 
 import { supabase } from '../utils/supabase';
+import { getLinkedProfileForUser } from '../utils/authProfile';
 import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
 import AppLockGate from '../components/AppLockGate';
@@ -347,6 +348,7 @@ export default function AppNavigator() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
+  const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
   const navigationRef = React.useRef<any>(null);
 
   // Theme state — defaults to dark mode
@@ -371,19 +373,14 @@ export default function AppNavigator() {
     };
   }, []);
 
-  const fetchProfileRole = async (userId: string, active: boolean) => {
+  const fetchProfileRole = async (user: Session['user'], active: boolean) => {
     setProfileLoading(true);
     setProfileError(null);
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-
-      if (error) throw error;
+      const data = await getLinkedProfileForUser(user);
 
       if (!active) return;
+      setLinkedProfileId(data?.id || user.id);
       if (data?.role === 'ADMIN') {
         setUserRole('ADMIN');
       } else {
@@ -404,11 +401,12 @@ export default function AppNavigator() {
   // Fetch profile to check role
   useEffect(() => {
     let active = true;
-    if (session?.user?.id) {
-      fetchProfileRole(session.user.id, active);
+    if (session?.user) {
+      fetchProfileRole(session.user, active);
     } else {
       setUserRole(null);
       setActiveRole(null);
+      setLinkedProfileId(null);
       setProfileLoading(false);
       setProfileError(null);
     }
@@ -422,18 +420,18 @@ export default function AppNavigator() {
   }, []);
 
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!linkedProfileId) return;
 
     // Wrap notification registration to prevent PromiseLike catch method type error
     (async () => {
       try {
-        await registerForTrayNotifications(session.user.id);
+        await registerForTrayNotifications(linkedProfileId);
       } catch (error: any) {
         console.warn('[Notifications] Registration skipped:', error?.message || error);
       }
     })();
 
-    const unsubscribeRealtime = subscribeToRealtimeNotifications(session.user.id, (notification) => {
+    const unsubscribeRealtime = subscribeToRealtimeNotifications(linkedProfileId, (notification) => {
       void mirrorToLocalTray(notification);
     });
 
@@ -457,7 +455,7 @@ export default function AppNavigator() {
       unsubscribeRealtime();
       responseSubscription.remove();
     };
-  }, [session?.user?.id]);
+  }, [linkedProfileId]);
 
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
@@ -480,15 +478,15 @@ export default function AppNavigator() {
   }, [isActuallyLoading]);
 
   const handleRetry = () => {
-    if (session?.user?.id) {
-      fetchProfileRole(session.user.id, true);
+    if (session?.user) {
+      fetchProfileRole(session.user, true);
     }
   };
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
-        <NotificationProvider userId={session?.user?.id}>
+        <NotificationProvider userId={linkedProfileId || undefined}>
           <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
             <StatusBar
               barStyle={isDarkMode ? 'light-content' : 'dark-content'}

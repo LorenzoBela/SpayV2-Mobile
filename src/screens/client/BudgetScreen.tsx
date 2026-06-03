@@ -37,6 +37,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import Svg, { Path, Circle as SvgCircle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 
@@ -166,7 +167,7 @@ export default function BudgetScreen() {
 
   const fetchBudgetData = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
       // 1. Fetch Global Shared Limits (RPC)
@@ -180,7 +181,7 @@ export default function BudgetScreen() {
       const { data: dbOrders } = await supabase
         .from('orders')
         .select('id, item_name, amount, installment_months, order_date, is_paid')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       const orderIds = dbOrders ? dbOrders.map(o => o.id) : [];
       let dbPayments: any[] = [];
@@ -241,7 +242,7 @@ export default function BudgetScreen() {
       const { data: dbCategories } = await supabase
         .from('user_budget_categories')
         .select('*')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       if (dbCategories) {
         const formattedCats: BudgetCategory[] = dbCategories.map((b: any) => ({
@@ -259,7 +260,7 @@ export default function BudgetScreen() {
       const { data: dbGoals } = await supabase
         .from('user_budget_goals')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', profileId)
         .order('created_at', { ascending: true });
 
       if (dbGoals) {
@@ -381,14 +382,14 @@ export default function BudgetScreen() {
       return;
     }
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
       const limit = parseFloat(monthlyLimit);
       const threshold = parseFloat(alertThreshold);
 
       const { data, error } = await supabase.from('user_budget_categories').insert({
-        user_id: user.id,
+        user_id: profileId,
         category: categoryName,
         monthly_limit: limit,
         current_spent: 0,
@@ -445,14 +446,14 @@ export default function BudgetScreen() {
       return;
     }
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
       const targetVal = parseFloat(goalTarget);
       const currentVal = parseFloat(goalCurrent) || 0;
 
       const { error } = await supabase.from('user_budget_goals').insert({
-        user_id: user.id,
+        user_id: profileId,
         goal_type: goalName,
         target_amount: targetVal,
         current_amount: currentVal,

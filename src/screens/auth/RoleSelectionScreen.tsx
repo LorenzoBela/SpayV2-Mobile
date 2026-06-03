@@ -26,6 +26,7 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForUser } from '../../utils/authProfile';
 import PremiumLoader from '../../components/PremiumLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
 import dayjs from 'dayjs';
@@ -87,13 +88,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
           setUserPhoto(photoUrl);
         }
 
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('name, role')
-          .eq('id', user.id)
-          .single();
-
-        if (error) throw error;
+        const data = await getLinkedProfileForUser(user);
 
         if (data?.role !== 'ADMIN') {
           onSelectRole('client');

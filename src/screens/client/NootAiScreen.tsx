@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowLeft, Send, Sparkles, Brain, Trash2 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
@@ -234,27 +235,19 @@ export default function NootAiScreen() {
     setLoading(true);
     setError(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profile, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) {
         setDemoParams('Client Guest');
         return;
       }
 
-      // Fetch Profile details
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', user.id)
-        .single();
-
-      if (profileErr) throw profileErr;
       const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
 
       // Fetch orders to compute health score
       const { data: dbOrders, error: ordersError } = await supabase
         .from('orders')
         .select('id')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       if (ordersError) throw ordersError;
 

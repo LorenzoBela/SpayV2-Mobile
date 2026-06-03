@@ -18,6 +18,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { ProfileSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
@@ -70,14 +71,8 @@ export default function ProfileScreen() {
 
   const fetchProfileAndSettings = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profile: data } = await getLinkedProfileForCurrentUser();
       if (!user) return;
-
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
 
       if (data) {
         setProfile({

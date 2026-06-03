@@ -42,6 +42,7 @@ import {
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -102,15 +103,8 @@ export default function SettingsScreen() {
 
   const fetchSettings = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profile: profileData, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
-
-      // 1. Fetch Profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('name, email, mobile_number, role')
-        .eq('id', user.id)
-        .single();
 
       let loadedProfile = {
         name: user.user_metadata?.full_name || 'Client User',
@@ -138,7 +132,7 @@ export default function SettingsScreen() {
       const { data: settingsData } = await supabase
         .from('user_settings')
         .select('setting_name, setting_value')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       if (settingsData && settingsData.length > 0) {
         const settingsMap: Record<string, string> = {};
@@ -182,13 +176,13 @@ export default function SettingsScreen() {
 
   const saveSetting = async (key: string, value: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
       const { error } = await supabase
         .from('user_settings')
         .upsert({
-          user_id: user.id,
+          user_id: profileId,
           setting_name: key,
           setting_value: value,
           updated_at: new Date().toISOString(),
@@ -210,7 +204,7 @@ export default function SettingsScreen() {
 
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) throw new Error('User session not found');
 
       const { error: profileError } = await supabase
@@ -219,7 +213,7 @@ export default function SettingsScreen() {
           name: displayName.trim(),
           mobile_number: mobileNumber.trim() || null,
         })
-        .eq('id', user.id);
+        .eq('id', profileId);
 
       if (profileError) throw profileError;
 

@@ -34,6 +34,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { CalendarSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
@@ -218,22 +219,16 @@ export default function CalendarScreen() {
 
   const fetchCalendarPayments = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { user, profile, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
-      // 1. Fetch Profile Name
-      const { data: dbProfile } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', user.id)
-        .single();
-      setProfileName(dbProfile?.name || 'Client');
+      setProfileName(profile?.name || user.user_metadata?.full_name || 'Client');
 
       // 2. Fetch Orders
       const { data: dbOrders } = await supabase
         .from('orders')
         .select('id, item_name, amount, installment_months')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       const ordersList = dbOrders || [];
       setRawOrders(ordersList);
@@ -292,7 +287,7 @@ export default function CalendarScreen() {
       const { data: dbBudgets } = await supabase
         .from('user_budget_categories')
         .select('id, category, monthly_limit, current_spent, alert_threshold, color')
-        .eq('user_id', user.id)
+        .eq('user_id', profileId)
         .order('current_spent', { ascending: false })
         .limit(3);
       setRawBudgets(dbBudgets || []);
