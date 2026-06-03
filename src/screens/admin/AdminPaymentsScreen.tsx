@@ -1,4 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import {
   StyleSheet,
@@ -2481,7 +2482,8 @@ export default function AdminPaymentsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+          <SwipeDismissModal onDismiss={() => setIsRejectOpen(false)} disabled={actionLoading}>
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
             <LinearGradient
               colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
               style={styles.sheetHero}
@@ -2529,6 +2531,7 @@ export default function AdminPaymentsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -2598,7 +2601,8 @@ export default function AdminPaymentsScreen() {
       {/* Option Selector Modal for Filters */}
       <Modal visible={receiptPickerType !== null} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, maxHeight: '60%' }]}>
+          <SwipeDismissModal onDismiss={() => setReceiptPickerType(null)}>
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, maxHeight: '60%' }]}>
             <LinearGradient
               colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
               style={[styles.sheetHero, { paddingVertical: 14 }]}
@@ -2812,7 +2816,8 @@ export default function AdminPaymentsScreen() {
                 return null;
               })()}
             </ScrollView>
-          </View>
+            </View>
+          </SwipeDismissModal>
         </View>
       </Modal>
     </SafeAreaView>

@@ -23,6 +23,7 @@ import * as Notifications from 'expo-notifications';
 import { supabase } from '../utils/supabase';
 import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
+import AppLockGate from '../components/AppLockGate';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RoleSelectionScreen from '../screens/auth/RoleSelectionScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
@@ -43,6 +44,7 @@ import OrdersScreen from '../screens/client/OrdersScreen';
 import CalendarScreen from '../screens/client/CalendarScreen';
 import SettingsScreen from '../screens/client/SettingsScreen';
 import MoreScreen from '../screens/client/MoreScreen';
+import NootAiScreen from '../screens/client/NootAiScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
@@ -188,6 +190,14 @@ const MainNavigator = () => {
       <Tab.Screen
         name="Calendar"
         component={CalendarScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="NootAi"
+        component={NootAiScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -462,34 +472,36 @@ export default function AppNavigator() {
             animated
           />
 
-          {!loading && (
-            <NavigationContainer ref={navigationRef}>
-              <Stack.Navigator screenOptions={{ headerShown: false }}>
-                {session ? (
-                  userRole === 'ADMIN' && activeRole === null ? (
-                    <Stack.Screen name="RoleSelect">
-                      {(props) => (
-                        <RoleSelectionScreen
-                          {...props}
-                          onSelectRole={(role) => setActiveRole(role)}
-                          onSignOut={async () => {
-                            await supabase.auth.signOut();
-                          }}
-                        />
-                      )}
-                    </Stack.Screen>
-                  ) : activeRole === 'admin' ? (
-                    <Stack.Screen name="Admin" component={AdminNavigator} />
+          {!isActuallyLoading && (
+            <AppLockGate sessionExists={!!session}>
+              <NavigationContainer ref={navigationRef}>
+                <Stack.Navigator screenOptions={{ headerShown: false }}>
+                  {session ? (
+                    userRole === 'ADMIN' && activeRole === null ? (
+                      <Stack.Screen name="RoleSelect">
+                        {(props) => (
+                          <RoleSelectionScreen
+                            {...props}
+                            onSelectRole={(role) => setActiveRole(role)}
+                            onSignOut={async () => {
+                              await supabase.auth.signOut();
+                            }}
+                          />
+                        )}
+                      </Stack.Screen>
+                    ) : activeRole === 'admin' ? (
+                      <Stack.Screen name="Admin" component={AdminNavigator} />
+                    ) : (
+                      <>
+                        <Stack.Screen name="Main" component={MainNavigator} />
+                      </>
+                    )
                   ) : (
-                    <>
-                      <Stack.Screen name="Main" component={MainNavigator} />
-                    </>
-                  )
-                ) : (
-                  <Stack.Screen name="Auth" component={AuthNavigator} />
-                )}
-              </Stack.Navigator>
-            </NavigationContainer>
+                    <Stack.Screen name="Auth" component={AuthNavigator} />
+                  )}
+                </Stack.Navigator>
+              </NavigationContainer>
+            </AppLockGate>
           )}
 
           {showOverlay && (

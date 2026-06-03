@@ -1,4 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   StyleSheet,
@@ -732,10 +733,19 @@ export default function AdminRemindersScreen() {
             }}
           />
 
-          <View style={[
-            styles.modalContent,
-            { backgroundColor: t.cardBg, borderColor: t.cardBorder, height: '90%' }
-          ]}>
+          <SwipeDismissModal
+            onDismiss={() => {
+              if (!isSendingBulk) {
+                setIsBulkModalOpen(false);
+                setModalStep('select');
+              }
+            }}
+            disabled={isSendingBulk}
+          >
+            <View style={[
+              styles.modalContent,
+              { backgroundColor: t.cardBg, borderColor: t.cardBorder, height: '90%' }
+            ]}>
             {/* Modal Header */}
             <View style={[styles.modalHeader, { backgroundColor: t.cardBg, borderBottomWidth: 1.5, borderBottomColor: t.border }]}>
               <View style={styles.modalHeaderLeft}>
@@ -1189,7 +1199,8 @@ export default function AdminRemindersScreen() {
                 )}
               </View>
             )}
-          </View>
+            </View>
+          </SwipeDismissModal>
         </View>
       </Modal>
 

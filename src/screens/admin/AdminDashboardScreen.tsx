@@ -1,4 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import {
   StyleSheet,
@@ -1482,200 +1483,202 @@ export default function AdminDashboardScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.premiumSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
-            <LinearGradient
-              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
-              style={styles.sheetHero}
-            >
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <ShoppingBag size={18} color="#ffffff" />
+          <SwipeDismissModal onDismiss={() => setIsNewOrderOpen(false)} disabled={actionLoading}>
+            <View style={[styles.premiumSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+              <LinearGradient
+                colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+                style={styles.sheetHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <ShoppingBag size={18} color="#ffffff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>ORDER DESK</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Schedule New Order</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>ORDER DESK</Text>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Schedule New Order</Text>
-                  </View>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsNewOrderOpen(false)} disabled={actionLoading}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsNewOrderOpen(false)} disabled={actionLoading}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sheetMetricRow}>
-                <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
-                  <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Monthly due</Text>
-                  <Text
-                    style={[styles.sheetMetricValue, { color: isDarkMode ? '#ffffff' : t.textPrimary }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                  >
-                    {formatCurrency(estimatedMonthlyDue)}
-                  </Text>
-                </View>
-                <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
-                  <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Exposure</Text>
-                  <Text
-                    style={[styles.sheetMetricValue, { color: projectedExposurePercent > 80 ? '#f87171' : (isDarkMode ? '#ffffff' : t.textPrimary) }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.78}
-                  >
-                    {projectedExposurePercent}%
-                  </Text>
-                </View>
-              </View>
-            </LinearGradient>
-
-            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
-                <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} accounts</Text>
-              </View>
-
-              <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
-                <Search size={15} color={t.textSecondary} />
-                <TextInput
-                  style={[styles.searchInput, { color: t.textPrimary }]}
-                  placeholder="Search name or email"
-                  placeholderTextColor={t.textSecondary}
-                  value={clientSearchQuery}
-                  onChangeText={setClientSearchQuery}
-                />
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
-                {filteredClients.map((client) => {
-                  const selected = selectedClientId === client.id;
-                  return (
-                    <TouchableOpacity
-                      key={client.id}
-                      style={[
-                        styles.clientChoiceCard,
-                        { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
-                        selected && styles.clientChoiceCardActive,
-                      ]}
-                      onPress={() => setSelectedClientId(client.id)}
-                      activeOpacity={0.86}
+                <View style={styles.sheetMetricRow}>
+                  <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
+                    <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Monthly due</Text>
+                    <Text
+                      style={[styles.sheetMetricValue, { color: isDarkMode ? '#ffffff' : t.textPrimary }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
                     >
-                      <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
-                        <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
-                          {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
-                      <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                      {formatCurrency(estimatedMonthlyDue)}
+                    </Text>
+                  </View>
+                  <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
+                    <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Exposure</Text>
+                    <Text
+                      style={[styles.sheetMetricValue, { color: projectedExposurePercent > 80 ? '#f87171' : (isDarkMode ? '#ffffff' : t.textPrimary) }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                    >
+                      {projectedExposurePercent}%
+                    </Text>
+                  </View>
+                </View>
+              </LinearGradient>
 
-              <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
-                <Users size={15} color={t.accent} />
-                <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
-                  {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
-                </Text>
-              </View>
+              <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
+                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} accounts</Text>
+                </View>
 
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
-                <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
-              </View>
-
-              <View style={styles.inputGrid}>
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
+                <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
+                  <Search size={15} color={t.textSecondary} />
                   <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary }]}
-                    placeholder="MacBook Pro M3"
+                    style={[styles.searchInput, { color: t.textPrimary }]}
+                    placeholder="Search name or email"
                     placeholderTextColor={t.textSecondary}
-                    value={itemName}
-                    onChangeText={setItemName}
+                    value={clientSearchQuery}
+                    onChangeText={setClientSearchQuery}
                   />
                 </View>
 
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
-                  <View style={styles.amountInputRow}>
-                    <Text style={styles.currencyPrefix}>PHP</Text>
-                    <TextInput
-                      style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
-                      placeholder="79,990"
-                      keyboardType="numeric"
-                      placeholderTextColor={t.textSecondary}
-                      value={orderAmount}
-                      onChangeText={setOrderAmount}
-                    />
-                  </View>
-                </View>
-              </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
+                  {filteredClients.map((client) => {
+                    const selected = selectedClientId === client.id;
+                    return (
+                      <TouchableOpacity
+                        key={client.id}
+                        style={[
+                          styles.clientChoiceCard,
+                          { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
+                          selected && styles.clientChoiceCardActive,
+                        ]}
+                        onPress={() => setSelectedClientId(client.id)}
+                        activeOpacity={0.86}
+                      >
+                        <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
+                          <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
+                            {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                        <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
 
-              <View style={styles.termGrid}>
-                {['3', '6', '12', '24'].map((m) => {
-                  const selected = installmentMonths === m;
-                  const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.termCard,
-                        { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
-                      ]}
-                      onPress={() => setInstallmentMonths(m)}
-                      activeOpacity={0.86}
-                    >
-                      <View style={styles.termTitleRow}>
-                        <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
-                        <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>Months</Text>
-                      </View>
-                      <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
-                        {monthly > 0 ? formatCurrency(monthly) : '--'}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <View style={styles.dateGrid}>
-                <DatePicker
-                  label="Purchase Date"
-                  value={purchaseDate}
-                  onChange={setPurchaseDate}
-                />
-                <DatePicker
-                  label="First Due Date"
-                  value={firstPaymentDate}
-                  onChange={setFirstPaymentDate}
-                  placeholder="Auto: 5th next month"
-                />
-              </View>
-
-              <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
-                <View style={styles.exposurePreviewTop}>
-                  <Text style={[styles.previewTitle, { color: t.textPrimary }]}>Limit Impact Preview</Text>
-                  <Text style={[styles.previewPercent, { color: projectedExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>
-                    {projectedExposurePercent}%
+                <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
+                  <Users size={15} color={t.accent} />
+                  <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
+                    {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
                   </Text>
                 </View>
-                <View style={[styles.previewTrack, { backgroundColor: isDarkMode ? '#1f2937' : '#e5e7eb' }]}>
-                  <View style={[styles.previewFill, { width: `${projectedExposurePercent}%`, backgroundColor: projectedExposurePercent > 80 ? '#ef4444' : t.accent }]} />
-                </View>
-                <Text style={[styles.previewCaption, { color: t.textSecondary }]}>
-                  Projected exposure after this order: {formatCurrency(projectedOutstanding)}
-                </Text>
-              </View>
-            </ScrollView>
 
-            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
-              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsNewOrderOpen(false)} disabled={actionLoading}>
-                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleScheduleOrderSubmit} disabled={actionLoading}>
-                <CheckCircle2 size={16} color="#ffffff" />
-                <Text style={styles.primaryActionText}>{actionLoading ? 'Scheduling...' : 'Assign Order'}</Text>
-              </TouchableOpacity>
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
+                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
+                </View>
+
+                <View style={styles.inputGrid}>
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="MacBook Pro M3"
+                      placeholderTextColor={t.textSecondary}
+                      value={itemName}
+                      onChangeText={setItemName}
+                    />
+                  </View>
+
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
+                    <View style={styles.amountInputRow}>
+                      <Text style={styles.currencyPrefix}>PHP</Text>
+                      <TextInput
+                        style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
+                        placeholder="79,990"
+                        keyboardType="numeric"
+                        placeholderTextColor={t.textSecondary}
+                        value={orderAmount}
+                        onChangeText={setOrderAmount}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.termGrid}>
+                  {['3', '6', '12', '24'].map((m) => {
+                    const selected = installmentMonths === m;
+                    const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[
+                          styles.termCard,
+                          { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
+                        ]}
+                        onPress={() => setInstallmentMonths(m)}
+                        activeOpacity={0.86}
+                      >
+                        <View style={styles.termTitleRow}>
+                          <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
+                          <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>Months</Text>
+                        </View>
+                        <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
+                          {monthly > 0 ? formatCurrency(monthly) : '--'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.dateGrid}>
+                  <DatePicker
+                    label="Purchase Date"
+                    value={purchaseDate}
+                    onChange={setPurchaseDate}
+                  />
+                  <DatePicker
+                    label="First Due Date"
+                    value={firstPaymentDate}
+                    onChange={setFirstPaymentDate}
+                    placeholder="Auto: 5th next month"
+                  />
+                </View>
+
+                <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
+                  <View style={styles.exposurePreviewTop}>
+                    <Text style={[styles.previewTitle, { color: t.textPrimary }]}>Limit Impact Preview</Text>
+                    <Text style={[styles.previewPercent, { color: projectedExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>
+                      {projectedExposurePercent}%
+                    </Text>
+                  </View>
+                  <View style={[styles.previewTrack, { backgroundColor: isDarkMode ? '#1f2937' : '#e5e7eb' }]}>
+                    <View style={[styles.previewFill, { width: `${projectedExposurePercent}%`, backgroundColor: projectedExposurePercent > 80 ? '#ef4444' : t.accent }]} />
+                  </View>
+                  <Text style={[styles.previewCaption, { color: t.textSecondary }]}>
+                    Projected exposure after this order: {formatCurrency(projectedOutstanding)}
+                  </Text>
+                </View>
+              </ScrollView>
+
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+                <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsNewOrderOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleScheduleOrderSubmit} disabled={actionLoading}>
+                  <CheckCircle2 size={16} color="#ffffff" />
+                  <Text style={styles.primaryActionText}>{actionLoading ? 'Scheduling...' : 'Assign Order'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1685,87 +1688,89 @@ export default function AdminDashboardScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.limitSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
-            <LinearGradient
-              colors={isDarkMode ? ['#182235', '#101827'] : ['#fff7ed', '#ffffff']}
-              style={styles.limitHero}
-            >
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <Sliders size={18} color="#ffffff" />
+          <SwipeDismissModal onDismiss={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
+            <View style={[styles.limitSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+              <LinearGradient
+                colors={isDarkMode ? ['#182235', '#101827'] : ['#fff7ed', '#ffffff']}
+                style={styles.limitHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <Sliders size={18} color="#ffffff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LIMIT CONTROL</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Adjust Baseline Limits</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LIMIT CONTROL</Text>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Adjust Baseline Limits</Text>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.limitHeroText, { color: t.textSecondary }]}>
+                  Set one platform baseline and allocate it evenly across registered client accounts.
+                </Text>
+              </LinearGradient>
+
+              <View style={styles.limitBody}>
+                <View style={[styles.limitInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                  <View style={styles.limitInputHeader}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>GLOBAL BASELINE</Text>
+                    <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} clients</Text>
+                  </View>
+                  <View style={styles.amountInputRow}>
+                    <Text style={styles.currencyPrefix}>PHP</Text>
+                    <TextInput
+                      style={[styles.limitAmountInput, { color: t.textPrimary }]}
+                      placeholder="500000"
+                      keyboardType="numeric"
+                      placeholderTextColor={t.textSecondary}
+                      value={globalLimitAmount}
+                      onChangeText={setGlobalLimitAmount}
+                    />
                   </View>
                 </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+
+                <View style={styles.quickLimitRow}>
+                  {[250000, 500000, 1000000].map((amount) => (
+                    <TouchableOpacity
+                      key={amount}
+                      style={[styles.quickLimitChip, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}
+                      onPress={() => setGlobalLimitAmount(String(amount))}
+                    >
+                      <Text style={[styles.quickLimitText, { color: t.textPrimary }]}>{amount >= 1000000 ? '1M' : `${amount / 1000}K`}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={[styles.allocationPanel, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
+                  <View style={styles.allocationRow}>
+                    <Text style={[styles.allocationLabel, { color: t.textSecondary }]}>Per client allocation</Text>
+                    <Text style={[styles.allocationValue, { color: t.textPrimary }]}>{formatCurrency(allocationPerClient)}</Text>
+                  </View>
+                  <View style={styles.allocationRow}>
+                    <Text style={[styles.allocationLabel, { color: t.textSecondary }]}>Current outstanding</Text>
+                    <Text style={[styles.allocationValue, { color: t.textPrimary }]}>{formatCurrency(stats.outstandingBalance)}</Text>
+                  </View>
+                  <View style={styles.allocationRow}>
+                    <Text style={[styles.allocationLabel, { color: t.textSecondary }]}>Current utilization</Text>
+                    <Text style={[styles.allocationValue, { color: activeExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>{activeExposurePercent}%</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+                <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleGlobalLimitSubmit} disabled={actionLoading}>
+                  <CheckCircle2 size={16} color="#ffffff" />
+                  <Text style={styles.primaryActionText}>{actionLoading ? 'Allocating...' : 'Set Limit'}</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={[styles.limitHeroText, { color: t.textSecondary }]}>
-                Set one platform baseline and allocate it evenly across registered client accounts.
-              </Text>
-            </LinearGradient>
-
-            <View style={styles.limitBody}>
-              <View style={[styles.limitInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                <View style={styles.limitInputHeader}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>GLOBAL BASELINE</Text>
-                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} clients</Text>
-                </View>
-                <View style={styles.amountInputRow}>
-                  <Text style={styles.currencyPrefix}>PHP</Text>
-                  <TextInput
-                    style={[styles.limitAmountInput, { color: t.textPrimary }]}
-                    placeholder="500000"
-                    keyboardType="numeric"
-                    placeholderTextColor={t.textSecondary}
-                    value={globalLimitAmount}
-                    onChangeText={setGlobalLimitAmount}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.quickLimitRow}>
-                {[250000, 500000, 1000000].map((amount) => (
-                  <TouchableOpacity
-                    key={amount}
-                    style={[styles.quickLimitChip, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}
-                    onPress={() => setGlobalLimitAmount(String(amount))}
-                  >
-                    <Text style={[styles.quickLimitText, { color: t.textPrimary }]}>{amount >= 1000000 ? '1M' : `${amount / 1000}K`}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={[styles.allocationPanel, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
-                <View style={styles.allocationRow}>
-                  <Text style={[styles.allocationLabel, { color: t.textSecondary }]}>Per client allocation</Text>
-                  <Text style={[styles.allocationValue, { color: t.textPrimary }]}>{formatCurrency(allocationPerClient)}</Text>
-                </View>
-                <View style={styles.allocationRow}>
-                  <Text style={[styles.allocationLabel, { color: t.textSecondary }]}>Current outstanding</Text>
-                  <Text style={[styles.allocationValue, { color: t.textPrimary }]}>{formatCurrency(stats.outstandingBalance)}</Text>
-                </View>
-                <View style={styles.allocationRow}>
-                  <Text style={[styles.allocationLabel, { color: t.textSecondary }]}>Current utilization</Text>
-                  <Text style={[styles.allocationValue, { color: activeExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>{activeExposurePercent}%</Text>
-                </View>
-              </View>
             </View>
-
-            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
-              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
-                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleGlobalLimitSubmit} disabled={actionLoading}>
-                <CheckCircle2 size={16} color="#ffffff" />
-                <Text style={styles.primaryActionText}>{actionLoading ? 'Allocating...' : 'Set Limit'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
 

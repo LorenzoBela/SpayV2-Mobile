@@ -1,4 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   StyleSheet,
@@ -887,212 +888,214 @@ export default function AdminOrdersScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
-            <LinearGradient
-              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
-              style={styles.sheetHero}
-            >
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <Plus size={18} color="#ffffff" />
+          <SwipeDismissModal onDismiss={() => setIsAssignOpen(false)} disabled={actionLoading}>
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+              <LinearGradient
+                colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+                style={styles.sheetHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <Plus size={18} color="#ffffff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER OPERATIONS</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Schedule Order</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER OPERATIONS</Text>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Schedule Order</Text>
-                  </View>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sheetMetricRow}>
-                <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
-                  <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Monthly due</Text>
-                  <Text
-                    style={[styles.sheetMetricValue, { color: isDarkMode ? '#ffffff' : t.textPrimary }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                  >
-                    {formatCurrency(estimatedMonthlyDue)}
-                  </Text>
-                </View>
-                <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
-                  <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Exposure</Text>
-                  <Text
-                    style={[styles.sheetMetricValue, { color: projectedExposurePercent > 80 ? '#f87171' : (isDarkMode ? '#ffffff' : t.textPrimary) }]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.78}
-                  >
-                    {projectedExposurePercent}%
-                  </Text>
-                </View>
-              </View>
-            </LinearGradient>
-
-            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
-                <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{profiles.length} accounts</Text>
-              </View>
-
-              <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
-                <Search size={15} color={t.textSecondary} />
-                <TextInput
-                  style={[styles.searchInput, { color: t.textPrimary }]}
-                  placeholder="Search name or email"
-                  placeholderTextColor={t.textSecondary}
-                  value={clientSearchQuery}
-                  onChangeText={setClientSearchQuery}
-                />
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
-                {filteredClients.map((client) => {
-                  const selected = selectedClientId === client.id;
-                  return (
-                    <TouchableOpacity
-                      key={client.id}
-                      style={[
-                        styles.clientChoiceCard,
-                        { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
-                        selected && styles.clientChoiceCardActive,
-                      ]}
-                      onPress={() => setSelectedClientId(client.id)}
-                      activeOpacity={0.86}
+                <View style={styles.sheetMetricRow}>
+                  <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
+                    <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Monthly due</Text>
+                    <Text
+                      style={[styles.sheetMetricValue, { color: isDarkMode ? '#ffffff' : t.textPrimary }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
                     >
-                      <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
-                        <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
-                          {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                      <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
-                      <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                      {formatCurrency(estimatedMonthlyDue)}
+                    </Text>
+                  </View>
+                  <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
+                    <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Exposure</Text>
+                    <Text
+                      style={[styles.sheetMetricValue, { color: projectedExposurePercent > 80 ? '#f87171' : (isDarkMode ? '#ffffff' : t.textPrimary) }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                    >
+                      {projectedExposurePercent}%
+                    </Text>
+                  </View>
+                </View>
+              </LinearGradient>
 
-              <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
-                <Users size={15} color={t.accent} />
-                <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
-                  {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
-                </Text>
-              </View>
+              <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
+                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{profiles.length} accounts</Text>
+                </View>
 
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
-                <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
-              </View>
-
-              <View style={styles.inputGrid}>
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
+                <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
+                  <Search size={15} color={t.textSecondary} />
                   <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary }]}
-                    placeholder="MacBook Pro M3"
+                    style={[styles.searchInput, { color: t.textPrimary }]}
+                    placeholder="Search name or email"
                     placeholderTextColor={t.textSecondary}
-                    value={itemName}
-                    onChangeText={setItemName}
+                    value={clientSearchQuery}
+                    onChangeText={setClientSearchQuery}
+                  />
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
+                  {filteredClients.map((client) => {
+                    const selected = selectedClientId === client.id;
+                    return (
+                      <TouchableOpacity
+                        key={client.id}
+                        style={[
+                          styles.clientChoiceCard,
+                          { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
+                          selected && styles.clientChoiceCardActive,
+                        ]}
+                        onPress={() => setSelectedClientId(client.id)}
+                        activeOpacity={0.86}
+                      >
+                        <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
+                          <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
+                            {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                        <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
+                  <Users size={15} color={t.accent} />
+                  <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
+                    {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
+                  </Text>
+                </View>
+
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
+                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
+                </View>
+
+                <View style={styles.inputGrid}>
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="MacBook Pro M3"
+                      placeholderTextColor={t.textSecondary}
+                      value={itemName}
+                      onChangeText={setItemName}
+                    />
+                  </View>
+
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
+                    <View style={styles.amountInputRow}>
+                      <Text style={styles.currencyPrefix}>PHP</Text>
+                      <TextInput
+                        style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
+                        placeholder="79,990"
+                        keyboardType="numeric"
+                        placeholderTextColor={t.textSecondary}
+                        value={amount}
+                        onChangeText={setAmount}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.termGrid}>
+                  {['3', '6', '12', '24'].map((m) => {
+                    const selected = installmentMonths === m;
+                    const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        style={[
+                          styles.termCard,
+                          { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
+                        ]}
+                        onPress={() => setInstallmentMonths(m)}
+                        activeOpacity={0.86}
+                      >
+                        <View style={styles.termTitleRow}>
+                          <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
+                          <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>Months</Text>
+                        </View>
+                        <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
+                          {monthly > 0 ? formatCurrency(monthly) : '--'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.dateGrid}>
+                  <DatePicker
+                    label="Purchase Date"
+                    value={purchaseDate}
+                    onChange={setPurchaseDate}
+                  />
+                  <DatePicker
+                    label="First Due Date"
+                    value={firstPaymentDate}
+                    onChange={setFirstPaymentDate}
+                    placeholder="Auto: 5th next month"
                   />
                 </View>
 
                 <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
-                  <View style={styles.amountInputRow}>
-                    <Text style={styles.currencyPrefix}>PHP</Text>
-                    <TextInput
-                      style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
-                      placeholder="79,990"
-                      keyboardType="numeric"
-                      placeholderTextColor={t.textSecondary}
-                      value={amount}
-                      onChangeText={setAmount}
-                    />
-                  </View>
+                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS / SPECIFICATIONS</Text>
+                  <TextInput
+                    style={[styles.premiumInput, { color: t.textPrimary, minHeight: 60, textAlignVertical: 'top' }]}
+                    placeholder="Write details or serial numbers..."
+                    placeholderTextColor={t.textSecondary}
+                    multiline={true}
+                    value={remarks}
+                    onChangeText={setRemarks}
+                  />
                 </View>
-              </View>
 
-              <View style={styles.termGrid}>
-                {['3', '6', '12', '24'].map((m) => {
-                  const selected = installmentMonths === m;
-                  const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
-                  return (
-                    <TouchableOpacity
-                      key={m}
-                      style={[
-                        styles.termCard,
-                        { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
-                      ]}
-                      onPress={() => setInstallmentMonths(m)}
-                      activeOpacity={0.86}
-                    >
-                      <View style={styles.termTitleRow}>
-                        <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
-                        <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>Months</Text>
-                      </View>
-                      <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
-                        {monthly > 0 ? formatCurrency(monthly) : '--'}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <View style={styles.dateGrid}>
-                <DatePicker
-                  label="Purchase Date"
-                  value={purchaseDate}
-                  onChange={setPurchaseDate}
-                />
-                <DatePicker
-                  label="First Due Date"
-                  value={firstPaymentDate}
-                  onChange={setFirstPaymentDate}
-                  placeholder="Auto: 5th next month"
-                />
-              </View>
-
-              <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS / SPECIFICATIONS</Text>
-                <TextInput
-                  style={[styles.premiumInput, { color: t.textPrimary, minHeight: 60, textAlignVertical: 'top' }]}
-                  placeholder="Write details or serial numbers..."
-                  placeholderTextColor={t.textSecondary}
-                  multiline={true}
-                  value={remarks}
-                  onChangeText={setRemarks}
-                />
-              </View>
-
-              <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
-                <View style={styles.exposurePreviewTop}>
-                  <Text style={[styles.previewTitle, { color: t.textPrimary }]}>Limit Impact Preview</Text>
-                  <Text style={[styles.previewPercent, { color: projectedExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>
-                    {projectedExposurePercent}%
+                <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
+                  <View style={styles.exposurePreviewTop}>
+                    <Text style={[styles.previewTitle, { color: t.textPrimary }]}>Limit Impact Preview</Text>
+                    <Text style={[styles.previewPercent, { color: projectedExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>
+                      {projectedExposurePercent}%
+                    </Text>
+                  </View>
+                  <View style={[styles.previewTrack, { backgroundColor: isDarkMode ? '#1f2937' : '#e5e7eb' }]}>
+                    <View style={[styles.previewFill, { width: `${projectedExposurePercent}%`, backgroundColor: projectedExposurePercent > 80 ? '#ef4444' : t.accent }]} />
+                  </View>
+                  <Text style={[styles.previewCaption, { color: t.textSecondary }]}>
+                    Projected exposure after this order: {formatCurrency(projectedOutstanding)}
                   </Text>
                 </View>
-                <View style={[styles.previewTrack, { backgroundColor: isDarkMode ? '#1f2937' : '#e5e7eb' }]}>
-                  <View style={[styles.previewFill, { width: `${projectedExposurePercent}%`, backgroundColor: projectedExposurePercent > 80 ? '#ef4444' : t.accent }]} />
-                </View>
-                <Text style={[styles.previewCaption, { color: t.textSecondary }]}>
-                  Projected exposure after this order: {formatCurrency(projectedOutstanding)}
-                </Text>
-              </View>
-            </ScrollView>
+              </ScrollView>
 
-            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
-              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
-                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleAssignSubmit} disabled={actionLoading}>
-                <CheckCircle2 size={16} color="#ffffff" />
-                <Text style={styles.primaryActionText}>{actionLoading ? 'Assigning...' : 'Assign Order'}</Text>
-              </TouchableOpacity>
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+                <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleAssignSubmit} disabled={actionLoading}>
+                  <CheckCircle2 size={16} color="#ffffff" />
+                  <Text style={styles.primaryActionText}>{actionLoading ? 'Assigning...' : 'Assign Order'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -1102,190 +1105,192 @@ export default function AdminOrdersScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
-            <LinearGradient
-              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
-              style={styles.sheetHero}
-            >
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <Edit2 size={18} color="#ffffff" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER OPERATIONS</Text>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Edit Order Details</Text>
-                  </View>
-                </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={[styles.sheetHeroText, { color: t.textSecondary }]}>
-                Modify ledger record credentials. Note that terms and amounts lock once collections begin.
-              </Text>
-            </LinearGradient>
-
-            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Allocation</Text>
-              </View>
-
-              {/* Client Selection card - Display current or edit client if not locked */}
-              {selectedOrder && (
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, opacity: selectedOrder.payments.some((p: any) => p.is_paid) ? 0.65 : 1 }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}</Text>
-                  
-                  {selectedOrder.payments.some((p: any) => p.is_paid) ? (
-                    <View style={{ paddingVertical: 4 }}>
-                      <Text style={[styles.premiumInput, { color: t.textPrimary }]}>{selectedOrder.clientName}</Text>
-                      <Text style={[styles.clientSelectEmailText, { marginTop: 2 }]}>{selectedOrder.clientEmail}</Text>
+          <SwipeDismissModal onDismiss={() => setIsEditOpen(false)} disabled={actionLoading}>
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+              <LinearGradient
+                colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+                style={styles.sheetHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <Edit2 size={18} color="#ffffff" />
                     </View>
-                  ) : (
-                    <View style={[styles.clientSelectContainer, { borderColor: t.border, marginTop: 4 }]}>
-                      <ScrollView style={{ maxHeight: 100 }} nestedScrollEnabled={true}>
-                        {profiles.map((client) => (
-                          <TouchableOpacity
-                            key={client.id}
-                            style={[
-                              styles.clientSelectItem,
-                              editClientId === client.id && { backgroundColor: t.accentLight }
-                            ]}
-                            onPress={() => setEditClientId(client.id)}
-                          >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                              <Text style={[styles.clientSelectItemText, { color: t.textPrimary, fontWeight: editClientId === client.id ? 'bold' : 'normal' }]}>
-                                {client.name}
-                              </Text>
-                              {editClientId === client.id && <Check size={14} color={t.accent} />}
-                            </View>
-                            <Text style={styles.clientSelectEmailText}>{client.email}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER OPERATIONS</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Edit Order Details</Text>
                     </View>
-                  )}
+                  </View>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                  </TouchableOpacity>
                 </View>
-              )}
+                <Text style={[styles.sheetHeroText, { color: t.textSecondary }]}>
+                  Modify ledger record credentials. Note that terms and amounts lock once collections begin.
+                </Text>
+              </LinearGradient>
 
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Purchase Specs</Text>
-              </View>
-
-              <View style={styles.inputGrid}>
-                {/* Product Name Input */}
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM / PRODUCT NAME</Text>
-                  <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary }]}
-                    placeholder="Product Name"
-                    placeholderTextColor={t.textSecondary}
-                    value={editItemName}
-                    onChangeText={setEditItemName}
-                  />
+              <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Allocation</Text>
                 </View>
 
-                {/* Amount Input */}
+                {/* Client Selection card - Display current or edit client if not locked */}
                 {selectedOrder && (
-                  <View style={[
-                    styles.premiumInputCard, 
-                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
-                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
-                  ]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
-                      PURCHASE VALUE (PHP) {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
-                    </Text>
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, opacity: selectedOrder.payments.some((p: any) => p.is_paid) ? 0.65 : 1 }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}</Text>
+                    
+                    {selectedOrder.payments.some((p: any) => p.is_paid) ? (
+                      <View style={{ paddingVertical: 4 }}>
+                        <Text style={[styles.premiumInput, { color: t.textPrimary }]}>{selectedOrder.clientName}</Text>
+                        <Text style={[styles.clientSelectEmailText, { marginTop: 2 }]}>{selectedOrder.clientEmail}</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.clientSelectContainer, { borderColor: t.border, marginTop: 4 }]}>
+                        <ScrollView style={{ maxHeight: 100 }} nestedScrollEnabled={true}>
+                          {profiles.map((client) => (
+                            <TouchableOpacity
+                              key={client.id}
+                              style={[
+                                styles.clientSelectItem,
+                                editClientId === client.id && { backgroundColor: t.accentLight }
+                              ]}
+                              onPress={() => setEditClientId(client.id)}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <Text style={[styles.clientSelectItemText, { color: t.textPrimary, fontWeight: editClientId === client.id ? 'bold' : 'normal' }]}>
+                                  {client.name}
+                                </Text>
+                                {editClientId === client.id && <Check size={14} color={t.accent} />}
+                              </View>
+                              <Text style={styles.clientSelectEmailText}>{client.email}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Purchase Specs</Text>
+                </View>
+
+                <View style={styles.inputGrid}>
+                  {/* Product Name Input */}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM / PRODUCT NAME</Text>
                     <TextInput
                       style={[styles.premiumInput, { color: t.textPrimary }]}
-                      placeholder="Purchase Value"
-                      keyboardType="numeric"
+                      placeholder="Product Name"
                       placeholderTextColor={t.textSecondary}
-                      value={editAmount}
-                      onChangeText={setEditAmount}
-                      editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
+                      value={editItemName}
+                      onChangeText={setEditItemName}
                     />
                   </View>
-                )}
 
-                {/* Installment terms */}
-                {selectedOrder && (
-                  <View style={[
-                    styles.premiumInputCard, 
-                    { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
-                    selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
-                  ]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
-                      INSTALLMENT TERM {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
-                    </Text>
-                    <View style={styles.monthsRow}>
-                      {['3', '6', '12', '24'].map((m) => {
-                        const editable = !selectedOrder.payments.some((p: any) => p.is_paid);
-                        return (
-                          <TouchableOpacity
-                            key={m}
-                            style={[
-                              styles.premiumMonthSelector,
-                              editMonths === m && { backgroundColor: t.accent },
-                              !editable && { opacity: 0.5 }
-                            ]}
-                            onPress={() => {
-                              if (editable) setEditMonths(m);
-                            }}
-                            disabled={!editable}
-                          >
-                            <Text style={[styles.premiumMonthSelectorText, editMonths === m && { color: '#fff' }]}>{m}M</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
+                  {/* Amount Input */}
+                  {selectedOrder && (
+                    <View style={[
+                      styles.premiumInputCard, 
+                      { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
+                      selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                    ]}>
+                      <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
+                        PURCHASE VALUE (PHP) {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                      </Text>
+                      <TextInput
+                        style={[styles.premiumInput, { color: t.textPrimary }]}
+                        placeholder="Purchase Value"
+                        keyboardType="numeric"
+                        placeholderTextColor={t.textSecondary}
+                        value={editAmount}
+                        onChangeText={setEditAmount}
+                        editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
+                      />
                     </View>
+                  )}
+
+                  {/* Installment terms */}
+                  {selectedOrder && (
+                    <View style={[
+                      styles.premiumInputCard, 
+                      { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
+                      selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                    ]}>
+                      <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
+                        INSTALLMENT TERM {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                      </Text>
+                      <View style={styles.monthsRow}>
+                        {['3', '6', '12', '24'].map((m) => {
+                          const editable = !selectedOrder.payments.some((p: any) => p.is_paid);
+                          return (
+                            <TouchableOpacity
+                              key={m}
+                              style={[
+                                styles.premiumMonthSelector,
+                                editMonths === m && { backgroundColor: t.accent },
+                                !editable && { opacity: 0.5 }
+                              ]}
+                              onPress={() => {
+                                if (editable) setEditMonths(m);
+                              }}
+                              disabled={!editable}
+                            >
+                              <Text style={[styles.premiumMonthSelectorText, editMonths === m && { color: '#fff' }]}>{m}M</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Purchase Date */}
+                  {selectedOrder && (
+                    <DatePicker
+                      label={`Purchase Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
+                      value={editPurchaseDate}
+                      onChange={setEditPurchaseDate}
+                      disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
+                    />
+                  )}
+
+                  {/* First Payment Date */}
+                  {selectedOrder && (
+                    <DatePicker
+                      label={`First Payment Due Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
+                      value={editFirstPaymentDate}
+                      onChange={setEditFirstPaymentDate}
+                      disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
+                    />
+                  )}
+
+                  {/* Remarks */}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary, minHeight: 60, textAlignVertical: 'top' }]}
+                      placeholder="Add notes..."
+                      placeholderTextColor={t.textSecondary}
+                      multiline={true}
+                      value={editRemarks}
+                      onChangeText={setEditRemarks}
+                    />
                   </View>
-                )}
-
-                {/* Purchase Date */}
-                {selectedOrder && (
-                  <DatePicker
-                    label={`Purchase Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
-                    value={editPurchaseDate}
-                    onChange={setEditPurchaseDate}
-                    disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
-                  />
-                )}
-
-                {/* First Payment Date */}
-                {selectedOrder && (
-                  <DatePicker
-                    label={`First Payment Due Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
-                    value={editFirstPaymentDate}
-                    onChange={setEditFirstPaymentDate}
-                    disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
-                  />
-                )}
-
-                {/* Remarks */}
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS</Text>
-                  <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary, minHeight: 60, textAlignVertical: 'top' }]}
-                    placeholder="Add notes..."
-                    placeholderTextColor={t.textSecondary}
-                    multiline={true}
-                    value={editRemarks}
-                    onChangeText={setEditRemarks}
-                  />
                 </View>
-              </View>
-            </ScrollView>
+              </ScrollView>
 
-            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
-              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
-                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditSubmit} disabled={actionLoading}>
-                <CheckCircle2 size={16} color="#ffffff" />
-                <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
-              </TouchableOpacity>
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+                <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditSubmit} disabled={actionLoading}>
+                  <CheckCircle2 size={16} color="#ffffff" />
+                  <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>

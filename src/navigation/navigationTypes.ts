@@ -25,6 +25,7 @@ export type MainTabParamList = {
   Reports: undefined;
   Settings: undefined;
   Calendar: undefined;
+  NootAi: undefined;
 };
 
 export type AdminTabParamList = {

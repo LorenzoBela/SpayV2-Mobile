@@ -13,7 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
-  LayoutDashboard,
   TrendingUp,
   Receipt,
   CreditCard,
@@ -27,6 +26,7 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -83,10 +83,10 @@ export default function MoreScreen() {
 
   const gridItems = [
     {
-      name: 'Dashboard',
-      icon: LayoutDashboard,
-      desc: 'Analytics & view',
-      action: () => navigation.navigate('Dashboard'),
+      name: 'NootAI Chatbot',
+      icon: Sparkles,
+      desc: 'Smart financial AI',
+      action: () => navigation.navigate('NootAi'),
     },
     {
       name: 'Reports',
@@ -213,7 +213,7 @@ export default function MoreScreen() {
                 key={idx}
                 style={[styles.gridCard, { width: gridCardWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
                 onPress={item.action}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
                 <View style={[styles.iconWrapper, { backgroundColor: t.accentLight }]}>
                   <Icon size={20} color={t.accent} />
@@ -241,7 +241,7 @@ export default function MoreScreen() {
             return (
               <View key={idx}>
                 {idx > 0 && <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />}
-                <TouchableOpacity style={styles.listItemRow} onPress={item.action} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.listItemRow} onPress={item.action} activeOpacity={0.85}>
                   <View style={[styles.listIconWrapper, { backgroundColor: t.iconBg }]}>
                     <Icon size={18} color={t.textSecondary} />
                   </View>
@@ -270,7 +270,7 @@ export default function MoreScreen() {
           <TouchableOpacity
             style={styles.listItemRow}
             onPress={() => navigation.navigate('Settings')}
-            activeOpacity={0.7}
+            activeOpacity={0.85}
           >
             <View style={[styles.listIconWrapper, { backgroundColor: t.iconBg }]}>
               <User size={18} color={t.textSecondary} />
@@ -289,7 +289,7 @@ export default function MoreScreen() {
               <TouchableOpacity
                 style={styles.listItemRow}
                 onPress={() => setActiveRole(null)}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
               >
                 <View style={[styles.listIconWrapper, { backgroundColor: t.iconBg }]}>
                   <Shield size={18} color={t.textSecondary} />
@@ -305,7 +305,7 @@ export default function MoreScreen() {
 
           {/* Sign Out */}
           <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />
-          <TouchableOpacity style={styles.listItemRow} onPress={handleSignOut} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.listItemRow} onPress={handleSignOut} activeOpacity={0.85}>
             <View style={[styles.listIconWrapper, { backgroundColor: 'rgba(239, 68, 68, 0.08)' }]}>
               <LogOut size={18} color="#ef4444" />
             </View>

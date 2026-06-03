@@ -62,6 +62,7 @@ export default function PremiumLoader({
   timeoutMs = 12000, // 12 seconds default timeout
   useSystemFonts = false,
 }: PremiumLoaderProps) {
+  const [trackWidth, setTrackWidth] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [isTimeout, setIsTimeout] = useState(false);
 
@@ -149,7 +150,7 @@ export default function PremiumLoader({
     return () => clearInterval(slideTimer);
   }, []);
 
-  // Indeterminate progress animation loop
+  // Indeterminate progress animation loop (now native-driven)
   useEffect(() => {
     if (progress === undefined) {
       const runIndeterminate = () => {
@@ -158,7 +159,7 @@ export default function PremiumLoader({
           toValue: 1,
           duration: 1500,
           easing: Easing.bezier(0.4, 0, 0.2, 1),
-          useNativeDriver: false, // width/left positioning doesn't support native driver in RN
+          useNativeDriver: true,
         }).start(() => {
           runIndeterminate();
         });
@@ -167,14 +168,14 @@ export default function PremiumLoader({
     }
   }, [progress]);
 
-  // Deterministic progress animation
+  // Deterministic progress animation (now native-driven)
   useEffect(() => {
     if (progress !== undefined) {
       const bounded = Math.max(0, Math.min(1, progress));
       Animated.timing(progressAnim, {
         toValue: bounded,
         duration: 300,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     }
   }, [progress]);
@@ -189,23 +190,34 @@ export default function PremiumLoader({
     }
   }, [error, timeoutMs, onRetry]);
 
-  // Map progress values to style widths
+  // Interpolated translations for native transformations
+  const indeterminateTranslateX = indeterminateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [trackWidth ? -trackWidth * 0.35 : -120, trackWidth ? trackWidth : 350],
+  });
+
+  const deterministicTranslateX = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-trackWidth / 2, 0],
+  });
+
+  // Map progress values to style transformations using native driver
   const getProgressStyle = () => {
     if (progress !== undefined) {
       return {
-        width: progressAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['0%', '100%'],
-        }),
+        width: '100%',
+        transform: [
+          { translateX: trackWidth ? deterministicTranslateX : 0 },
+          { scaleX: progressAnim },
+        ],
       } as any;
     } else {
       // Indeterminate loops across the bar
       return {
         width: '35%',
-        left: indeterminateAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: ['-35%', '100%'],
-        }),
+        transform: [
+          { translateX: indeterminateTranslateX },
+        ],
       } as any;
     }
   };
@@ -234,7 +246,12 @@ export default function PremiumLoader({
 
         {/* Premium Progress Bar Wrapper */}
         <View style={styles.barWrapper}>
-          <View style={styles.barTrack}>
+          <View
+            style={styles.barTrack}
+            onLayout={(e) => {
+              setTrackWidth(e.nativeEvent.layout.width);
+            }}
+          >
             <Animated.View style={[styles.barFill, getProgressStyle()]} />
           </View>
           {progress !== undefined && (

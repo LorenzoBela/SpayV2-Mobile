@@ -1,4 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   StyleSheet,
@@ -1041,87 +1042,89 @@ export default function AdminClientsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.editProfileSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
-            <LinearGradient
-              colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
-              style={styles.sheetHero}
-            >
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <Pencil size={18} color="#ffffff" />
+          <SwipeDismissModal onDismiss={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
+            <View style={[styles.editProfileSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder }]}>
+              <LinearGradient
+                colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+                style={styles.sheetHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <Pencil size={18} color="#ffffff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>CLIENT PROFILE</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Edit Credentials</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>CLIENT PROFILE</Text>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Edit Credentials</Text>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.editProfileHeroText, { color: t.textSecondary }]}>
+                  Update profile credentials and contacts for {selectedClient?.name}.
+                </Text>
+              </LinearGradient>
+
+              <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+                <View style={styles.formSectionHeader}>
+                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Profile Details</Text>
+                </View>
+
+                <View style={styles.inputGrid}>
+                  {/* Full Name Input */}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>FULL NAME</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="Full Name"
+                      placeholderTextColor={t.textSecondary}
+                      value={editName}
+                      onChangeText={setEditName}
+                    />
+                  </View>
+
+                  {/* Email Input */}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>EMAIL ADDRESS</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="Email Address"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      placeholderTextColor={t.textSecondary}
+                      value={editEmail}
+                      onChangeText={setEditEmail}
+                    />
+                  </View>
+
+                  {/* Mobile Number Input */}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>MOBILE NUMBER</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="Mobile Number"
+                      keyboardType="phone-pad"
+                      placeholderTextColor={t.textSecondary}
+                      value={editMobile}
+                      onChangeText={setEditMobile}
+                    />
                   </View>
                 </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Close</Text>
+              </ScrollView>
+
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+                <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
+                  <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditProfileSubmit} disabled={actionLoading}>
+                  <CheckCircle2 size={16} color="#ffffff" />
+                  <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={[styles.editProfileHeroText, { color: t.textSecondary }]}>
-                Update profile credentials and contacts for {selectedClient?.name}.
-              </Text>
-            </LinearGradient>
-
-            <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
-              <View style={styles.formSectionHeader}>
-                <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Profile Details</Text>
-              </View>
-
-              <View style={styles.inputGrid}>
-                {/* Full Name Input */}
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>FULL NAME</Text>
-                  <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary }]}
-                    placeholder="Full Name"
-                    placeholderTextColor={t.textSecondary}
-                    value={editName}
-                    onChangeText={setEditName}
-                  />
-                </View>
-
-                {/* Email Input */}
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>EMAIL ADDRESS</Text>
-                  <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary }]}
-                    placeholder="Email Address"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    placeholderTextColor={t.textSecondary}
-                    value={editEmail}
-                    onChangeText={setEditEmail}
-                  />
-                </View>
-
-                {/* Mobile Number Input */}
-                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                  <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>MOBILE NUMBER</Text>
-                  <TextInput
-                    style={[styles.premiumInput, { color: t.textPrimary }]}
-                    placeholder="Mobile Number"
-                    keyboardType="phone-pad"
-                    placeholderTextColor={t.textSecondary}
-                    value={editMobile}
-                    onChangeText={setEditMobile}
-                  />
-                </View>
-              </View>
-            </ScrollView>
-
-            <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
-              <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
-                <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditProfileSubmit} disabled={actionLoading}>
-                <CheckCircle2 size={16} color="#ffffff" />
-                <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
-              </TouchableOpacity>
             </View>
-          </View>
+          </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>

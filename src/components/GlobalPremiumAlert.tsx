@@ -87,7 +87,7 @@ export default function GlobalPremiumAlert() {
   }, []);
 
   const handleDismiss = () => {
-    if (!alertConfig?.options?.cancelable && alertConfig?.buttons?.length) {
+    if (alertConfig?.options?.cancelable === false) {
       return;
     }
 

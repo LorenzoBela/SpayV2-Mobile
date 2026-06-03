@@ -11,9 +11,6 @@ import {
   Image,
   Animated,
   Easing,
-  Modal,
-  TextInput,
-  Alert,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -579,12 +576,6 @@ export default function DashboardScreen() {
     isOverdue: false,
     hasTarget: false,
   });
-
-  // Chatbot Modal States
-  const [nootAiVisible, setNootAiVisible] = useState(false);
-  const [aiMessages, setAiMessages] = useState<Array<{ sender: 'ai' | 'user'; text: string }>>([]);
-  const [userInput, setUserInput] = useState('');
-
   // Live clocks
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(dayjs()), 1000);
@@ -959,40 +950,6 @@ export default function DashboardScreen() {
         }}
       ]
     );
-  };
-
-  const openNootAi = () => {
-    setNootAiVisible(true);
-    setAiMessages([
-      {
-        sender: 'ai',
-        text: `Hello ${userName.split(' ')[0]}! I'm NootAI, your smart financial assistant. 🦉\n\nI note your credibility rating stands at ${financialMetrics.healthScore}% in the ${financialMetrics.healthScore >= 85 ? 'Elite Tier' : 'Prime Tier'}.\n\nHow can I help you today?`
-      }
-    ]);
-  };
-
-  const handleSendAiMessage = () => {
-    if (!userInput.trim()) return;
-    const userText = userInput;
-    setAiMessages(prev => [...prev, { sender: 'user', text: userText }]);
-    setUserInput('');
-
-    setTimeout(() => {
-      let reply = "Processing financial models... ";
-      const textLower = userText.toLowerCase();
-      
-      if (textLower.includes('budget') || textLower.includes('spend') || textLower.includes('recommend')) {
-        reply = `Based on open balances, your recommended safe monthly budget is ${formatCurrency(financialMetrics.recommendedMonthlyBudget)}. Try to keep combined dues below this limit to protect your streak!`;
-      } else if (textLower.includes('limit') || textLower.includes('credit')) {
-        reply = `Your available shared credit limit is ${formatCurrency(globalAvailableCredit)} out of a total cap of ${formatCurrency(globalCreditLimit)}. Settling outstanding bills will instantly restore limit availability.`;
-      } else if (textLower.includes('score') || textLower.includes('wellness') || textLower.includes('streak') || textLower.includes('health')) {
-        reply = `You're currently in the ${financialMetrics.healthScore >= 85 ? 'Elite Tier' : 'Prime Tier'} with a score of ${financialMetrics.healthScore}%. Keeping your ${financialMetrics.paymentStreak}-month streak going by paying bills on time will help secure credit increases!`;
-      } else {
-        reply = `Got it! Rest assured that your transactions are safe under S-Pay's photo-verification protocol. Is there anything else about your ${financialMetrics.healthScore}% health score or upcoming bills you'd like to check?`;
-      }
-      
-      setAiMessages(prev => [...prev, { sender: 'ai', text: reply }]);
-    }, 800);
   };
 
   // SVGs Calculations
@@ -1434,6 +1391,7 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={() => navigation.navigate('Budget')}
+            activeOpacity={0.85}
           >
             <View style={styles.gridIconFrame}>
               <PiggyBank size={20} color="#ee4d2d" />
@@ -1445,6 +1403,7 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={() => navigation.navigate('Payments')}
+            activeOpacity={0.85}
           >
             <View style={styles.gridIconFrame}>
               <Calendar size={20} color="#ee4d2d" />
@@ -1456,6 +1415,7 @@ export default function DashboardScreen() {
           <TouchableOpacity
             style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
             onPress={handleUploadProof}
+            activeOpacity={0.85}
           >
             <View style={styles.gridIconFrame}>
               <FileText size={20} color="#ee4d2d" />
@@ -1466,7 +1426,8 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-            onPress={openNootAi}
+            onPress={() => navigation.navigate('NootAi')}
+            activeOpacity={0.85}
           >
             <View style={styles.gridIconFrame}>
               <Headset size={20} color="#ee4d2d" />
@@ -1477,73 +1438,6 @@ export default function DashboardScreen() {
         </View>
 
       </ScrollView>
-
-      {/* Floating NootAI chatbot Modal */}
-      <Modal
-        visible={nootAiVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setNootAiVisible(false)}
-      >
-        <View style={[styles.chatModalOverlay, { backgroundColor: isDarkMode ? 'rgba(11, 15, 25, 0.8)' : 'rgba(15, 23, 42, 0.6)' }]}>
-          <SwipeDismissModal onDismiss={() => setNootAiVisible(false)}>
-          <View style={[styles.chatModalContainer, { backgroundColor: t.modalBg, borderColor: t.modalBorder }]}>
-            {/* Header */}
-            <View style={[styles.chatModalHeader, { borderColor: t.divider }]}>
-              <View style={styles.chatModalHeaderLeft}>
-                <Sparkles size={18} color="#ee4d2d" />
-                <Text style={[styles.chatModalTitle, { color: t.textPrimary }]}>NootAI Assistant</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.chatModalClose, { backgroundColor: t.iconBtnBg }]}
-                onPress={() => setNootAiVisible(false)}
-              >
-                <X size={20} color={t.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Message Area */}
-            <ScrollView 
-              style={styles.chatMessagesScroll}
-              contentContainerStyle={{ padding: 16 }}
-            >
-              {aiMessages.map((msg, i) => (
-                <View 
-                  key={i} 
-                  style={msg.sender === 'ai' 
-                    ? [styles.chatBubble, styles.chatBubbleAi, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.05)' : 'rgba(238, 77, 45, 0.08)', borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.1)' : 'rgba(238, 77, 45, 0.15)' }]
-                    : [styles.chatBubble, styles.chatBubbleUser, { backgroundColor: t.accent }]}
-                >
-                  <Text style={msg.sender === 'ai'
-                    ? [styles.chatBubbleText, { color: t.textPrimary }]
-                    : [styles.chatBubbleText, { color: '#ffffff' }]}>
-                    {msg.text}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            {/* Input Bar */}
-            <View style={[styles.chatInputBar, { backgroundColor: t.bg, borderColor: t.divider }]}>
-              <TextInput
-                style={[styles.chatTextInput, { backgroundColor: t.cardBg, borderColor: t.cardBorder, color: t.textPrimary }]}
-                placeholder="Ask about budget, streak, score..."
-                placeholderTextColor="rgba(148, 163, 184, 0.4)"
-                value={userInput}
-                onChangeText={setUserInput}
-                onSubmitEditing={handleSendAiMessage}
-              />
-              <TouchableOpacity
-                style={styles.chatSendBtn}
-                onPress={handleSendAiMessage}
-              >
-                <Send size={16} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          </SwipeDismissModal>
-        </View>
-      </Modal>
 
       {/* Reusable Loading Screen Overlays */}
       {showOverlay && (
@@ -2332,106 +2226,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Medium',
     fontSize: 9,
     marginTop: 1,
-  },
-  // NootAI Modal styling
-  chatModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(11, 15, 25, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  chatModalContainer: {
-    backgroundColor: '#161c2a',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: '#222d42',
-    height: '75%',
-  },
-  chatModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderColor: '#222d42',
-  },
-  chatModalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  chatModalTitle: {
-    color: '#f8fafc',
-    fontFamily: 'Outfit-Bold',
-    fontSize: 15,
-  },
-  chatModalClose: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(148, 163, 184, 0.06)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chatMessagesScroll: {
-    flex: 1,
-  },
-  chatBubble: {
-    maxWidth: '85%',
-    borderRadius: 16,
-    padding: 12,
-    marginVertical: 6,
-  },
-  chatBubbleAi: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(238, 77, 45, 0.05)',
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(238, 77, 45, 0.1)',
-  },
-  chatBubbleUser: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#ee4d2d',
-    borderBottomRightRadius: 4,
-  },
-  chatBubbleText: {
-    color: '#f8fafc',
-    fontFamily: 'Jakarta-Medium',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  chatBubbleTextAi: {
-    color: '#cbd5e1',
-  },
-  chatInputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderTopWidth: 1,
-    borderColor: '#222d42',
-    backgroundColor: '#0c101b',
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-  },
-  chatTextInput: {
-    flex: 1,
-    backgroundColor: '#161c2a',
-    borderWidth: 1,
-    borderColor: '#222d42',
-    borderRadius: 99,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    color: '#f8fafc',
-    fontFamily: 'Jakarta-Medium',
-    fontSize: 12,
-    marginRight: 8,
-    height: 38,
-  },
-  chatSendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#ee4d2d',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

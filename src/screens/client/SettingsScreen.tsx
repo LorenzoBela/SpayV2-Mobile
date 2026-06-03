@@ -1,4 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
@@ -785,47 +786,49 @@ export default function SettingsScreen() {
         activeOpacity={1}
         onPress={() => setLangModalVisible(false)}
       >
-        <View
-          style={[
-            styles.modalContent,
-            { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-          ]}
-        >
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitleText, { color: t.textPrimary }]}>Select Language</Text>
-            <View style={[styles.modalTitleDivider, { backgroundColor: t.divider }]} />
+        <SwipeDismissModal onDismiss={() => setLangModalVisible(false)}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitleText, { color: t.textPrimary }]}>Select Language</Text>
+              <View style={[styles.modalTitleDivider, { backgroundColor: t.divider }]} />
+            </View>
+
+            <TouchableOpacity
+              onPress={() => handleLanguageChange('en')}
+              style={[styles.modalOptionRow, language === 'en' && { backgroundColor: t.tabBgActive }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.modalOptionText, { color: language === 'en' ? t.accent : t.textPrimary }]}>
+                English
+              </Text>
+              {language === 'en' && <CheckCircle size={16} color={t.accent} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleLanguageChange('fil')}
+              style={[styles.modalOptionRow, language === 'fil' && { backgroundColor: t.tabBgActive }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.modalOptionText, { color: language === 'fil' ? t.accent : t.textPrimary }]}>
+                Filipino
+              </Text>
+              {language === 'fil' && <CheckCircle size={16} color={t.accent} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setLangModalVisible(false)}
+              style={[styles.modalCloseBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.modalCloseBtnText, { color: t.textPrimary }]}>Close</Text>
+            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            onPress={() => handleLanguageChange('en')}
-            style={[styles.modalOptionRow, language === 'en' && { backgroundColor: t.tabBgActive }]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.modalOptionText, { color: language === 'en' ? t.accent : t.textPrimary }]}>
-              English
-            </Text>
-            {language === 'en' && <CheckCircle size={16} color={t.accent} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => handleLanguageChange('fil')}
-            style={[styles.modalOptionRow, language === 'fil' && { backgroundColor: t.tabBgActive }]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.modalOptionText, { color: language === 'fil' ? t.accent : t.textPrimary }]}>
-              Filipino
-            </Text>
-            {language === 'fil' && <CheckCircle size={16} color={t.accent} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setLangModalVisible(false)}
-            style={[styles.modalCloseBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.modalCloseBtnText, { color: t.textPrimary }]}>Close</Text>
-          </TouchableOpacity>
-        </View>
+        </SwipeDismissModal>
       </TouchableOpacity>
     </Modal>
   );
