@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
 import { ThemeContext } from '../navigation/navigationTypes';
-import HeaderActions from './HeaderActions';
+import HeaderActions, { HeaderWeatherTime } from './HeaderActions';
 
 interface AdminHeaderProps {
   title: string;
@@ -23,33 +23,41 @@ export default function AdminHeader({ title, subtitle, onBack }: AdminHeaderProp
   };
 
   return (
-    <View style={styles.header}>
-      <View style={styles.headerLeft}>
-        {onBack && (
-          <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
-            <ArrowLeft size={20} color={t.textPrimary} />
-          </TouchableOpacity>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerSubtitle}>{subtitle}</Text>
-          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>{title}</Text>
+    <View style={[styles.header, { borderBottomColor: t.border }]}>
+      <View style={styles.headerTopRow}>
+        <View style={styles.headerLeft}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
+              <ArrowLeft size={20} color={t.textPrimary} />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerSubtitle}>{subtitle}</Text>
+            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>{title}</Text>
+          </View>
+        </View>
+        <View style={styles.headerRight}>
+          <HeaderActions role="admin" showWeatherTime={false} />
         </View>
       </View>
-      <View style={styles.headerRight}>
-        <HeaderActions role="admin" />
-      </View>
+      <HeaderWeatherTime />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    flexDirection: 'column',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1.5,
+  },
+  headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    width: '100%',
   },
   headerLeft: {
     flex: 1,

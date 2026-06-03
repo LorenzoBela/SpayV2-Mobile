@@ -24,6 +24,7 @@ import {
   ArrowRight,
   Sparkles,
   ChevronRight,
+  ChevronLeft,
   ShieldCheck,
   Headset,
   PlusCircle,
@@ -40,7 +41,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import HeaderActions from '../../components/HeaderActions';
+import HeaderActions, { HeaderWeatherTime } from '../../components/HeaderActions';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
@@ -139,7 +140,7 @@ function formatBillingMonthKey(monthKey: string): string {
   });
 }
 
-function findNextUnpaidBillingMonth(
+function groupUnpaidBillingMonths(
   payments: Array<{
     id: string;
     dueDate: Date;
@@ -150,42 +151,39 @@ function findNextUnpaidBillingMonth(
     installmentMonths?: number;
   }>,
 ) {
-  const fromDate = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
-  const fromMonthKey = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}`;
-
   const unpaidPaymentsByMonth = new Map<string, typeof payments>();
   payments.forEach(payment => {
     if (payment.isPaid) return;
 
     const monthKey = getBillingMonthKey(payment.dueDate);
-    if (monthKey < fromMonthKey) return;
-
     const list = unpaidPaymentsByMonth.get(monthKey) || [];
     list.push(payment);
     unpaidPaymentsByMonth.set(monthKey, list);
   });
 
-  const nextMonthKey = Array.from(unpaidPaymentsByMonth.keys()).sort()[0];
-  if (!nextMonthKey) return null;
+  const sortedMonthKeys = Array.from(unpaidPaymentsByMonth.keys()).sort();
+  return sortedMonthKeys.map(monthKey => {
+    const monthPayments = unpaidPaymentsByMonth
+      .get(monthKey)!
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    const earliestDueDate = monthPayments[0]?.dueDate ?? new Date();
+    const totalDue = monthPayments.reduce((sum, payment) => sum + payment.amountDue, 0);
 
-  const monthPayments = unpaidPaymentsByMonth
-    .get(nextMonthKey)!
-    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-  const earliestDueDate = monthPayments[0]?.dueDate ?? null;
-  const totalDue = monthPayments.reduce((sum, payment) => sum + payment.amountDue, 0);
-
-  return {
-    monthKey: nextMonthKey,
-    monthName: formatBillingMonthKey(nextMonthKey),
-    totalDue,
-    earliestDueDate,
-    payments: monthPayments.map(payment => ({
-      id: payment.id,
-      itemName: payment.itemName,
-      amount: payment.amountDue,
-      dueDate: payment.dueDate.toISOString(),
-    })),
-  };
+    return {
+      monthKey,
+      monthName: formatBillingMonthKey(monthKey),
+      totalAmount: totalDue,
+      dueDate: earliestDueDate.toISOString(),
+      paymentCount: monthPayments.length,
+      itemNames: monthPayments.map(p => p.itemName),
+      payments: monthPayments.map(payment => ({
+        id: payment.id,
+        itemName: payment.itemName,
+        amount: payment.amountDue,
+        dueDate: payment.dueDate.toISOString(),
+      })),
+    };
+  });
 }
 
 // Flip Card Subcomponent — matches the web's CSS animation approach
@@ -546,7 +544,9 @@ export default function DashboardScreen() {
   const [isDemo, setIsDemo] = useState(true);
 
   // Payments / Orders States
-  const [nextMonthlyPayment, setNextMonthlyPayment] = useState<NextMonthlyPayment | null>(null);
+  const [unpaidBillingMonths, setUnpaidBillingMonths] = useState<any[]>([]);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(0);
+  const nextMonthlyPayment = unpaidBillingMonths[selectedMonthIndex] || null;
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [financialMetrics, setFinancialMetrics] = useState<FinancialMetrics>({
     healthScore: 100,
@@ -629,18 +629,21 @@ export default function DashboardScreen() {
     setIsDemo(true);
     
     const demoNowMs = new Date().getTime();
-    const demoDueDate = new Date(demoNowMs + 5 * 24 * 60 * 60 * 1000).toISOString();
-    
-    setNextMonthlyPayment({
-      dueDate: demoDueDate,
-      totalAmount: 14500,
-      paymentCount: 2,
-      itemNames: ['iPhone 15 Pro Max', 'AirPods Pro 2'],
-      payments: [
-        { id: 'p1', itemName: 'iPhone 15 Pro Max', amount: 4500, dueDate: demoDueDate },
-        { id: 'p2', itemName: 'AirPods Pro 2', amount: 10000, dueDate: demoDueDate },
-      ],
-    });
+    const demoDueDate1 = new Date(demoNowMs + 5 * 24 * 60 * 60 * 1000);
+    const demoDueDate2 = new Date(demoNowMs + 35 * 24 * 60 * 60 * 1000);
+    const demoDueDate3 = new Date(demoNowMs + 65 * 24 * 60 * 60 * 1000);
+
+    const demoPayments = [
+      { id: 'p1', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate1 },
+      { id: 'p2', itemName: 'AirPods Pro 2', amountDue: 10000, isPaid: false, dueDate: demoDueDate1 },
+      { id: 'p3', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate2 },
+      { id: 'p4', itemName: 'AirPods Pro 2', amountDue: 5000, isPaid: false, dueDate: demoDueDate2 },
+      { id: 'p5', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate3 },
+    ];
+
+    const unpaidMonthsList = groupUnpaidBillingMonths(demoPayments);
+    setUnpaidBillingMonths(unpaidMonthsList);
+    setSelectedMonthIndex(0);
 
     setRecentOrders([
       { id: '1', itemName: 'iPhone 15 Pro Max', amount: 54000, installmentMonths: 12, orderDate: new Date(demoNowMs - 30 * 24 * 60 * 60 * 1000).toISOString(), isPaid: false },
@@ -762,24 +765,10 @@ export default function DashboardScreen() {
       setGlobalAvailableCredit(globalAvailable);
       setIsDemo(false);
 
-      // Process next monthly payment
-      const nextUnpaidMonth = findNextUnpaidBillingMonth(allPayments);
-      if (nextUnpaidMonth) {
-        setNextMonthlyPayment({
-          dueDate: nextUnpaidMonth.earliestDueDate ? nextUnpaidMonth.earliestDueDate.toISOString() : new Date().toISOString(),
-          totalAmount: nextUnpaidMonth.totalDue,
-          paymentCount: nextUnpaidMonth.payments.length,
-          itemNames: nextUnpaidMonth.payments.map(p => p.itemName),
-          payments: nextUnpaidMonth.payments.map(p => ({
-            id: p.id,
-            itemName: p.itemName,
-            amount: p.amount,
-            dueDate: p.dueDate
-          }))
-        });
-      } else {
-        setNextMonthlyPayment(null);
-      }
+      // Process next monthly payment cycles
+      const unpaidMonthsList = groupUnpaidBillingMonths(allPayments);
+      setUnpaidBillingMonths(unpaidMonthsList);
+      setSelectedMonthIndex(0);
 
       // Process recent orders
       setRecentOrders(dbOrders.slice(0, 4).map(o => ({
@@ -976,22 +965,27 @@ export default function DashboardScreen() {
 
       {/* Premium Header Bar */}
       <View style={[styles.webHeader, { backgroundColor: t.headerBg, borderColor: t.headerBorder }]}>
-        <View style={styles.webHeaderLeft}>
+        {/* Row 1: Subtitle label + action buttons */}
+        <View style={styles.webHeaderTopRow}>
           <Text style={styles.webHeaderSubtitle}>S-Pay Client</Text>
-          <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Customer Dashboard</Text>
+          <HeaderActions
+            role="client"
+            showWeatherTime={false}
+            avatar={
+              userPhoto ? (
+                <Image source={{ uri: userPhoto }} style={styles.avatar as any} />
+              ) : (
+                <View style={[styles.avatarPlaceholder, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <Text style={[styles.avatarText, { color: t.accent }]}>{userName.charAt(0).toUpperCase()}</Text>
+                </View>
+              )
+            }
+          />
         </View>
-        <HeaderActions
-          role="client"
-          avatar={
-            userPhoto ? (
-              <Image source={{ uri: userPhoto }} style={styles.avatar as any} />
-            ) : (
-              <View style={[styles.avatarPlaceholder, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Text style={[styles.avatarText, { color: t.accent }]}>{userName.charAt(0).toUpperCase()}</Text>
-              </View>
-            )
-          }
-        />
+        {/* Row 2: Full-width title — never competes with actions */}
+        <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Customer Dashboard</Text>
+        {/* Row 3: Weather & time bar */}
+        <HeaderWeatherTime />
       </View>
 
       <ScrollView
@@ -1015,7 +1009,9 @@ export default function DashboardScreen() {
                 <Calendar size={18} color="#ee4d2d" />
               </View>
               <View>
-                <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Next Billing Cycle Overview</Text>
+                <Text style={[styles.cardTitle, { color: t.textPrimary }]}>
+                  {nextMonthlyPayment ? `${nextMonthlyPayment.monthName} Billing Cycle` : 'Billing Cycle Overview'}
+                </Text>
                 <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>
                   {nextMonthlyPayment ? (
                     <>Due {formatRelativeDate(nextMonthlyPayment.dueDate)} • {formatCurrency(nextMonthlyPayment.totalAmount)}</>
@@ -1025,6 +1021,24 @@ export default function DashboardScreen() {
                 </Text>
               </View>
             </View>
+            {unpaidBillingMonths.length > 1 && (
+              <View style={styles.carouselNav}>
+                <TouchableOpacity
+                  style={[styles.carouselBtn, selectedMonthIndex === 0 && { opacity: 0.4 }]}
+                  disabled={selectedMonthIndex === 0}
+                  onPress={() => setSelectedMonthIndex(prev => prev - 1)}
+                >
+                  <ChevronLeft size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.carouselBtn, selectedMonthIndex === unpaidBillingMonths.length - 1 && { opacity: 0.4 }]}
+                  disabled={selectedMonthIndex === unpaidBillingMonths.length - 1}
+                  onPress={() => setSelectedMonthIndex(prev => prev + 1)}
+                >
+                  <ChevronRight size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* Countdown Clock */}
@@ -1084,13 +1098,22 @@ export default function DashboardScreen() {
               )}
             </View>
             {nextMonthlyPayment && (
-              <TouchableOpacity
-                style={styles.payButton}
-                onPress={() => navigation.navigate('Payments')}
-              >
-                <Text style={styles.payButtonText}>Pay Now</Text>
-                <ArrowRight size={14} color="#fff" />
-              </TouchableOpacity>
+              selectedMonthIndex === 0 ? (
+                <TouchableOpacity
+                  style={styles.payButton}
+                  onPress={() => navigation.navigate('Payments')}
+                >
+                  <Text style={styles.payButtonText}>Pay Now</Text>
+                  <ArrowRight size={14} color="#fff" />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.paymentLockedNotice}>
+                  <Clock size={12} color={t.textSecondary} />
+                  <Text style={[styles.paymentLockedNoticeText, { color: t.textSecondary }]}>
+                    Payment opens after current dues are settled
+                  </Text>
+                </View>
+              )
             )}
           </View>
 
@@ -1099,7 +1122,7 @@ export default function DashboardScreen() {
             <View style={[styles.breakdownBox, { backgroundColor: t.breakdownBg }]}>
               <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>Personal Bill Breakdown</Text>
               <View style={[styles.breakdownDivider, { backgroundColor: t.divider }]} />
-              {nextMonthlyPayment.payments.map((p, idx) => (
+              {nextMonthlyPayment.payments.map((p: any, idx: number) => (
                 <View key={p.id || idx} style={styles.breakdownItem}>
                   <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
                     {p.itemName}
@@ -1425,13 +1448,17 @@ const styles = StyleSheet.create({
   webHeader: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 6 : 8,
-    paddingBottom: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1.5,
     borderColor: '#222d42',
+    flexDirection: 'column',
+    backgroundColor: '#0b0f19',
+  },
+  webHeaderTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0b0f19',
+    width: '100%',
   },
   webHeaderLeft: {
     flex: 1,
@@ -1446,9 +1473,10 @@ const styles = StyleSheet.create({
   },
   webHeaderTitle: {
     color: '#f8fafc',
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: 'Outfit-Bold',
-    marginTop: 2,
+    marginTop: 8,
+    marginBottom: 2,
     letterSpacing: -0.3,
   },
   webHeaderDesc: {
@@ -2174,5 +2202,40 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Medium',
     fontSize: 9,
     marginTop: 1,
+  },
+  carouselNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  carouselBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(148, 163, 184, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentLockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(148, 163, 184, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    maxWidth: 160,
+    justifyContent: 'center',
+  },
+  paymentLockedNoticeText: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    textAlign: 'center',
+    lineHeight: 12,
+    maxWidth: 120,
   },
 });

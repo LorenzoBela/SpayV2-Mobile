@@ -27,6 +27,7 @@ import {
   Receipt,
   Search,
   ChevronRight,
+  ChevronLeft,
   Sliders,
   Calendar,
   CreditCard,
@@ -340,12 +341,14 @@ export default function AdminPaymentsScreen() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // Countdown timer & next billing schedule
-  const [nextBillingSchedule, setNextBillingSchedule] = useState<any>({
+  const [unpaidBillingSchedules, setUnpaidBillingSchedules] = useState<any[]>([]);
+  const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
+  const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
     monthName: '',
     totalDue: 0,
     earliestDueDate: null,
     clients: [],
-  });
+  };
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
     hours: 0,
@@ -518,37 +521,31 @@ export default function AdminPaymentsScreen() {
   // Next Billing Month Schedule calculation
   useEffect(() => {
     if (payments.length === 0) return;
-    const now = new Date();
     const unpaid = payments.filter(p => !p.is_paid);
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const fromMonthKey = `${nextMonthStart.getFullYear()}-${String(nextMonthStart.getMonth() + 1).padStart(2, '0')}`;
     
     const unpaidByMonth = new Map<string, any[]>();
     unpaid.forEach(payment => {
       const monthKey = getBillingMonthKey(payment.due_date);
-      if (monthKey < fromMonthKey) return;
       const list = unpaidByMonth.get(monthKey) || [];
       list.push(payment);
       unpaidByMonth.set(monthKey, list);
     });
     
     const sortedKeys = Array.from(unpaidByMonth.keys()).sort();
-    const nextMonthKey = sortedKeys[0];
-    
-    if (nextMonthKey) {
-      const monthPayments = unpaidByMonth.get(nextMonthKey) || [];
+    const schedulesList = sortedKeys.map(monthKey => {
+      const monthPayments = unpaidByMonth.get(monthKey) || [];
       const earliestDue = monthPayments.length > 0
         ? monthPayments.map(p => p.due_date).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
         : null;
         
-      const [yearStr, monthStr] = nextMonthKey.split('-');
+      const [yearStr, monthStr] = monthKey.split('-');
       const monthName = new Date(Number(yearStr), Number(monthStr) - 1, 1).toLocaleDateString('en-US', {
         month: 'long',
         year: 'numeric',
       });
       
-    const clientBillingMap = new Map<string, any>();
-    monthPayments.forEach(payment => {
+      const clientBillingMap = new Map<string, any>();
+      monthPayments.forEach(payment => {
         const order = orderById.get(payment.order_id);
         if (!order) return;
         const profile = profileById.get(order.user_id);
@@ -573,23 +570,20 @@ export default function AdminPaymentsScreen() {
         clientBillingMap.set(profile.id, clientData);
       });
       
-      const nextBillingClients = Array.from(clientBillingMap.values()).sort((a, b) => b.totalOwed - a.totalOwed);
-      const nextBillingTotal = nextBillingClients.reduce((sum, c) => sum + c.totalOwed, 0);
+      const billingClients = Array.from(clientBillingMap.values()).sort((a, b) => b.totalOwed - a.totalOwed);
+      const billingTotal = billingClients.reduce((sum, c) => sum + c.totalOwed, 0);
       
-      setNextBillingSchedule({
+      return {
+        monthKey,
         monthName,
-        totalDue: nextBillingTotal,
+        totalDue: billingTotal,
         earliestDueDate: earliestDue,
-        clients: nextBillingClients,
-      });
-    } else {
-      setNextBillingSchedule({
-        monthName: '',
-        totalDue: 0,
-        earliestDueDate: null,
-        clients: [],
-      });
-    }
+        clients: billingClients,
+      };
+    });
+    
+    setUnpaidBillingSchedules(schedulesList);
+    setSelectedScheduleIndex(0);
   }, [orderById, payments, profileById]);
 
   // Countdown timer clock
@@ -1148,19 +1142,41 @@ export default function AdminPaymentsScreen() {
         {nextBillingSchedule.earliestDueDate && (
           <View style={[styles.scheduleCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.scheduleHeader}>
-              <View style={styles.scheduleTitleRow}>
+              <View style={[styles.scheduleTitleRow, { flex: 1 }]}>
                 <Calendar size={18} color={t.accent} />
-                <View>
-                  <Text style={[styles.scheduleTitle, { color: t.textPrimary }]}>Next Billing Cycle Overview</Text>
-                  <Text style={styles.scheduleSubtitleText}>
-                    {nextBillingSchedule.monthName || 'No Billing Target'}
-                    {nextBillingSchedule.earliestDueDate && ` • Earliest due on ${formatRelativeDate(nextBillingSchedule.earliestDueDate)}`}
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={[styles.scheduleTitle, { color: t.textPrimary }]} numberOfLines={1}>
+                    {nextBillingSchedule.monthName ? `${nextBillingSchedule.monthName} Billing Cycle` : 'Billing Cycle Overview'}
+                  </Text>
+                  <Text style={styles.scheduleSubtitleText} numberOfLines={1}>
+                    {nextBillingSchedule.monthName ? '' : 'No Billing Target'}
+                    {nextBillingSchedule.earliestDueDate && `Earliest due on ${formatRelativeDate(nextBillingSchedule.earliestDueDate)}`}
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setIsScheduleOpen(!isScheduleOpen)}>
-                {isScheduleOpen ? <ChevronUp size={18} color={t.textSecondary} /> : <ChevronDown size={18} color={t.textSecondary} />}
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {unpaidBillingSchedules.length > 1 && (
+                  <View style={styles.carouselNav}>
+                    <TouchableOpacity
+                      style={[styles.carouselBtn, selectedScheduleIndex === 0 && { opacity: 0.4 }]}
+                      disabled={selectedScheduleIndex === 0}
+                      onPress={() => setSelectedScheduleIndex(prev => prev - 1)}
+                    >
+                      <ChevronLeft size={16} color={t.textPrimary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.carouselBtn, selectedScheduleIndex === unpaidBillingSchedules.length - 1 && { opacity: 0.4 }]}
+                      disabled={selectedScheduleIndex === unpaidBillingSchedules.length - 1}
+                      onPress={() => setSelectedScheduleIndex(prev => prev + 1)}
+                    >
+                      <ChevronRight size={16} color={t.textPrimary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <TouchableOpacity onPress={() => setIsScheduleOpen(!isScheduleOpen)}>
+                  {isScheduleOpen ? <ChevronUp size={18} color={t.textSecondary} /> : <ChevronDown size={18} color={t.textSecondary} />}
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Countdown timer layout */}
@@ -4055,5 +4071,20 @@ const styles = StyleSheet.create({
   filterOptionText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  carouselNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  carouselBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(148, 163, 184, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

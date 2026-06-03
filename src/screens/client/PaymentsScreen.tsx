@@ -21,6 +21,7 @@ import {
   TrendingUp,
   AlertTriangle,
   ChevronRight,
+  ChevronLeft,
   Info,
   Banknote,
   UserCheck,
@@ -121,47 +122,39 @@ function formatBillingMonthKey(monthKey: string): string {
   });
 }
 
-function getNextCalendarMonthStart(now = new Date()): Date {
-  return new Date(now.getFullYear(), now.getMonth() + 1, 1);
-}
-
-function findNextUnpaidBillingMonth(payments: PaymentItem[], fromDate: Date) {
-  const fromMonthKey = getCalendarMonthKey(fromDate);
+function groupUnpaidBillingMonths(payments: PaymentItem[]) {
   const unpaidPaymentsByMonth = new Map<string, PaymentItem[]>();
+  payments.forEach(payment => {
+    if (payment.isPaid) return;
 
-  payments.forEach(p => {
-    if (p.isPaid) return;
-    const monthKey = getBillingMonthKey(new Date(p.rawDueDate));
-    if (monthKey < fromMonthKey) return;
-
+    const monthKey = getBillingMonthKey(new Date(payment.rawDueDate));
     const list = unpaidPaymentsByMonth.get(monthKey) || [];
-    list.push(p);
+    list.push(payment);
     unpaidPaymentsByMonth.set(monthKey, list);
   });
 
-  const nextMonthKey = Array.from(unpaidPaymentsByMonth.keys()).sort()[0];
-  if (!nextMonthKey) return null;
+  const sortedMonthKeys = Array.from(unpaidPaymentsByMonth.keys()).sort();
+  return sortedMonthKeys.map(monthKey => {
+    const monthPayments = unpaidPaymentsByMonth
+      .get(monthKey)!
+      .sort((a, b) => new Date(a.rawDueDate).getTime() - new Date(b.rawDueDate).getTime());
+    const earliestDueDate = new Date(monthPayments[0]?.rawDueDate || Date.now());
+    const totalDue = monthPayments.reduce((sum, payment) => sum + payment.amountDue, 0);
 
-  const monthPayments = unpaidPaymentsByMonth.get(nextMonthKey)!.sort(
-    (a, b) => new Date(a.rawDueDate).getTime() - new Date(b.rawDueDate).getTime()
-  );
-
-  const earliestDueDate = new Date(monthPayments[0].rawDueDate);
-  const totalDue = monthPayments.reduce((sum, p) => sum + p.amountDue, 0);
-
-  return {
-    monthKey: nextMonthKey,
-    dueDate: earliestDueDate.toISOString(),
-    totalAmount: totalDue,
-    paymentCount: monthPayments.length,
-    payments: monthPayments.map(p => ({
-      id: p.id,
-      itemName: p.itemName,
-      amount: p.amountDue,
-      dueDate: p.rawDueDate,
-      orderId: p.orderId,
-    })),
-  };
+    return {
+      monthKey,
+      dueDate: earliestDueDate.toISOString(),
+      totalAmount: totalDue,
+      paymentCount: monthPayments.length,
+      payments: monthPayments.map(p => ({
+        id: p.id,
+        itemName: p.itemName,
+        amount: p.amountDue,
+        dueDate: p.rawDueDate,
+        orderId: p.orderId,
+      })),
+    };
+  });
 }
 
 // Flip Card Subcomponent — matches the web's CSS animation approach
@@ -399,7 +392,9 @@ export default function PaymentsScreen() {
   // Monthly Breakdown group data
   const [monthlyBreakdown, setMonthlyBreakdown] = useState<MonthlyGroup[]>([]);
   const [cashFlowForecast, setCashFlowForecast] = useState<ForecastMonth[]>([]);
-  const [nextPaymentCountdown, setNextPaymentCountdown] = useState<any>(null);
+  const [unpaidBillingMonths, setUnpaidBillingMonths] = useState<any[]>([]);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(0);
+  const nextPaymentCountdown = unpaidBillingMonths[selectedMonthIndex] || null;
 
   // Countdown timer clock
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, isOverdue: false });
@@ -665,8 +660,9 @@ export default function PaymentsScreen() {
     setMonthlyBreakdown(monthlyGroupsData);
 
     // Countdown Clock Calculation
-    const nextUnpaid = findNextUnpaidBillingMonth(allPayments, getNextCalendarMonthStart(new Date(nowMs)));
-    setNextPaymentCountdown(nextUnpaid);
+    const unpaidMonthsListForCountdown = groupUnpaidBillingMonths(allPayments);
+    setUnpaidBillingMonths(unpaidMonthsListForCountdown);
+    setSelectedMonthIndex(0);
 
     // Projections forecast for next 6 months
     const cashFlowForecastData: ForecastMonth[] = [];
@@ -846,20 +842,38 @@ export default function PaymentsScreen() {
           {/* Billing Countdown Card */}
           {nextPaymentCountdown && (
             <View style={[styles.countdownCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              <View style={[styles.countdownCardHeader, { borderColor: t.divider }]}>
+              <View style={[styles.countdownCardHeader, { borderColor: t.divider, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                 <View style={styles.countdownTitleRow}>
                   <View style={[styles.calendarIconBg, { backgroundColor: 'rgba(238, 77, 45, 0.1)' }]}>
                     <CalendarIcon size={16} color={t.accent} />
                   </View>
                   <View>
                     <Text style={[styles.countdownSubtitle, { color: t.textSecondary }]}>
-                      NEXT BILLING CYCLE OVERVIEW
+                      BILLING CYCLE OVERVIEW
                     </Text>
                     <Text style={[styles.countdownTitleText, { color: t.textPrimary }]}>
                       Due {new Date(nextPaymentCountdown.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>
                   </View>
                 </View>
+                {unpaidBillingMonths.length > 1 && (
+                  <View style={styles.carouselNav}>
+                    <TouchableOpacity
+                      style={[styles.carouselBtn, selectedMonthIndex === 0 && { opacity: 0.4 }]}
+                      disabled={selectedMonthIndex === 0}
+                      onPress={() => setSelectedMonthIndex(prev => prev - 1)}
+                    >
+                      <ChevronLeft size={16} color={t.textPrimary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.carouselBtn, selectedMonthIndex === unpaidBillingMonths.length - 1 && { opacity: 0.4 }]}
+                      disabled={selectedMonthIndex === unpaidBillingMonths.length - 1}
+                      onPress={() => setSelectedMonthIndex(prev => prev + 1)}
+                    >
+                      <ChevronRight size={16} color={t.textPrimary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
               <View style={[styles.countdownClockSection, { backgroundColor: isDarkMode ? '#111827' : '#f8fafc', borderColor: t.divider }]}>
@@ -878,17 +892,26 @@ export default function PaymentsScreen() {
                   <Text style={[styles.billLabel, { color: t.textSecondary }]}>Your Amount Due</Text>
                   <Text style={[styles.billValue, { color: t.textPrimary }]}>{formatCurrency(nextPaymentCountdown.totalAmount)}</Text>
                   
-                  <TouchableOpacity
-                    onPress={() => handleOpenSinglePayModal({
-                      id: 'next-cycle',
-                      itemName: 'Combined Month Amortizations',
-                      amountDue: nextPaymentCountdown.totalAmount
-                    })}
-                    style={styles.payNowBtnCountdown}
-                  >
-                    <Text style={styles.payNowBtnCountdownText}>Pay Now</Text>
-                    <ArrowRight size={12} color="#ffffff" style={{ marginLeft: 4 }} />
-                  </TouchableOpacity>
+                  {selectedMonthIndex === 0 ? (
+                    <TouchableOpacity
+                      onPress={() => handleOpenSinglePayModal({
+                        id: 'next-cycle',
+                        itemName: 'Combined Month Amortizations',
+                        amountDue: nextPaymentCountdown.totalAmount
+                      })}
+                      style={styles.payNowBtnCountdown}
+                    >
+                      <Text style={styles.payNowBtnCountdownText}>Pay Now</Text>
+                      <ArrowRight size={12} color="#ffffff" style={{ marginLeft: 4 }} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.paymentLockedNotice}>
+                      <Clock size={12} color={t.textSecondary} />
+                      <Text style={[styles.paymentLockedNoticeText, { color: t.textSecondary }]}>
+                        Payment opens after current dues are settled
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -2516,5 +2539,41 @@ const styles = StyleSheet.create({
   monthPaymentAmt: {
     fontSize: 12,
     fontWeight: '800',
+  },
+  carouselNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  carouselBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(148, 163, 184, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentLockedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(148, 163, 184, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    maxWidth: 160,
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  paymentLockedNoticeText: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    textAlign: 'center',
+    lineHeight: 12,
+    maxWidth: 120,
   },
 });

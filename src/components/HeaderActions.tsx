@@ -13,6 +13,46 @@ interface HeaderActionsProps {
   avatar?: ReactNode;
 }
 
+export function HeaderWeatherTime() {
+  const { isDarkMode } = useContext(ThemeContext);
+  const [currentTime, setCurrentTime] = useState(() => dayjs());
+  const weatherInfo = { temp: '31°C', text: 'Sunny' };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(dayjs());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const t = {
+    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
+    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+    border: isDarkMode ? '#222d42' : '#e2e8f0',
+  };
+
+  return (
+    <View style={[styles.weatherTimeBar, { borderTopColor: t.border }]}>
+      <View style={styles.weatherRow}>
+        <CloudSun size={12} color="#fbbf24" />
+        <Text style={[styles.weatherText, { color: t.textSecondary }]}>
+          {weatherInfo.temp} {weatherInfo.text}
+        </Text>
+      </View>
+      <View style={styles.dateTimeRow}>
+        <Calendar size={10} color={t.textSecondary} />
+        <Text style={[styles.dateText, { color: t.textSecondary }]}>
+          {currentTime.format('ddd, MMM D')}
+        </Text>
+        <Text style={[styles.detailsSeparator, { color: t.textSecondary }]}>•</Text>
+        <Text style={[styles.timeText, { color: t.textPrimary }]}>
+          {currentTime.format('h:mm:ss A')}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function HeaderActions({
   role,
   showWeatherTime = true,
@@ -22,7 +62,6 @@ export default function HeaderActions({
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { unreadCount } = useNotifications();
   const [currentTime, setCurrentTime] = useState(() => dayjs());
-  const weatherInfo = { temp: '31°C', text: 'Sunny' };
 
   useEffect(() => {
     if (!showWeatherTime) return;
@@ -44,64 +83,53 @@ export default function HeaderActions({
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
   return (
-    <View style={styles.actions}>
-      <TouchableOpacity
-        style={[styles.iconButton, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
-        onPress={toggleTheme}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-      >
-        {isDarkMode ? (
-          <Sun size={16} color="#fbbf24" />
-        ) : (
-          <Moon size={16} color="#475569" />
-        )}
-      </TouchableOpacity>
+    <View style={styles.container}>
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.iconButton, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+          onPress={toggleTheme}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {isDarkMode ? (
+            <Sun size={16} color="#fbbf24" />
+          ) : (
+            <Moon size={16} color="#475569" />
+          )}
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[styles.iconButton, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
-        onPress={() => navigation.navigate(notificationRoute)}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={
-          unreadCount > 0 ? `Open notifications, ${badgeLabel} unread` : 'Open notifications'
-        }
-      >
-        <Bell size={16} color={unreadCount > 0 ? '#ee4d2d' : t.textSecondary} />
-        {unreadCount > 0 && (
-          <View style={[styles.badge, { borderColor: t.badgeBorder }]}>
-            <Text style={styles.badgeText}>{badgeLabel}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.iconButton, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+          onPress={() => navigation.navigate(notificationRoute)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={
+            unreadCount > 0 ? `Open notifications, ${badgeLabel} unread` : 'Open notifications'
+          }
+        >
+          <Bell size={16} color={unreadCount > 0 ? '#ee4d2d' : t.textSecondary} />
+          {unreadCount > 0 && (
+            <View style={[styles.badge, { borderColor: t.badgeBorder }]}>
+              <Text style={styles.badgeText}>{badgeLabel}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-      {showWeatherTime && (
-        <View style={styles.weatherTime}>
-          <View style={styles.weatherRow}>
-            <CloudSun size={12} color="#fbbf24" />
-            <Text style={[styles.weatherText, { color: t.textSecondary }]}>
-              {weatherInfo.temp} {weatherInfo.text}
-            </Text>
-          </View>
-          <Text style={[styles.timeText, { color: t.textPrimary }]}>
-            {currentTime.format('h:mm A')}
-          </Text>
-          <View style={styles.dateRow}>
-            <Calendar size={10} color={t.textSecondary} />
-            <Text style={[styles.dateText, { color: t.textSecondary }]}>
-              {currentTime.format('ddd, MMM D')}
-            </Text>
-          </View>
-        </View>
-      )}
+        {avatar}
+      </View>
 
-      {avatar}
+      {showWeatherTime && <HeaderWeatherTime />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 4,
+  },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,10 +163,14 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Bold',
     textAlign: 'center',
   },
-  weatherTime: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginLeft: 4,
+  weatherTimeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1.2,
+    width: '100%',
+    marginTop: 4,
   },
   weatherRow: {
     flexDirection: 'row',
@@ -149,18 +181,22 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: 'Jakarta-Bold',
   },
-  timeText: {
-    fontSize: 13,
-    fontFamily: 'Outfit-Bold',
-    letterSpacing: -0.2,
-  },
-  dateRow: {
+  dateTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 5,
   },
   dateText: {
     fontSize: 9,
     fontFamily: 'Jakarta-SemiBold',
+  },
+  detailsSeparator: {
+    fontSize: 9,
+    opacity: 0.4,
+    marginHorizontal: 1,
+  },
+  timeText: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Bold',
   },
 });
