@@ -940,9 +940,9 @@ if ($overallExit -eq 0) {
     }
 
     Write-Host "`n=================================================" -ForegroundColor Magenta
-    Write-Host " Uploading APK to GitHub releases... 🚀" -ForegroundColor Magenta
+    Write-Host " Uploading APK to GitHub releases... [START]" -ForegroundColor Magenta
     try {
-        $repo = "LorenzoBela/Spay"
+        $repo = "LorenzoBela/SpayV2-Mobile"
         
         $token = $env:GITHUB_TOKEN
         if ([string]::IsNullOrWhiteSpace($token)) {
@@ -958,8 +958,14 @@ if ($overallExit -eq 0) {
             }
 
             if (Test-Path $apkToUpload) {
+                Write-Host "Fetching repository metadata..." -ForegroundColor Gray
+                $repoInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo" -Headers @{ "Authorization" = "Bearer $token"; "Accept" = "application/vnd.github.v3+json" }
+                $defaultBranch = $repoInfo.default_branch
+                if ([string]::IsNullOrWhiteSpace($defaultBranch)) { $defaultBranch = "main" }
+                Write-Host "Default branch detected: $defaultBranch" -ForegroundColor Gray
+
                 Write-Host "Fetching latest commit..." -ForegroundColor Gray
-                $commitResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/master" -Headers @{ "Authorization" = "Bearer $token" }
+                $commitResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/$defaultBranch" -Headers @{ "Authorization" = "Bearer $token"; "Accept" = "application/vnd.github.v3+json" }
                 $sha = $commitResponse.sha
 
                 Write-Host "Updating 'latest' tag..." -ForegroundColor Gray
@@ -973,7 +979,7 @@ if ($overallExit -eq 0) {
                 Write-Host "Configuring GitHub Release..." -ForegroundColor Gray
                 $releaseBody = @{
                     tag_name = "latest"
-                    target_commitish = "master"
+                    target_commitish = $defaultBranch
                     name = "Latest App Release"
                     body = "Automated upload of the latest Android production build."
                     draft = $false
@@ -1009,7 +1015,7 @@ if ($overallExit -eq 0) {
     }
 
     Write-Host "`n=================================================" -ForegroundColor Magenta
-    Write-Host "🔑 IMPORTANT: Firebase and Google Sign-In Setup 🔑" -ForegroundColor Magenta
+    Write-Host " *** IMPORTANT: Firebase and Google Sign-In Setup ***" -ForegroundColor Magenta
     Write-Host "=================================================" -ForegroundColor Magenta
     Write-Host "To ensure Google Sign-In works in your production app, you MUST add these" -ForegroundColor White
     Write-Host "SHA-1 and SHA-256 fingerprints to both:" -ForegroundColor White
@@ -1020,10 +1026,10 @@ if ($overallExit -eq 0) {
     $keytoolOutput = & keytool -list -v -keystore (Join-Path $SOURCE_DIR "release.keystore") -alias $KEY_ALIAS -storepass $KEYSTORE_PASS 
     $keytoolOutput | Select-String -Pattern "SHA1:|SHA256:" | ForEach-Object { Write-Host "  $($_)" -ForegroundColor Yellow }
     
-    Write-Host "`n(If you update these in Firebase, don't forget to re-download google-services.json)" -ForegroundColor DarkGray
+    Write-Host "`n(If you update these in Firebase, do not forget to re-download google-services.json)" -ForegroundColor DarkGray
     Write-Host "=================================================" -ForegroundColor Magenta
 
 } else {
-    Write-Host "`n[ERROR] Production build failed with exit code $overallExit" -ForegroundColor Red
+    Write-Host "[ERROR] Production build failed with exit code $overallExit" -ForegroundColor Red
     exit $overallExit
 }

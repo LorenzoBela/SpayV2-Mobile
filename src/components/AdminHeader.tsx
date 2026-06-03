@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useContext } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { Sun, Moon, Bell, CloudSun, ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 import { ThemeContext } from '../navigation/navigationTypes';
-import dayjs from 'dayjs';
+import HeaderActions from './HeaderActions';
 
 interface AdminHeaderProps {
   title: string;
@@ -12,18 +11,7 @@ interface AdminHeaderProps {
 }
 
 export default function AdminHeader({ title, subtitle, onBack }: AdminHeaderProps) {
-  const navigation = useNavigation<any>();
-  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
-
-  const [currentTime, setCurrentTime] = useState(() => dayjs());
-  const [weatherInfo] = useState({ temp: '31°C', text: 'Sunny' });
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(dayjs());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const { isDarkMode } = useContext(ThemeContext);
 
   const t = {
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
@@ -48,38 +36,7 @@ export default function AdminHeader({ title, subtitle, onBack }: AdminHeaderProp
         </View>
       </View>
       <View style={styles.headerRight}>
-        <TouchableOpacity
-          style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
-          onPress={toggleTheme}
-          activeOpacity={0.7}
-        >
-          {isDarkMode ? (
-            <Sun size={16} color="#fbbf24" />
-          ) : (
-            <Moon size={16} color="#475569" />
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
-          onPress={() => navigation.navigate('AdminNotifications')}
-          activeOpacity={0.7}
-        >
-          <Bell size={16} color={t.textSecondary} />
-        </TouchableOpacity>
-        <View style={styles.headerWeatherTime}>
-          <View style={styles.headerWeatherRow}>
-            <CloudSun size={12} color="#fbbf24" />
-            <Text style={[styles.headerWeatherText, { color: t.textSecondary }]}>
-              {weatherInfo.temp} {weatherInfo.text}
-            </Text>
-          </View>
-          <Text style={[styles.headerTimeText, { color: t.textPrimary }]}>
-            {currentTime.format('h:mm A')}
-          </Text>
-          <Text style={[styles.headerDateText, { color: t.textSecondary }]}>
-            {currentTime.format('ddd, MMM D')}
-          </Text>
-        </View>
+        <HeaderActions role="admin" />
       </View>
     </View>
   );
@@ -121,36 +78,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerWeatherTime: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginLeft: 10,
-  },
-  headerWeatherRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  headerWeatherText: {
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  headerTimeText: {
-    fontSize: 13,
-    fontFamily: 'Outfit-Bold',
-    letterSpacing: -0.2,
-  },
-  headerDateText: {
-    fontSize: 9,
-    fontWeight: '600',
   },
 });

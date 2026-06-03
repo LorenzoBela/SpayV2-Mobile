@@ -19,6 +19,7 @@ import {
   CreditCard,
   Settings,
   Bell,
+  BellRing,
   User,
   Shield,
   LogOut,
@@ -30,12 +31,14 @@ import {
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { useNotifications } from '../../hooks/useNotifications';
 
 
 export default function AdminMoreScreen() {
   const navigation = useNavigation<any>();
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { unreadCount } = useNotifications();
   const layout = useResponsiveLayout();
 
   const [adminName, setAdminName] = useState('Administrator');
@@ -109,6 +112,13 @@ export default function AdminMoreScreen() {
       icon: Bell,
       desc: 'Manual & bulk notifications',
       action: () => navigation.navigate('AdminReminders'),
+    },
+    {
+      name: 'Notifications',
+      icon: BellRing,
+      desc: unreadCount > 0 ? `${unreadCount > 99 ? '99+' : unreadCount} unread system alerts` : 'System alerts & audit inbox',
+      badge: unreadCount,
+      action: () => navigation.navigate('AdminNotifications'),
     },
     {
       name: 'Client Orders',
@@ -212,6 +222,11 @@ export default function AdminMoreScreen() {
                 <View style={[styles.iconWrapper, { backgroundColor: t.accentLight }]}>
                   <Icon size={20} color={t.accent} />
                 </View>
+                {Number(item.badge || 0) > 0 && (
+                  <View style={styles.gridBadge}>
+                    <Text style={styles.gridBadgeText}>{Number(item.badge || 0) > 99 ? '99+' : item.badge}</Text>
+                  </View>
+                )}
                 <Text style={[styles.gridCardName, { color: t.textPrimary }]} numberOfLines={1}>
                   {item.name}
                 </Text>
@@ -415,6 +430,24 @@ const styles = StyleSheet.create({
     padding: 14,
     justifyContent: 'space-between',
     height: 120,
+    position: 'relative',
+  },
+  gridBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: '#ee4d2d',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontFamily: 'Jakarta-Bold',
   },
   iconWrapper: {
     width: 36,

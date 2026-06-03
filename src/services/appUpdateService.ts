@@ -1,5 +1,5 @@
 import { PremiumAlert } from '../services/PremiumAlertService';
-import { Alert, Linking, Platform } from 'react-native';
+import { Alert, Linking, Platform, BackHandler } from 'react-native';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -28,7 +28,7 @@ export type AppUpdateRuntimeInfo = {
 const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
 const FLAG_ACTIVITY_NEW_TASK = 268435456;
-const CHECK_COOLDOWN_MS = 30 * 60 * 1000;
+const CHECK_COOLDOWN_MS = 5 * 60 * 1000; // Check at most every 5 minutes automatically
 
 let promptVisible = false;
 let lastAutomaticCheckAt = 0;
@@ -55,6 +55,14 @@ export const getAppUpdateRuntimeInfo = (): AppUpdateRuntimeInfo => ({
 export const checkForAppUpdateAsync = async (): Promise<AppUpdateResult> => {
   const apkUrl = getAppUpdateRuntimeInfo().apkUrl;
   const canInstallApk = Platform.OS === 'android' && !!apkUrl;
+
+  if (__DEV__) {
+    return {
+      status: 'disabled',
+      canInstallApk,
+      message: 'OTA updates are disabled in development mode.',
+    };
+  }
 
   if (!Updates.isEnabled) {
     return {
@@ -96,12 +104,30 @@ export const checkForAppUpdateAsync = async (): Promise<AppUpdateResult> => {
 };
 
 export const closeAppForDownloadedUpdate = async () => {
-  if (Platform.OS === 'android') {
-    RNExitApp.exitApp();
-    return;
+  if (Platform.OS === 'android' && !__DEV__) {
+    try {
+      RNExitApp.exitApp();
+      return;
+    } catch (exitError) {
+      BackHandler.exitApp();
+      return;
+    }
   }
 
-  await Updates.reloadAsync();
+  try {
+    // Updates.reloadAsync() is the official Expo method to apply a downloaded OTA update.
+    // It works on both iOS and Android release builds by restarting the JS runtime with the new bundle.
+    await Updates.reloadAsync();
+  } catch (error) {
+    console.warn('[appUpdateService] reloadAsync failed, falling back to exitApp:', error);
+    if (Platform.OS === 'android') {
+      try {
+        RNExitApp.exitApp();
+      } catch (exitError) {
+        BackHandler.exitApp();
+      }
+    }
+  }
 };
 
 export const downloadAndInstallConfiguredApkAsync = async () => {
@@ -161,8 +187,8 @@ const showDownloadedUpdatePrompt = () => {
   promptVisible = true;
 
   PremiumAlert.alert(
-    'Update ready',
-    'S-Pay downloaded an update. Close the app now, then reopen it to run the fresh version.',
+    'Update Ready',
+    'S-Pay has downloaded a new update. Would you like to restart the app now to apply it?',
     [
       {
         text: 'Later',
@@ -172,7 +198,7 @@ const showDownloadedUpdatePrompt = () => {
         },
       },
       {
-        text: Platform.OS === 'android' ? 'Close App' : 'Restart App',
+        text: 'Restart Now',
         onPress: () => {
           promptVisible = false;
           void closeAppForDownloadedUpdate();

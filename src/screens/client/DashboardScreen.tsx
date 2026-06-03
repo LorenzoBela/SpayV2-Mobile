@@ -28,13 +28,9 @@ import {
   Headset,
   PlusCircle,
   FileText,
-  CloudSun,
   LogOut,
   X,
   Send,
-  Sun,
-  Moon,
-  Bell,
   CreditCard,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
@@ -43,6 +39,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+import HeaderActions from '../../components/HeaderActions';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
@@ -531,7 +528,7 @@ function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
 // Main Component
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
-  const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
+  const { isDarkMode } = React.useContext(ThemeContext);
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
   const quickActionColumns = layout.isTablet ? 4 : 2;
@@ -567,7 +564,6 @@ export default function DashboardScreen() {
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
   // Live widgets
-  const [currentTime, setCurrentTime] = useState(dayjs());
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
     hours: 0,
@@ -576,12 +572,6 @@ export default function DashboardScreen() {
     isOverdue: false,
     hasTarget: false,
   });
-  // Live clocks
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(dayjs()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Time remaining count down ticker
   useEffect(() => {
     if (!nextMonthlyPayment || !nextMonthlyPayment.dueDate) {
@@ -997,53 +987,19 @@ export default function DashboardScreen() {
         <View style={styles.webHeaderLeft}>
           <Text style={styles.webHeaderSubtitle}>S-Pay Client</Text>
           <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Customer Dashboard</Text>
-          {/* Time, Date & Weather indicators */}
-          <View style={styles.headerIndicatorRow}>
-            <View style={[styles.headerPill, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}>
-              <Clock size={10} color="#ee4d2d" />
-              <Text style={[styles.headerPillText, { color: t.textSecondary }]}>
-                {currentTime.format('hh:mm A')}
-              </Text>
-            </View>
-            <View style={[styles.headerPill, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}>
-              <Calendar size={10} color="#3b82f6" />
-              <Text style={[styles.headerPillText, { color: t.textSecondary }]}>
-                {currentTime.format('ddd, MMM D')}
-              </Text>
-            </View>
-            <View style={[styles.headerPill, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}>
-              <CloudSun size={10} color="#f59e0b" />
-              <Text style={[styles.headerPillText, { color: t.textSecondary }]}>
-                29°C
-              </Text>
-            </View>
-          </View>
         </View>
-        <View style={styles.webHeaderRight}>
-          <TouchableOpacity
-            style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
-            onPress={toggleTheme}
-          >
-            {isDarkMode ? (
-              <Sun size={16} color="#fbbf24" />
+        <HeaderActions
+          role="client"
+          avatar={
+            userPhoto ? (
+              <Image source={{ uri: userPhoto }} style={styles.avatar as any} />
             ) : (
-              <Moon size={16} color="#475569" />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
-            onPress={() => navigation.navigate('Notifications')}
-          >
-            <Bell size={16} color={t.textSecondary} />
-          </TouchableOpacity>
-          {userPhoto ? (
-            <Image source={{ uri: userPhoto }} style={styles.avatar as any} />
-          ) : (
-            <View style={[styles.avatarPlaceholder, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              <Text style={[styles.avatarText, { color: t.accent }]}>{userName.charAt(0).toUpperCase()}</Text>
-            </View>
-          )}
-        </View>
+              <View style={[styles.avatarPlaceholder, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Text style={[styles.avatarText, { color: t.accent }]}>{userName.charAt(0).toUpperCase()}</Text>
+              </View>
+            )
+          }
+        />
       </View>
 
       <ScrollView

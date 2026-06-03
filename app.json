@@ -1,53 +1,56 @@
-{
-  "expo": {
-    "name": "S-Pay",
-    "slug": "mobile",
-    "version": "1.0.0",
-    "orientation": "default",
-    "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-screen.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F53D2D"
-    },
-    "userInterfaceStyle": "automatic",
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "permissions": [
-        "POST_NOTIFICATIONS",
-        "REQUEST_INSTALL_PACKAGES"
-      ],
-      "adaptiveIcon": {
-        "backgroundColor": "#F53D2D",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.cerberuzz91141.mobile"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-notifications",
-      "expo-splash-screen"
-    ],
-    "extra": {
-      "otaChannel": "production",
-      "androidApkUrl": "",
-      "eas": {
-        "projectId": "e0f4bfb6-3c41-4ece-9361-3997de377857"
-      }
-    },
-    "owner": "cerberuzz91141",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/e0f4bfb6-3c41-4ece-9361-3997de377857"
-    }
-  }
+﻿{
+    "expo":  {
+                 "name":  "S-Pay",
+                 "slug":  "mobile",
+                 "version":  "1.0.0",
+                 "orientation":  "default",
+                 "icon":  "./assets/icon.png",
+                 "splash":  {
+                                "image":  "./assets/splash-screen.png",
+                                "resizeMode":  "contain",
+                                "backgroundColor":  "#F53D2D"
+                            },
+                 "userInterfaceStyle":  "automatic",
+                 "ios":  {
+                             "supportsTablet":  true
+                         },
+                 "android":  {
+                                 "permissions":  [
+                                                     "POST_NOTIFICATIONS",
+                                                     "REQUEST_INSTALL_PACKAGES"
+                                                 ],
+                                 "adaptiveIcon":  {
+                                                      "backgroundColor":  "#F53D2D",
+                                                      "foregroundImage":  "./assets/android-icon-foreground.png",
+                                                      "backgroundImage":  "./assets/android-icon-background.png",
+                                                      "monochromeImage":  "./assets/android-icon-monochrome.png"
+                                                  },
+                                 "predictiveBackGestureEnabled":  false,
+                                 "package":  "com.cerberuzz91141.mobile"
+                             },
+                 "web":  {
+                             "favicon":  "./assets/favicon.png"
+                         },
+                 "plugins":  [
+                                 "expo-notifications",
+                                 "expo-splash-screen"
+                             ],
+                 "extra":  {
+                               "otaChannel":  "production",
+                               "androidApkUrl":  "",
+                               "eas":  {
+                                           "projectId":  "e0f4bfb6-3c41-4ece-9361-3997de377857"
+                                       }
+                           },
+                 "owner":  "cerberuzz91141",
+                 "runtimeVersion":  {
+                                        "policy":  "appVersion"
+                                    },
+                 "updates":  {
+                                 "url":  "https://u.expo.dev/e0f4bfb6-3c41-4ece-9361-3997de377857",
+                                 "requestHeaders":  {
+                                                        "expo-channel-name":  "production"
+                                                    }
+                             }
+             }
 }

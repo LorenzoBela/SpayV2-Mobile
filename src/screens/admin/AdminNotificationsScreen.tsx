@@ -39,12 +39,12 @@ import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import {
-
   getNotifications,
   markNotificationsRead,
   clearNotifications,
   sendAdminAnnouncement,
 } from '../../services/adminService';
+import { useNotifications } from '../../hooks/useNotifications';
 
 type NotificationCategory = 'ALL' | 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -117,6 +117,7 @@ function formatRelativeDate(value: string) {
 export default function AdminNotificationsScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = useContext(ThemeContext);
+  const { refreshUnreadCount } = useNotifications();
   const layout = useResponsiveLayout();
 
   const [loading, setLoading] = useState(true);
@@ -147,6 +148,7 @@ export default function AdminNotificationsScreen() {
       if (data.notifications) {
         setItems(data.notifications);
         setUnreadCount(Number(data.unreadCount || 0));
+        void refreshUnreadCount();
       } else {
         setItems([]);
       }
@@ -185,6 +187,7 @@ export default function AdminNotificationsScreen() {
       if (res.success !== false) {
         setItems(prev => prev.map(x => x.id === item.id ? { ...x, read: true } : x));
         setUnreadCount(prev => Math.max(0, prev - 1));
+        void refreshUnreadCount();
       }
     } catch (e) {
       console.warn('Failed to mark read:', e);
@@ -222,6 +225,7 @@ export default function AdminNotificationsScreen() {
       if (res.success !== false) {
         setItems(prev => prev.filter(x => x.id !== id));
         PremiumAlert.alert('Deleted', 'System log item removed.');
+        void refreshUnreadCount();
       } else {
         throw new Error(res.error);
       }

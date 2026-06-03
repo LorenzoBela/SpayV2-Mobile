@@ -60,6 +60,7 @@ import {
   ThemeContext,
 } from './navigationTypes';
 import { ClientVisibleTabName } from './clientTabs';
+import { NotificationProvider, useNotifications } from '../hooks/useNotifications';
 
 // Map route names to Lucide icon components
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -113,6 +114,7 @@ const AuthNavigator = () => (
 // Main Tab Navigator — consumes ThemeContext for dynamic tab bar styling
 const MainNavigator = () => {
   const { isDarkMode } = React.useContext(ThemeContext);
+  const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 12);
 
@@ -161,7 +163,19 @@ const MainNavigator = () => {
       <Tab.Screen name="Dashboard" component={DashboardGestureScreen} />
       <Tab.Screen name="Orders" component={OrdersGestureScreen} />
       <Tab.Screen name="Payments" component={PaymentsGestureScreen} />
-      <Tab.Screen name="Notifications" component={NotificationsGestureScreen} />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsGestureScreen}
+        options={{
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#ee4d2d',
+            color: '#ffffff',
+            fontSize: 10,
+            fontFamily: 'Jakarta-Bold',
+          },
+        }}
+      />
       <Tab.Screen name="More" component={MoreGestureScreen} />
       <Tab.Screen
         name="Budget"
@@ -210,6 +224,7 @@ const MainNavigator = () => {
 // Admin Tab Navigator — consumes ThemeContext for dynamic tab bar styling
 const AdminNavigator = () => {
   const { isDarkMode } = React.useContext(ThemeContext);
+  const { unreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 12);
 
@@ -278,7 +293,16 @@ const AdminNavigator = () => {
       <AdminTab.Screen
         name="AdminMore"
         component={AdminMoreScreen}
-        options={{ tabBarLabel: 'More' }}
+        options={{
+          tabBarLabel: 'More',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#ee4d2d',
+            color: '#ffffff',
+            fontSize: 10,
+            fontFamily: 'Jakarta-Bold',
+          },
+        }}
       />
       <AdminTab.Screen
         name="AdminReminders"
@@ -464,65 +488,67 @@ export default function AppNavigator() {
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
-        <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
-          <StatusBar
-            barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-            backgroundColor={isDarkMode ? '#0b0f19' : '#ffffff'}
-            translucent={false}
-            animated
-          />
+        <NotificationProvider userId={session?.user?.id}>
+          <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
+            <StatusBar
+              barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+              backgroundColor={isDarkMode ? '#0b0f19' : '#ffffff'}
+              translucent={false}
+              animated
+            />
 
-          {!isActuallyLoading && (
-            <AppLockGate sessionExists={!!session}>
-              <NavigationContainer ref={navigationRef}>
-                <Stack.Navigator screenOptions={{ headerShown: false }}>
-                  {session ? (
-                    userRole === 'ADMIN' && activeRole === null ? (
-                      <Stack.Screen name="RoleSelect">
-                        {(props) => (
-                          <RoleSelectionScreen
-                            {...props}
-                            onSelectRole={(role) => setActiveRole(role)}
-                            onSignOut={async () => {
-                              await supabase.auth.signOut();
-                            }}
-                          />
-                        )}
-                      </Stack.Screen>
-                    ) : activeRole === 'admin' ? (
-                      <Stack.Screen name="Admin" component={AdminNavigator} />
+            {!isActuallyLoading && (
+              <AppLockGate sessionExists={!!session}>
+                <NavigationContainer ref={navigationRef}>
+                  <Stack.Navigator screenOptions={{ headerShown: false }}>
+                    {session ? (
+                      userRole === 'ADMIN' && activeRole === null ? (
+                        <Stack.Screen name="RoleSelect">
+                          {(props) => (
+                            <RoleSelectionScreen
+                              {...props}
+                              onSelectRole={(role) => setActiveRole(role)}
+                              onSignOut={async () => {
+                                await supabase.auth.signOut();
+                              }}
+                            />
+                          )}
+                        </Stack.Screen>
+                      ) : activeRole === 'admin' ? (
+                        <Stack.Screen name="Admin" component={AdminNavigator} />
+                      ) : (
+                        <>
+                          <Stack.Screen name="Main" component={MainNavigator} />
+                        </>
+                      )
                     ) : (
-                      <>
-                        <Stack.Screen name="Main" component={MainNavigator} />
-                      </>
-                    )
-                  ) : (
-                    <Stack.Screen name="Auth" component={AuthNavigator} />
-                  )}
-                </Stack.Navigator>
-              </NavigationContainer>
-            </AppLockGate>
-          )}
+                      <Stack.Screen name="Auth" component={AuthNavigator} />
+                    )}
+                  </Stack.Navigator>
+                </NavigationContainer>
+              </AppLockGate>
+            )}
 
-          {showOverlay && (
-            <Animated.View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  opacity: overlayOpacity,
-                  zIndex: 9999,
-                },
-              ]}
-            >
-              <PremiumLoader
-                title={session ? 'Syncing Account Config' : 'Initializing Session'}
-                subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
-                error={profileError}
-                onRetry={handleRetry}
-              />
-            </Animated.View>
-          )}
-        </View>
+            {showOverlay && (
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    opacity: overlayOpacity,
+                    zIndex: 9999,
+                  },
+                ]}
+              >
+                <PremiumLoader
+                  title={session ? 'Syncing Account Config' : 'Initializing Session'}
+                  subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
+                  error={profileError}
+                  onRetry={handleRetry}
+                />
+              </Animated.View>
+            )}
+          </View>
+        </NotificationProvider>
       </RoleContext.Provider>
     </ThemeContext.Provider>
   );

@@ -46,6 +46,7 @@ import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const CATEGORY_THEMES: Record<
   NotificationCategory,
@@ -118,6 +119,7 @@ function formatFullDate(value: string) {
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { refreshUnreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
   const [items, setItems] = useState<AppNotification[]>([]);
@@ -154,13 +156,14 @@ export default function NotificationsScreen() {
     try {
       const rows = await fetchNotifications();
       setItems(rows);
+      void refreshUnreadCount();
     } catch (error) {
       console.warn('[NotificationsScreen] load failed:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [refreshUnreadCount]);
 
   useEffect(() => {
     void load();
@@ -215,6 +218,7 @@ export default function NotificationsScreen() {
         setItems((current) =>
           current.map((row) => (row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row))
         );
+        void refreshUnreadCount();
       } catch (error) {
         console.warn('[NotificationsScreen] mark read failed:', error);
       }
@@ -228,6 +232,7 @@ export default function NotificationsScreen() {
       await markAllNotificationsRead();
       const readAt = new Date().toISOString();
       setItems((current) => current.map((row) => ({ ...row, read_at: row.read_at || readAt })));
+      void refreshUnreadCount();
     } catch (error) {
       console.warn('[NotificationsScreen] mark all failed:', error);
     }
@@ -241,6 +246,7 @@ export default function NotificationsScreen() {
       if (selectedNotification?.id === id) {
         setSelectedNotification(null);
       }
+      void refreshUnreadCount();
     } catch (error) {
       console.warn('[NotificationsScreen] clear failed:', error);
     }
@@ -258,6 +264,7 @@ export default function NotificationsScreen() {
       setItems((current) =>
         current.filter((row) => !(row.category === activeTab && row.read_at))
       );
+      void refreshUnreadCount();
     } catch (error) {
       console.warn('[NotificationsScreen] clear all read failed:', error);
     }
@@ -406,9 +413,10 @@ export default function NotificationsScreen() {
               activeOpacity={0.8}
               style={[
                 styles.tab,
-                { backgroundColor: t.tabBarBg },
+                { backgroundColor: t.tabBarBg, borderColor: t.cardBorder },
                 selected && {
                   backgroundColor: catTheme.color,
+                  borderColor: catTheme.color,
                   shadowColor: catTheme.color,
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.25,
@@ -433,7 +441,7 @@ export default function NotificationsScreen() {
               {unreadForCategory > 0 && (
                 <View style={[styles.tabBadge, selected ? styles.tabBadgeSelected : { backgroundColor: catTheme.color }]}>
                   <Text style={[styles.tabBadgeText, selected && { color: catTheme.color }]}>
-                    {unreadForCategory}
+                    {unreadForCategory > 99 ? '99+' : unreadForCategory}
                   </Text>
                 </View>
               )}
@@ -665,36 +673,45 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
+    paddingTop: 14,
+    paddingBottom: 16,
+    gap: 10,
   },
   tab: {
     flex: 1,
-    flexDirection: 'row',
-    height: 36,
-    borderRadius: 18,
+    minWidth: 0,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    gap: 4,
+    paddingHorizontal: 6,
+    position: 'relative',
   },
   tabText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontFamily: 'Jakarta-Bold',
+    textAlign: 'center',
   },
   tabTextSelected: {
     color: '#ffffff',
   },
   tabBadge: {
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    position: 'absolute',
+    top: -7,
+    right: 7,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
+    borderWidth: 2,
+    borderColor: '#0b0f19',
   },
   tabBadgeSelected: {
     backgroundColor: '#ffffff',
+    borderColor: '#ee4d2d',
   },
   tabBadgeText: {
     fontSize: 9,

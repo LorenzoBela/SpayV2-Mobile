@@ -248,3 +248,29 @@ export function subscribeToRealtimeNotifications(
     void supabase.removeChannel(channel);
   };
 }
+
+export function subscribeToRealtimeNotificationChanges(
+  userId: string,
+  onChange: () => void
+) {
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const channel = supabase
+    .channel(`mobile-notification-count-${userId}-${uniqueId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      () => {
+        onChange();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
