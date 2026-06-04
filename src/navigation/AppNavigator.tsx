@@ -53,6 +53,11 @@ import {
   subscribeToRealtimeNotifications,
 } from '../services/notificationService';
 import {
+  registerForFcmNotifications,
+  subscribeToFcmTokenRefresh,
+  subscribeToForegroundFcmMessages,
+} from '../services/fcmNotificationService';
+import {
   AuthStackParamList,
   MainTabParamList,
   AdminTabParamList,
@@ -422,8 +427,21 @@ export default function AppNavigator() {
   useEffect(() => {
     if (!linkedProfileId) return;
 
+    let nativeFcmRegistered = false;
+    let unsubscribeFcmTokenRefresh: (() => void) | undefined;
+
     // Wrap notification registration to prevent PromiseLike catch method type error
     (async () => {
+      try {
+        const fcmToken = await registerForFcmNotifications(linkedProfileId);
+        nativeFcmRegistered = Boolean(fcmToken);
+        if (fcmToken) {
+          unsubscribeFcmTokenRefresh = subscribeToFcmTokenRefresh(linkedProfileId);
+        }
+      } catch (error: any) {
+        console.warn('[FCM] Registration skipped:', error?.message || error);
+      }
+
       try {
         await registerForTrayNotifications(linkedProfileId);
       } catch (error: any) {
@@ -432,8 +450,10 @@ export default function AppNavigator() {
     })();
 
     const unsubscribeRealtime = subscribeToRealtimeNotifications(linkedProfileId, (notification) => {
+      if (nativeFcmRegistered) return;
       void mirrorToLocalTray(notification);
     });
+    const unsubscribeForegroundFcm = subscribeToForegroundFcmMessages();
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const screen = response.notification.request.content.data?.screen;
@@ -452,6 +472,8 @@ export default function AppNavigator() {
     });
 
     return () => {
+      unsubscribeFcmTokenRefresh?.();
+      unsubscribeForegroundFcm();
       unsubscribeRealtime();
       responseSubscription.remove();
     };

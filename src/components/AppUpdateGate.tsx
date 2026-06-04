@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import {
+  checkForConfiguredApkUpdateAndPromptAsync,
   checkForAppUpdateAsync,
   closeAppForDownloadedUpdate,
   getAppUpdateRuntimeInfo,
@@ -25,7 +26,12 @@ export default function AppUpdateGate() {
     if (result.status === 'downloaded' && !hasPrompted.current) {
       hasPrompted.current = true;
       setShowModal(true);
+      return;
     }
+
+    await checkForConfiguredApkUpdateAndPromptAsync(false).catch((error) => {
+      console.warn('[AppUpdateGate] APK update check failed:', error);
+    });
   }, []);
 
   const handleRestart = useCallback(() => {

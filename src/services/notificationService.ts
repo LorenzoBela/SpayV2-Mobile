@@ -4,6 +4,11 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../utils/authProfile';
+import {
+  ANDROID_CHANNELS,
+  normalizeAndroidChannelId,
+  shouldAttemptRemotePushRegistration,
+} from './notificationServiceConfig';
 
 export type NotificationCategory = 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -19,15 +24,8 @@ export interface AppNotification {
   created_at: string;
 }
 
-export const ANDROID_CHANNELS: Record<NotificationCategory, string> = {
-  PAYMENT_UPDATES: 'spay-payments-v1',
-  ALERTS: 'spay-alerts-v1',
-  ADS: 'spay-ads-v1',
-  SYSTEM: 'spay-system-v1',
-};
-
 const ENABLE_REMOTE_PUSH_NOTIFICATIONS =
-  process.env.EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS === 'true';
+  shouldAttemptRemotePushRegistration(process.env.EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS);
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -53,49 +51,41 @@ export async function setupAndroidNotificationChannels() {
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.PAYMENT_UPDATES, {
     name: 'S-Pay Payments',
     description: 'Payment reminders, due dates, confirmations, and order updates.',
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
     lightColor: '#ee4d2d',
+    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ALERTS, {
     name: 'S-Pay Alerts',
     description: 'Important account, budget, and system alerts.',
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 350, 150, 350],
     lightColor: '#ef4444',
+    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ADS, {
-    name: 'S-Pay Ads',
+    name: 'S-Pay Announcements',
     description: 'S-Pay promotions and announcements.',
-    importance: Notifications.AndroidImportance.DEFAULT,
-    vibrationPattern: [0, 150],
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 150, 250],
     lightColor: '#3b82f6',
+    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.SYSTEM, {
     name: 'S-Pay System',
     description: 'Account notices and general system messages.',
-    importance: Notifications.AndroidImportance.DEFAULT,
-    vibrationPattern: [0, 200],
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 150, 250],
     lightColor: '#10b981',
+    sound: 'default',
   });
 }
 
-export async function registerForTrayNotifications(userId: string) {
-  await setupAndroidNotificationChannels();
-
-  if (!ENABLE_REMOTE_PUSH_NOTIFICATIONS) {
-    console.log('[Notifications] Remote push token registration disabled.');
-    return null;
-  }
-
-  if (!Device.isDevice) {
-    console.warn('[Notifications] Physical device required for Expo push tokens.');
-    return null;
-  }
-
+export async function ensureTrayNotificationPermissions() {
   const existingPermissions = await Notifications.getPermissionsAsync();
   let finalStatus = existingPermissions.status;
 
@@ -106,6 +96,27 @@ export async function registerForTrayNotifications(userId: string) {
 
   if (finalStatus !== 'granted') {
     console.warn('[Notifications] Permission not granted.');
+    return false;
+  }
+
+  return true;
+}
+
+export async function registerForTrayNotifications(userId: string) {
+  await setupAndroidNotificationChannels();
+
+  const hasPermission = await ensureTrayNotificationPermissions();
+  if (!hasPermission) {
+    return null;
+  }
+
+  if (!ENABLE_REMOTE_PUSH_NOTIFICATIONS) {
+    console.log('[Notifications] Remote push token registration disabled.');
+    return null;
+  }
+
+  if (!Device.isDevice) {
+    console.warn('[Notifications] Physical device required for Expo push tokens.');
     return null;
   }
 
@@ -118,7 +129,7 @@ export async function registerForTrayNotifications(userId: string) {
     expoPushToken = tokenResult.data;
   } catch (error: any) {
     console.warn(
-      '[Notifications] Remote push token unavailable. Configure FCM or keep EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS unset.',
+      '[Notifications] Remote push token unavailable. Configure FCM or set EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS=false to disable remote pushes.',
       error?.message || error
     );
     return null;
@@ -200,15 +211,21 @@ export async function clearNotification(notificationId: string) {
 }
 
 export async function mirrorToLocalTray(notification: AppNotification) {
-  const channelId =
-    typeof notification.data?.channelId === 'string'
-      ? notification.data.channelId
-      : ANDROID_CHANNELS[notification.category] || ANDROID_CHANNELS.SYSTEM;
+  const hasPermission = await ensureTrayNotificationPermissions();
+  if (!hasPermission) return;
+
+  const requestedChannelId = typeof notification.data?.channelId === 'string'
+    ? notification.data.channelId
+    : '';
+  const channelId = normalizeAndroidChannelId(requestedChannelId, notification.category);
 
   await Notifications.scheduleNotificationAsync({
     content: {
       title: notification.title,
       body: notification.body,
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.MAX,
+      vibrate: [0, 250, 150, 250],
       data: {
         notificationId: notification.id,
         type: notification.type,

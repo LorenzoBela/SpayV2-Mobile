@@ -42,7 +42,7 @@ import {
   NotificationCategory,
   subscribeToRealtimeNotifications,
 } from '../../services/notificationService';
-import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -172,10 +172,9 @@ export default function NotificationsScreen() {
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
-    supabase.auth.getUser().then(({ data }) => {
-      const userId = data.user?.id;
-      if (!userId) return;
-      unsubscribe = subscribeToRealtimeNotifications(userId, (notification) => {
+    getLinkedProfileForCurrentUser().then(({ profileId }) => {
+      if (!profileId) return;
+      unsubscribe = subscribeToRealtimeNotifications(profileId, (notification) => {
         setItems((current) => [notification, ...current]);
       });
     });

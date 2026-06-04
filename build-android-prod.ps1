@@ -158,6 +158,123 @@ $FAST_MODE = $true
 $FORCE_CLEAN_PREBUILD = $false
 $script:GradleMaxWorkers = 2
 $script:GradleHeapMb = 8192
+$script:ProductionVersionCode = $null
+$script:ProductionVersionName = $null
+$script:GitHubRepo = "LorenzoBela/SpayV2-Mobile"
+$script:GitHubApkFileName = "SPay V2.apk"
+$script:GitHubManifestFileName = "spay-latest.json"
+
+function Set-ProductionBuildMetadata {
+    param([string]$AppJsonPath)
+
+    if (-not (Test-Path $AppJsonPath)) {
+        Write-Host "[ERROR] app.json not found at $AppJsonPath" -ForegroundColor Red
+        exit 1
+    }
+
+    try {
+        $config = Get-Content -Path $AppJsonPath -Raw | ConvertFrom-Json
+        if (-not $config.expo) {
+            Write-Host "[ERROR] Invalid app.json: missing top-level 'expo' object" -ForegroundColor Red
+            exit 1
+        }
+
+        if (-not $config.expo.android) {
+            $config.expo | Add-Member -NotePropertyName android -NotePropertyValue ([pscustomobject]@{})
+        }
+
+        if (-not $config.expo.extra) {
+            $config.expo | Add-Member -NotePropertyName extra -NotePropertyValue ([pscustomobject]@{})
+        }
+
+        $currentVersionCode = 0
+        if ($null -ne $config.expo.android.versionCode) {
+            $currentVersionCode = [int]$config.expo.android.versionCode
+        }
+        $nextVersionCode = [Math]::Max(1, $currentVersionCode + 1)
+        $versionName = if ($config.expo.version) { [string]$config.expo.version } else { "1.0.0" }
+        $apkUrl = "https://github.com/$($script:GitHubRepo)/releases/download/latest/$([uri]::EscapeDataString($script:GitHubApkFileName))"
+        $manifestUrl = "https://github.com/$($script:GitHubRepo)/releases/download/latest/$($script:GitHubManifestFileName)"
+
+        if ($null -eq $config.expo.android.versionCode) {
+            $config.expo.android | Add-Member -NotePropertyName versionCode -NotePropertyValue $nextVersionCode
+        } else {
+            $config.expo.android.versionCode = $nextVersionCode
+        }
+
+        if ($null -eq $config.expo.extra.androidApkUrl) {
+            $config.expo.extra | Add-Member -NotePropertyName androidApkUrl -NotePropertyValue $apkUrl
+        } else {
+            $config.expo.extra.androidApkUrl = $apkUrl
+        }
+
+        if ($null -eq $config.expo.extra.androidApkManifestUrl) {
+            $config.expo.extra | Add-Member -NotePropertyName androidApkManifestUrl -NotePropertyValue $manifestUrl
+        } else {
+            $config.expo.extra.androidApkManifestUrl = $manifestUrl
+        }
+
+        $config | ConvertTo-Json -Depth 100 | Set-Content -Path $AppJsonPath -Encoding UTF8
+        $script:ProductionVersionCode = $nextVersionCode
+        $script:ProductionVersionName = $versionName
+
+        Write-Host "[OK] Production build metadata: versionName=$versionName versionCode=$nextVersionCode" -ForegroundColor Green
+        Write-Host "[OK] Android APK URL: $apkUrl" -ForegroundColor Green
+        Write-Host "[OK] Android APK manifest URL: $manifestUrl" -ForegroundColor Green
+    } catch {
+        Write-Host "[ERROR] Failed to set production build metadata: $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
+function Set-AndroidGradleVersionMetadata {
+    param(
+        [string]$GradlePath,
+        [int]$VersionCode,
+        [string]$VersionName
+    )
+
+    if (-not (Test-Path $GradlePath)) { return }
+    $raw = Get-Content -Path $GradlePath -Raw
+    $raw = $raw -replace 'versionCode\s+\d+', "versionCode $VersionCode"
+    $raw = $raw -replace 'versionName\s+"[^"]*"', "versionName `"$VersionName`""
+    Set-Content -Path $GradlePath -Value $raw
+    Write-Host "[OK] Applied Android version metadata to app/build.gradle" -ForegroundColor Green
+}
+
+function Assert-AndroidFcmConfig {
+    param([string]$ProjectRoot)
+
+    $googleServicesPath = Join-Path $ProjectRoot "google-services.json"
+    if (-not (Test-Path $googleServicesPath)) {
+        Write-Host "`n[ERROR] Missing Android FCM config: $googleServicesPath" -ForegroundColor Red
+        Write-Host "Killed-app push notifications require Firebase Cloud Messaging credentials in the native APK." -ForegroundColor Yellow
+        Write-Host "Create/download google-services.json for Android package com.cerberuzz91141.mobile, place it in mobile\, then rerun this script." -ForegroundColor Yellow
+        Write-Host "Expo docs: https://docs.expo.dev/push-notifications/push-notifications-setup/" -ForegroundColor Gray
+        exit 1
+    }
+
+    try {
+        $raw = Get-Content -Path $googleServicesPath -Raw
+        $json = $raw | ConvertFrom-Json
+        $packageNames = @()
+        foreach ($client in @($json.client)) {
+            $packageName = $client.client_info.android_client_info.package_name
+            if ($packageName) { $packageNames += $packageName }
+        }
+
+        if ($packageNames -notcontains "com.cerberuzz91141.mobile") {
+            Write-Host "`n[ERROR] google-services.json does not contain package com.cerberuzz91141.mobile" -ForegroundColor Red
+            Write-Host "Found package(s): $($packageNames -join ', ')" -ForegroundColor Yellow
+            exit 1
+        }
+
+        Write-Host "[OK] Android FCM config found for com.cerberuzz91141.mobile" -ForegroundColor Green
+    } catch {
+        Write-Host "`n[ERROR] Failed to validate google-services.json: $_" -ForegroundColor Red
+        exit 1
+    }
+}
 
 function Ensure-OtaChannelInAppJson {
     param(
@@ -349,6 +466,8 @@ if (-not (Test-Path $BUILD_CACHE_DIR)) {
 Write-Host "`nStep 0.2: Enforcing OTA channel configuration..." -ForegroundColor Yellow
 $appJsonPath = Join-Path $DEST_DIR "app.json"
 Ensure-OtaChannelInAppJson -AppJsonPath $appJsonPath -ChannelName $OTA_CHANNEL
+Set-ProductionBuildMetadata -AppJsonPath $appJsonPath
+Assert-AndroidFcmConfig -ProjectRoot $DEST_DIR
 $env:EAS_BUILD_PROFILE = $EAS_PROFILE
 Write-Host "[OK] EAS build profile set to: $env:EAS_BUILD_PROFILE" -ForegroundColor Green
 Write-Host "[OK] OTA channel locked to: $OTA_CHANNEL" -ForegroundColor Green
@@ -585,6 +704,9 @@ if ($resolvedSdkDir) {
 
 $rootBuildGradle = Join-Path $ANDROID_DIR "build.gradle"
 $appBuildGradle = Join-Path $ANDROID_DIR "app\build.gradle"
+if ($script:ProductionVersionCode -and $script:ProductionVersionName) {
+    Set-AndroidGradleVersionMetadata -GradlePath $appBuildGradle -VersionCode $script:ProductionVersionCode -VersionName $script:ProductionVersionName
+}
 
 # C++ STL / CMake linking fix functions
 function Ensure-LineInFile {
@@ -942,16 +1064,18 @@ if ($overallExit -eq 0) {
     Write-Host "`n=================================================" -ForegroundColor Magenta
     Write-Host " Uploading APK to GitHub releases... [START]" -ForegroundColor Magenta
     try {
-        $repo = "LorenzoBela/SpayV2-Mobile"
+        $repo = $script:GitHubRepo
         
         $token = $env:GITHUB_TOKEN
         if ([string]::IsNullOrWhiteSpace($token)) {
             Write-Host "`n[WARN] GitHub Token (GITHUB_TOKEN) is not provided. Skipping GitHub upload." -ForegroundColor Yellow
             Write-Host "Please create a '.env.build' file in the mobile directory with GITHUB_TOKEN=your_token" -ForegroundColor Gray
         } else {
-            $apkFileName = "SPay V2.apk"
+            $apkFileName = $script:GitHubApkFileName
+            $manifestFileName = $script:GitHubManifestFileName
             $productionApk = Join-Path $CENTRAL_APK_DIR "spayv2-production.apk"
             $apkToUpload = Join-Path $CENTRAL_APK_DIR $apkFileName
+            $manifestToUpload = Join-Path $CENTRAL_APK_DIR $manifestFileName
 
             if (Test-Path $productionApk) {
                 Copy-Item -Path $productionApk -Destination $apkToUpload -Force
@@ -1006,6 +1130,26 @@ if ($overallExit -eq 0) {
                     Write-Host "Uploading new APK..." -ForegroundColor Gray
                     $fileNameUrl = [uri]::EscapeDataString($apkFileName)
                     Invoke-RestMethod -Uri "https://uploads.github.com/repos/$repo/releases/$releaseId/assets?name=$fileNameUrl" -Method Post -Headers @{ "Authorization" = "Bearer $token"; "Content-Type" = "application/vnd.android.package-archive" } -InFile $apkToUpload
+
+                    $downloadUrl = "https://github.com/$repo/releases/download/latest/$fileNameUrl"
+                    [ordered]@{
+                        versionCode = $script:ProductionVersionCode
+                        versionName = $script:ProductionVersionName
+                        apkUrl      = $downloadUrl
+                        fileName    = $apkFileName
+                        channel     = $OTA_CHANNEL
+                        publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+                    } | ConvertTo-Json -Depth 4 | Set-Content -Path $manifestToUpload -Encoding UTF8
+
+                    $existingManifest = $assets | Where-Object { $_.name -eq $manifestFileName }
+                    if ($existingManifest) {
+                        Write-Host "Removing previous APK manifest..." -ForegroundColor Gray
+                        Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/assets/$($existingManifest.id)" -Method Delete -Headers @{ "Authorization" = "Bearer $token" }
+                    }
+
+                    Write-Host "Uploading APK manifest..." -ForegroundColor Gray
+                    $manifestNameUrl = [uri]::EscapeDataString($manifestFileName)
+                    Invoke-RestMethod -Uri "https://uploads.github.com/repos/$repo/releases/$releaseId/assets?name=$manifestNameUrl" -Method Post -Headers @{ "Authorization" = "Bearer $token"; "Content-Type" = "application/json" } -InFile $manifestToUpload
                     Write-Host "`n[OK] Successfully uploaded APK to GitHub Releases!" -ForegroundColor Green
                 }
             }
