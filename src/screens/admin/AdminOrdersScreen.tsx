@@ -1,5 +1,5 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -45,8 +45,10 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { parseUtcDate } from '../../utils/date';
-import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { fetchAdminOrders, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
@@ -73,15 +75,7 @@ export default function AdminOrdersScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Data states
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [limits, setLimits] = useState<any[]>([]);
+  const queryClient = useQueryClient();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,169 +163,72 @@ export default function AdminOrdersScreen() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 6;
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAllAdminData();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to sync ledger records.');
-      }
-      setProfiles(result.profiles || []);
-      setOrders(result.orders || []);
-      setPayments(result.payments || []);
-      setLimits(result.accountLimits || []);
-    } catch (err: any) {
-      console.warn('[AdminOrdersScreen] Load error:', err);
-      setError(err?.message || 'Sync failed.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  const { data: ordersData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin-orders', currentPage, searchQuery, activeTab, filterMonthKey],
+    queryFn: () => fetchAdminOrders({
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      searchQuery,
+      status: activeTab,
+      filterMonthKey: filterMonthKey || undefined
+    }),
+  });
+
+  const error = queryError ? (queryError as Error).message : (ordersData && !ordersData.success ? ordersData.error : null);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    refetch().finally(() => setRefreshing(false));
   };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useRealtimeSync(
-    ['orders', 'payments', 'account_limits', 'profiles'],
-    () => loadData(false)
-  );
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeTab, filterMonthKey]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadData(false);
-  };
-
-  // Process orders data for display
-  const processedOrders = orders.map(order => {
-    const client = profiles.find(p => p.id === order.user_id);
-    const orderPayments = payments.filter(p => p.order_id === order.id);
-    const paidCount = orderPayments.filter(p => p.is_paid).length;
-    const progressPercent = orderPayments.length > 0
-      ? Math.round((paidCount / orderPayments.length) * 100)
-      : 0;
-
-    let status = 'Pending';
-    if (order.is_paid) {
-      status = 'Fully Paid';
-    } else if (progressPercent > 0) {
-      status = 'Partially Paid';
+  useRealtimeSync(
+    ['orders', 'payments', 'account_limits', 'profiles'],
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
     }
+  );
 
-    return {
-      ...order,
-      clientName: client?.name || 'Unknown Client',
-      clientEmail: client?.email || '',
-      payments: orderPayments,
-      paidCount,
-      progressPercent,
-      status,
-    };
-  });
+  const orders = useMemo(() => {
+    const list = ordersData?.orders || [];
+    return list.map((o: any) => ({
+      id: o.id,
+      item_name: o.itemName,
+      amount: o.amount,
+      installment_months: o.installmentMonths,
+      order_date: o.orderDate,
+      is_paid: o.isPaid,
+      remarks: o.remarks,
+      user_id: o.userId,
+      clientName: o.clientName,
+      clientEmail: o.clientEmail,
+      clientAvatarUrl: o.clientAvatarUrl,
+      paidCount: o.paidCount,
+      progressPercent: o.progressPercent,
+      status: o.status,
+      payments: (o.payments || []).map((p: any) => ({
+        id: p.id,
+        month_number: p.monthNumber,
+        is_paid: p.isPaid,
+        due_date: p.dueDate,
+        amount_due: p.amountDue,
+        payment_date: p.paymentDate,
+        proof_of_payment: p.proofOfPayment
+      }))
+    }));
+  }, [ordersData]);
 
-  const filteredOrders = processedOrders.filter(order => {
-    const matchesSearch = (order.item_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.clientName.toLowerCase().includes(searchQuery.toLowerCase());
+  const profiles = useMemo(() => ordersData?.profiles || [], [ordersData]);
+  const monthlyOrdersBreakdown = useMemo(() => ordersData?.monthlyOrdersBreakdown || [], [ordersData]);
+  const outstandingBalance = ordersData?.stats?.outstandingBalance || 0;
+  const activeLimitExposure = ordersData?.stats?.activeLimitExposure || 0;
 
-    if (!matchesSearch) return false;
-
-    if (activeTab === 'active') {
-      if (order.is_paid) return false;
-    } else if (activeTab === 'paid') {
-      if (!order.is_paid) return false;
-    }
-
-    if (filterMonthKey) {
-      if (!order.order_date) return false;
-      const orderDateObj = parseUtcDate(order.order_date);
-      const year = orderDateObj.getFullYear();
-      const month = String(orderDateObj.getMonth() + 1).padStart(2, '0');
-      const orderMonth = `${year}-${month}`;
-      if (orderMonth !== filterMonthKey) return false;
-    }
-
-    return true;
-  });
-
-  // Group orders by month
-  const getMonthlyOrdersBreakdown = () => {
-    const breakdownMap = new Map<string, {
-      monthKey: string;
-      monthName: string;
-      totalAmount: number;
-      paidAmount: number;
-      pendingAmount: number;
-      count: number;
-      paidCount: number;
-      partialCount: number;
-      pendingCount: number;
-    }>();
-
-    for (const order of processedOrders) {
-      if (!order.order_date) continue;
-      const orderDateObj = parseUtcDate(order.order_date);
-      if (Number.isNaN(orderDateObj.getTime())) continue;
-
-      const year = orderDateObj.getFullYear();
-      const month = String(orderDateObj.getMonth() + 1).padStart(2, '0');
-      const monthKey = `${year}-${month}`;
-      
-      const monthName = orderDateObj.toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      });
-
-      if (!breakdownMap.has(monthKey)) {
-        breakdownMap.set(monthKey, {
-          monthKey,
-          monthName,
-          totalAmount: 0,
-          paidAmount: 0,
-          pendingAmount: 0,
-          count: 0,
-          paidCount: 0,
-          partialCount: 0,
-          pendingCount: 0,
-        });
-      }
-
-      const monthData = breakdownMap.get(monthKey)!;
-      monthData.count++;
-      monthData.totalAmount += Number(order.amount);
-
-      if (order.is_paid) {
-        monthData.paidCount++;
-        monthData.paidAmount += Number(order.amount);
-      } else {
-        if (order.paidCount > 0) {
-          monthData.partialCount++;
-          const installmentAmount = Number(order.amount) / Number(order.installment_months || 1);
-          const paidAmount = installmentAmount * order.paidCount;
-          monthData.paidAmount += paidAmount;
-          monthData.pendingAmount += (Number(order.amount) - paidAmount);
-        } else {
-          monthData.pendingCount++;
-          monthData.pendingAmount += Number(order.amount);
-        }
-      }
-    }
-
-    return Array.from(breakdownMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  };
-
-  const monthlyOrdersBreakdown = getMonthlyOrdersBreakdown();
-
-  // Exposure stats for Assign Modal
-  const outstandingBalance = payments.filter(p => !p.is_paid).reduce((sum, p) => sum + Number(p.amount_due), 0);
-  const activeLimitExposure = limits.reduce((sum, l) => sum + Number(l.credit_limit), 0);
-    const parsedOrderAmount = isBulkMode
+  const parsedOrderAmount = isBulkMode
     ? bulkOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0)
     : (Number(amount) || 0);
   const parsedMonths = Number(installmentMonths) || 1;
@@ -345,17 +242,17 @@ export default function AdminOrdersScreen() {
     : 0;
 
   // Selected client for Assign Modal
-  const selectedClient = profiles.find(p => p.id === selectedClientId);
+  const selectedClient = profiles.find((p: any) => p.id === selectedClientId);
 
   // Filter client rail
-  const filteredClients = profiles.filter(client => {
+  const filteredClients = profiles.filter((client: any) => {
     const q = clientSearchQuery.trim().toLowerCase();
     if (!q) return true;
     return `${client.name} ${client.email}`.toLowerCase().includes(q);
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
-  const paginatedOrders = filteredOrders.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil((ordersData?.totalCount || 0) / PAGE_SIZE));
+  const paginatedOrders = orders;
 
   const handleAssignSubmit = async () => {
     if (isBulkMode) {
@@ -396,7 +293,8 @@ export default function AdminOrdersScreen() {
           Alert.alert('Success', `Successfully scheduled ${bulkOrders.length} orders!`);
           setIsAssignOpen(false);
           clearAssignForm();
-          loadData(false);
+          queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
         } else {
           Alert.alert('Error', response.error || 'Failed to schedule bulk orders.');
         }
@@ -427,7 +325,8 @@ export default function AdminOrdersScreen() {
           Alert.alert('Success', `Installment scheduled for ${itemName}!`);
           setIsAssignOpen(false);
           clearAssignForm();
-          loadData(false);
+          queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
         } else {
           Alert.alert('Error', response.error || 'Failed to schedule installment plan.');
         }
@@ -490,7 +389,8 @@ export default function AdminOrdersScreen() {
         Alert.alert('Success', `Order details updated!`);
         setIsEditOpen(false);
         setIsDetailsOpen(false);
-        loadData(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
       } else {
         Alert.alert('Error', response.error || 'Failed to update order details.');
       }
@@ -517,7 +417,8 @@ export default function AdminOrdersScreen() {
               if (response.success) {
                 Alert.alert('Deleted', 'Order successfully removed.');
                 setIsDetailsOpen(false);
-                loadData(false);
+                queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+                queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
               } else {
                 Alert.alert('Error', response.error || 'Failed to delete order.');
               }
@@ -549,7 +450,7 @@ export default function AdminOrdersScreen() {
         title="Admin Control Center"
         subtitle="Loading order directories and transaction logs..."
         error={error}
-        onRetry={() => loadData()}
+        onRetry={() => refetch()}
       />
     );
   }
@@ -644,7 +545,7 @@ export default function AdminOrdersScreen() {
                 {filterMonthKey && (
                   <View style={[styles.monthFilterBadge, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', borderColor: t.border }]}>
                     <Text style={[styles.monthFilterBadgeText, { color: t.textPrimary }]}>
-                      Filtered: {monthlyOrdersBreakdown.find(m => m.monthKey === filterMonthKey)?.monthName}
+                      Filtered: {monthlyOrdersBreakdown.find((m: any) => m.monthKey === filterMonthKey)?.monthName}
                     </Text>
                     <TouchableOpacity onPress={() => setFilterMonthKey(null)}>
                       <X size={12} color={t.accent} style={{ marginLeft: 6 }} />
@@ -653,7 +554,7 @@ export default function AdminOrdersScreen() {
                 )}
 
                 <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
-                  {monthlyOrdersBreakdown.map((month) => {
+                  {monthlyOrdersBreakdown.map((month: any) => {
                     const rate = month.count > 0 ? Math.round((month.paidCount / month.count) * 100) : 0;
                     const isSelected = filterMonthKey === month.monthKey;
                     return (
@@ -703,7 +604,7 @@ export default function AdminOrdersScreen() {
 
         {/* List Header and View Mode controls */}
         <View style={styles.listHeaderRow}>
-          <Text style={styles.listHeaderTitle}>Active Directory ({filteredOrders.length})</Text>
+          <Text style={styles.listHeaderTitle}>Active Orders ({ordersData?.totalCount || 0})</Text>
           <View style={[styles.viewModeContainer, { backgroundColor: isDarkMode ? '#161c2a' : '#f1f5f9', borderColor: t.cardBorder }]}>
             <TouchableOpacity 
               onPress={() => setViewMode('list')} 
@@ -723,7 +624,7 @@ export default function AdminOrdersScreen() {
         {/* Orders list */}
         <View style={viewMode === 'grid' ? styles.orderGridContainer : styles.ordersList}>
           {paginatedOrders.length > 0 ? (
-            paginatedOrders.map((order) => {
+            paginatedOrders.map((order: any) => {
               if (viewMode === 'grid') {
                 return (
                   <TouchableOpacity
@@ -1070,7 +971,7 @@ export default function AdminOrdersScreen() {
                     </View>
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
-                      {filteredClients.map((client) => {
+                      {filteredClients.map((client: any) => {
                         const selected = selectedClientId === client.id;
                         return (
                           <TouchableOpacity
@@ -1218,7 +1119,7 @@ export default function AdminOrdersScreen() {
                             }}
                           >
                             <Text style={[styles.selectedClientName, { color: order.clientId ? t.textPrimary : t.textSecondary }]}>
-                              {order.clientId ? (profiles.find(p => p.id === order.clientId)?.name || 'Unknown Client') : 'Choose Client...'}
+                              {order.clientId ? (profiles.find((p: any) => p.id === order.clientId)?.name || 'Unknown Client') : 'Choose Client...'}
                             </Text>
                             <ChevronDown size={14} color={t.textSecondary} />
                           </TouchableOpacity>
@@ -1470,7 +1371,7 @@ export default function AdminOrdersScreen() {
                     ) : (
                       <View style={[styles.clientSelectContainer, { borderColor: t.border, marginTop: 4 }]}>
                         <ScrollView style={{ maxHeight: 100 }} nestedScrollEnabled={true}>
-                          {profiles.map((client) => (
+                          {profiles.map((client: any) => (
                             <TouchableOpacity
                               key={client.id}
                               style={[

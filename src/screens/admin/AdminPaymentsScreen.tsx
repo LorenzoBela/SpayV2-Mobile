@@ -58,8 +58,11 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { fetchAdminPayments, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
+const AnyFlashList = FlashList as any;
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 
@@ -270,25 +273,73 @@ export default function AdminPaymentsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  // Data states
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [paymentLogs, setPaymentLogs] = useState<any[]>([]);
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 8;
+
+  // Tab 1: Ledger Search & filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'proof'>('all');
+
+  const { data: paymentsData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin-payments', currentPage, searchQuery, ledgerFilter],
+    queryFn: () => fetchAdminPayments({
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      searchQuery,
+      ledgerFilter
+    }),
+  });
+
+  const error = queryError ? (queryError as Error).message : (paymentsData && !paymentsData.success ? paymentsData.error : null);
+
+  const paymentsList = useMemo(() => {
+    const now = Date.now();
+    const list = paymentsData?.payments || [];
+    return list.map((p: any) => {
+      const isOverdue = !p.isPaid && new Date(p.dueDate).getTime() < now;
+      return {
+        id: p.id,
+        order_id: p.orderId,
+        month_number: p.monthNumber,
+        amount_due: p.amountDue,
+        due_date: p.dueDate,
+        is_paid: p.isPaid,
+        proof_of_payment: p.proofOfPayment,
+        isOverdue,
+        itemName: p.itemName,
+        totalMonths: p.totalMonths,
+        clientName: p.clientName,
+        clientEmail: p.clientEmail,
+        clientId: p.clientId,
+        clientAvatarUrl: p.clientAvatarUrl,
+        rescheduleRequest: p.rescheduleRequest,
+      };
+    });
+  }, [paymentsData]);
+
+  const totalCount = paymentsData?.totalCount || 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const paymentLogs = paymentsData?.paymentLogs || [];
+  const profiles = paymentsData?.profiles || [];
+  const rawPayments = paymentsData?.allPaymentsForStats || [];
+  const serverStats = paymentsData?.stats || {
+    totalAmount: 0,
+    totalCollected: 0,
+    totalOutstanding: 0,
+    collectionRate: 0,
+    overdueCount: 0,
+    totalOverdueAmount: 0,
+    totalUpcomingAmount: 0
+  };
 
   // Sub-tab state ('ledger' | 'breakdown' | 'logs' | 'receipts')
   const [subTab, setSubTab] = useState<PaymentSubTab>('ledger');
   const [pendingSubTab, setPendingSubTab] = useState<PaymentSubTab | null>(null);
   const [ledgerViewMode, setLedgerViewMode] = useState<'list' | 'table'>('list');
   const [breakdownViewMode, setBreakdownViewMode] = useState<'list' | 'table'>('list');
-
-  // Tab 1: Ledger Search & filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'proof'>('all');
 
   // Tab 2: Monthly breakdown expanded states
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
@@ -325,14 +376,7 @@ export default function AdminPaymentsScreen() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // Countdown timer & next billing schedule
-  const [unpaidBillingSchedules, setUnpaidBillingSchedules] = useState<any[]>([]);
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
-  const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
-    monthName: '',
-    totalDue: 0,
-    earliestDueDate: null,
-    clients: [],
-  };
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
     hours: 0,
@@ -350,38 +394,11 @@ export default function AdminPaymentsScreen() {
     }));
   };
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 8;
-
-  const loadData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAllAdminData();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to sync payments record ledger.');
-      }
-      setProfiles(result.profiles || []);
-      setOrders(result.orders || []);
-      setPayments(result.payments || []);
-      setPaymentLogs(result.paymentLogs || []);
-    } catch (err: any) {
-      console.warn('[AdminPaymentsScreen] Load error:', err);
-      setError(err?.message || 'Sync failed.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
   useRealtimeSync(
     ['orders', 'payments', 'profiles'],
-    () => loadData(false)
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+    }
   );
 
   useEffect(() => {
@@ -429,9 +446,11 @@ export default function AdminPaymentsScreen() {
     fetchReceiptPreview();
   }, [selectedReceipt, isReceiptPreviewOpen]);
 
-  const onRefresh = () => {
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData(false);
+    await refetch();
+    setRefreshing(false);
   };
 
   const handleSubTabPress = (nextTab: PaymentSubTab) => {
@@ -444,76 +463,41 @@ export default function AdminPaymentsScreen() {
     });
   };
 
-  const orderById = useMemo(() => new Map(orders.map(order => [order.id, order])), [orders]);
-  const profileById = useMemo(() => new Map(profiles.map(profile => [profile.id, profile])), [profiles]);
-
-  // Process payments list once per data refresh instead of rejoining on every render.
   const processedPayments = useMemo(() => {
     const now = Date.now();
-    return payments.map(p => {
-      const order = orderById.get(p.order_id);
-      const client = profileById.get(order?.user_id);
-      const isOverdue = !p.is_paid && parseUtcDate(p.due_date).getTime() < now;
-
+    return rawPayments.map((p: any) => {
+      const isOverdue = !p.is_paid && new Date(p.due_date).getTime() < now;
       return {
-        ...p,
-        itemName: order?.item_name || 'Purchase Order',
-        totalMonths: order?.installment_months || 0,
-        clientName: client?.name || 'Unknown Client',
-        clientEmail: client?.email || '',
-        clientId: client?.id || '',
+        id: p.id,
+        order_id: p.order_id,
+        month_number: p.month_number,
+        amount_due: p.amount_due,
+        due_date: p.due_date,
+        is_paid: p.is_paid,
+        proof_of_payment: p.proof_of_payment,
         isOverdue,
+        itemName: p.order?.item_name || 'Purchase Order',
+        totalMonths: p.order?.installment_months || 0,
+        clientName: p.order?.profile?.name || 'Unknown Client',
+        clientEmail: p.order?.profile?.email || '',
+        clientId: p.order?.profile?.id || '',
       };
     });
-  }, [orderById, payments, profileById]);
+  }, [rawPayments]);
 
-  // Calculation for stat cards & countdown (client-side)
-  const {
-    totalAmount,
-    totalCollected,
-    collectionRate,
-    overdueItems,
-    totalOverdueAmount,
-    totalUpcomingAmount,
-  } = useMemo(() => {
-    let total = 0;
-    let collected = 0;
-    let overdueAmount = 0;
-    let upcomingAmount = 0;
-    const overdue: any[] = [];
+  const totalAmount = serverStats.totalAmount;
+  const totalCollected = serverStats.totalCollected;
+  const collectionRate = serverStats.collectionRate;
+  const totalOverdueAmount = serverStats.totalOverdueAmount;
+  const totalUpcomingAmount = serverStats.totalUpcomingAmount;
+  const overdueItems = useMemo(() => processedPayments.filter((p: any) => p.isOverdue), [processedPayments]);
 
-    processedPayments.forEach(payment => {
-      const amount = Number(payment.amount_due);
-      total += amount;
-      if (payment.is_paid) {
-        collected += amount;
-        return;
-      }
-      if (payment.isOverdue) {
-        overdue.push(payment);
-        overdueAmount += amount;
-      } else {
-        upcomingAmount += amount;
-      }
-    });
-
-    return {
-      totalAmount: total,
-      totalCollected: collected,
-      collectionRate: total > 0 ? (collected / total) * 100 : 0,
-      overdueItems: overdue,
-      totalOverdueAmount: overdueAmount,
-      totalUpcomingAmount: upcomingAmount,
-    };
-  }, [processedPayments]);
-
-  // Next Billing Month Schedule calculation
-  useEffect(() => {
-    if (payments.length === 0) return;
-    const unpaid = payments.filter(p => !p.is_paid);
+  const unpaidBillingSchedules = useMemo(() => {
+    if (processedPayments.length === 0) return [];
+    const unpaid = processedPayments.filter((p: any) => !p.is_paid);
     
     const unpaidByMonth = new Map<string, any[]>();
-    unpaid.forEach(payment => {
+    unpaid.forEach((payment: any) => {
       const monthKey = getBillingMonthKey(payment.due_date);
       const list = unpaidByMonth.get(monthKey) || [];
       list.push(payment);
@@ -521,7 +505,7 @@ export default function AdminPaymentsScreen() {
     });
     
     const sortedKeys = Array.from(unpaidByMonth.keys()).sort();
-    const schedulesList = sortedKeys.map(monthKey => {
+    return sortedKeys.map(monthKey => {
       const monthPayments = unpaidByMonth.get(monthKey) || [];
       const earliestDue = monthPayments.length > 0
         ? monthPayments.map(p => p.due_date).sort((a, b) => parseUtcDate(a).getTime() - parseUtcDate(b).getTime())[0]
@@ -535,28 +519,23 @@ export default function AdminPaymentsScreen() {
       
       const clientBillingMap = new Map<string, any>();
       monthPayments.forEach(payment => {
-        const order = orderById.get(payment.order_id);
-        if (!order) return;
-        const profile = profileById.get(order.user_id);
-        if (!profile) return;
-        
-        const clientData = clientBillingMap.get(profile.id) || {
-          clientId: profile.id,
-          clientName: profile.name,
-          email: profile.email,
+        const clientData = clientBillingMap.get(payment.clientId) || {
+          clientId: payment.clientId,
+          clientName: payment.clientName,
+          email: payment.clientEmail,
           totalOwed: 0,
           items: [],
         };
         
         clientData.totalOwed += Number(payment.amount_due);
         clientData.items.push({
-          itemName: order.item_name,
+          itemName: payment.itemName,
           amountDue: Number(payment.amount_due),
           dueDate: payment.due_date,
           monthNumber: payment.month_number,
-          installmentMonths: order.installment_months,
+          installmentMonths: payment.totalMonths,
         });
-        clientBillingMap.set(profile.id, clientData);
+        clientBillingMap.set(payment.clientId, clientData);
       });
       
       const billingClients = Array.from(clientBillingMap.values()).sort((a, b) => b.totalOwed - a.totalOwed);
@@ -570,10 +549,14 @@ export default function AdminPaymentsScreen() {
         clients: billingClients,
       };
     });
-    
-    setUnpaidBillingSchedules(schedulesList);
-    setSelectedScheduleIndex(0);
-  }, [orderById, payments, profileById]);
+  }, [processedPayments]);
+
+  const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
+    monthName: '',
+    totalDue: 0,
+    earliestDueDate: null,
+    clients: [],
+  };
 
   // Countdown timer clock
   useEffect(() => {
@@ -603,7 +586,7 @@ export default function AdminPaymentsScreen() {
   }, [nextBillingSchedule.earliestDueDate]);
 
   // Tab 1: Filtered payments
-  const filteredPayments = useMemo(() => processedPayments.filter(p => {
+  const filteredPayments = useMemo(() => processedPayments.filter((p: any) => {
     const matchesSearch = p.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.clientName.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -621,7 +604,7 @@ export default function AdminPaymentsScreen() {
     return true;
   }), [ledgerFilter, processedPayments, searchQuery]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
+
   const paginatedPayments = useMemo(
     () => filteredPayments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [currentPage, filteredPayments]
@@ -654,7 +637,7 @@ export default function AdminPaymentsScreen() {
       }>;
     }> = {};
 
-    processedPayments.forEach(payment => {
+    processedPayments.forEach((payment: any) => {
       if (subTab === 'breakdown') {
         if (breakdownFilter === 'completed' && !payment.is_paid) return;
         if (breakdownFilter === 'pending' && payment.is_paid) return;
@@ -753,13 +736,13 @@ export default function AdminPaymentsScreen() {
   const filteredBreakdownPayments = useMemo(() => {
     if (subTab !== 'breakdown') return [];
     return processedPayments
-    .filter(payment => {
+    .filter((payment: any) => {
       if (breakdownFilter === 'completed') return payment.is_paid;
       if (breakdownFilter === 'pending') return !payment.is_paid;
       if (breakdownFilter === 'overdue') return payment.isOverdue && !payment.is_paid;
       return true;
     })
-    .sort((a, b) => parseUtcDate(b.due_date).getTime() - parseUtcDate(a.due_date).getTime());
+    .sort((a: any, b: any) => parseUtcDate(b.due_date).getTime() - parseUtcDate(a.due_date).getTime());
   }, [breakdownFilter, processedPayments, subTab]);
 
   const totalBreakdownTablePages = Math.max(1, Math.ceil(filteredBreakdownPayments.length / PAGE_SIZE));
@@ -822,12 +805,22 @@ export default function AdminPaymentsScreen() {
   };
 
   // Tab 3: Processed Activity Logs
-  const paymentById = useMemo(() => new Map(payments.map(payment => [payment.id, payment])), [payments]);
+  const paymentById = useMemo(() => new Map<string, any>(rawPayments.map((payment: any) => [payment.id, payment])), [rawPayments]);
+  const profileById = useMemo(() => new Map<string, any>(profiles.map((p: any) => [p.id, p])), [profiles]);
+  const orderById = useMemo(() => {
+    const map = new Map<string, any>();
+    rawPayments.forEach((p: any) => {
+      if (p.order) {
+        map.set(p.order.id, p.order);
+      }
+    });
+    return map;
+  }, [rawPayments]);
 
   const processedLogs = useMemo(() => {
     if (subTab !== 'logs') return [];
 
-    return paymentLogs.map(log => {
+    return paymentLogs.map((log: any) => {
       const performer = profileById.get(log.performed_by_id);
       const payment = paymentById.get(log.payment_id);
       const order = payment ? orderById.get(payment.order_id) : null;
@@ -835,16 +828,16 @@ export default function AdminPaymentsScreen() {
 
       return {
         ...log,
-        performerName: performer?.name || 'System',
-        performerRole: performer?.role || 'SYSTEM',
-        amountDue: payment?.amount_due || null,
-        itemName: order?.item_name || null,
-        clientName: client?.name || null,
+        performerName: log.performerName || performer?.name || 'System',
+        performerRole: log.performerRole || performer?.role || 'SYSTEM',
+        amountDue: log.amountDue || payment?.amount_due || null,
+        itemName: log.itemName || order?.item_name || null,
+        clientName: log.clientName || client?.name || null,
       };
     });
   }, [orderById, paymentById, paymentLogs, profileById, subTab]);
 
-  const filteredLogs = useMemo(() => processedLogs.filter(log => {
+  const filteredLogs = useMemo(() => processedLogs.filter((log: any) => {
     const matchesSearch = log.action_description.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
       log.performerName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
       (log.clientName && log.clientName.toLowerCase().includes(logSearchQuery.toLowerCase())) ||
@@ -959,7 +952,7 @@ export default function AdminPaymentsScreen() {
                 Alert.alert('Success', `Successfully cleared ${response.count} payments.`);
                 setSelectedIds([]);
                 setBulkMode(false);
-                loadData(false);
+                queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
               } else {
                 Alert.alert('Error', response.error || 'Failed bulk marks.');
               }
@@ -981,7 +974,7 @@ export default function AdminPaymentsScreen() {
       if (response.success) {
         Alert.alert('Success', 'Payment marked as cleared.');
         setIsDetailsOpen(false);
-        loadData(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
         Alert.alert('Error', response.error || 'Failed to mark payment as paid.');
       }
@@ -999,7 +992,7 @@ export default function AdminPaymentsScreen() {
       if (response.success) {
         Alert.alert('Success', 'Payment proof approved and verified.');
         setIsDetailsOpen(false);
-        loadData(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
         Alert.alert('Error', response.error || 'Failed to verify payment proof.');
       }
@@ -1023,7 +1016,7 @@ export default function AdminPaymentsScreen() {
         setIsRejectOpen(false);
         setIsDetailsOpen(false);
         setRejectReason('');
-        loadData(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
         Alert.alert('Error', response.error || 'Failed to reject payment proof.');
       }
@@ -1087,7 +1080,7 @@ export default function AdminPaymentsScreen() {
 
   const clientsList = useMemo(() => {
     const clientMap = new Map<string, { id: string; name: string }>();
-    profiles.forEach(p => {
+    profiles.forEach((p: any) => {
       if (p.role === 'CLIENT' || p.role === 'client') {
         clientMap.set(p.id, { id: p.id, name: p.name });
       }
@@ -1112,7 +1105,7 @@ export default function AdminPaymentsScreen() {
         title="Admin Control Center"
         subtitle="Loading payments ledger and verifying receipts..."
         error={error}
-        onRetry={() => loadData()}
+        onRetry={() => refetch()}
       />
     );
   }
@@ -1520,66 +1513,72 @@ export default function AdminPaymentsScreen() {
             {/* Ledger content based on view mode */}
             {ledgerViewMode === 'list' ? (
               <View style={styles.ledgerList}>
-                {paginatedPayments.length > 0 ? (
-                  paginatedPayments.map((payment) => {
-                    const selected = selectedIds.includes(payment.id);
-                    const hasProof = payment.proof_of_payment !== null && payment.proof_of_payment !== '';
-                    return (
-                      <TouchableOpacity
-                        key={payment.id}
-                        style={[
-                          styles.paymentCard,
-                          { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                          selected && { borderColor: t.accent, borderWidth: 1.5 }
-                        ]}
-                        onPress={() => {
-                          if (bulkMode) {
-                            handleSelectToggle(payment.id);
-                          } else {
-                            setSelectedPayment(payment);
-                            setIsDetailsOpen(true);
-                          }
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <View style={styles.paymentCardLeft}>
-                          {bulkMode && (
-                            <TouchableOpacity style={styles.checkboxWrapper} onPress={() => handleSelectToggle(payment.id)}>
-                              {selected ? <CheckSquare size={20} color={t.accent} /> : <Square size={20} color={t.textSecondary} />}
-                            </TouchableOpacity>
-                          )}
-                          <View style={styles.paymentMainInfo}>
-                            <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>{payment.itemName}</Text>
-                            <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
-                            <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
-                          </View>
-                        </View>
-
-                        <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                          <Text style={[styles.amountValText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
-                          <View style={styles.badgeRow}>
-                            {hasProof && !payment.is_paid && (
-                              <View style={styles.proofBadge}>
-                                <FileImage size={10} color="#eab308" />
-                                <Text style={styles.proofBadgeText}>Proof</Text>
-                              </View>
+                {paymentsList.length > 0 ? (
+                  <AnyFlashList
+                    data={paymentsList}
+                    estimatedItemSize={100}
+                    scrollEnabled={false}
+                    renderItem={({ item }: { item: any }) => {
+                      const payment = item;
+                      const selected = selectedIds.includes(payment.id);
+                      const hasProof = payment.proof_of_payment !== null && payment.proof_of_payment !== '';
+                      return (
+                        <TouchableOpacity
+                          key={payment.id}
+                          style={[
+                            styles.paymentCard,
+                            { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+                            selected && { borderColor: t.accent, borderWidth: 1.5 }
+                          ]}
+                          onPress={() => {
+                            if (bulkMode) {
+                              handleSelectToggle(payment.id);
+                            } else {
+                              setSelectedPayment(payment);
+                              setIsDetailsOpen(true);
+                            }
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.paymentCardLeft}>
+                            {bulkMode && (
+                              <TouchableOpacity style={styles.checkboxWrapper} onPress={() => handleSelectToggle(payment.id)}>
+                                {selected ? <CheckSquare size={20} color={t.accent} /> : <Square size={20} color={t.textSecondary} />}
+                              </TouchableOpacity>
                             )}
-                            <View style={[
-                              styles.statusBadge,
-                              payment.is_paid ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' } : (payment.isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' } : { backgroundColor: t.border })
-                            ]}>
-                              <Text style={[
-                                styles.statusBadgeText,
-                                payment.is_paid ? { color: '#10b981' } : (payment.isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })
-                              ]}>
-                                {payment.is_paid ? 'Cleared' : (payment.isOverdue ? 'Overdue' : 'Pending')}
-                              </Text>
+                            <View style={styles.paymentMainInfo}>
+                              <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>{payment.itemName}</Text>
+                              <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
+                              <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
                             </View>
                           </View>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })
+
+                          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                            <Text style={[styles.amountValText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
+                            <View style={styles.badgeRow}>
+                              {hasProof && !payment.is_paid && (
+                                <View style={styles.proofBadge}>
+                                  <FileImage size={10} color="#eab308" />
+                                  <Text style={styles.proofBadgeText}>Proof</Text>
+                                </View>
+                              )}
+                              <View style={[
+                                styles.statusBadge,
+                                payment.is_paid ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' } : (payment.isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' } : { backgroundColor: t.border })
+                              ]}>
+                                <Text style={[
+                                  styles.statusBadgeText,
+                                  payment.is_paid ? { color: '#10b981' } : (payment.isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })
+                                ]}>
+                                  {payment.is_paid ? 'Cleared' : (payment.isOverdue ? 'Overdue' : 'Pending')}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    }}
+                  />
                 ) : (
                   <Text style={styles.emptyText}>No payments match criteria.</Text>
                 )}
@@ -1601,8 +1600,8 @@ export default function AdminPaymentsScreen() {
                     </View>
 
                     {/* Body */}
-                    {paginatedPayments.length > 0 ? (
-                      paginatedPayments.map((payment) => {
+                    {paymentsList.length > 0 ? (
+                      paymentsList.map((payment: any) => {
                         const selected = selectedIds.includes(payment.id);
                         return (
                           <TouchableOpacity
@@ -1912,7 +1911,7 @@ export default function AdminPaymentsScreen() {
 
                     {/* Body */}
                     {filteredBreakdownPayments.length > 0 ? (
-                      paginatedBreakdownPayments.map((payment) => {
+                      paginatedBreakdownPayments.map((payment: any) => {
                         const selected = selectedIds.includes(payment.id);
                         const monthKey = getBillingMonthKey(payment.due_date);
                         const monthName = formatBillingMonthKey(monthKey);
@@ -2112,7 +2111,7 @@ export default function AdminPaymentsScreen() {
             {/* Logs List */}
             <View style={styles.logsListContainer}>
               {filteredLogs.length > 0 ? (
-                filteredLogs.map(log => {
+                filteredLogs.map((log: any) => {
                   const isPaidEvent = log.action_type === 'payment_marked_paid';
                   return (
                     <View key={log.id} style={[styles.logCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
@@ -2181,7 +2180,7 @@ export default function AdminPaymentsScreen() {
                     onPress={() => setReceiptPickerType('client')}
                   >
                     <Text style={[styles.tabBtnText, { color: receiptClientFilter !== '' ? t.accent : t.textSecondary }]}>
-                      {receiptClientFilter !== '' ? `Client: ${profiles.find(p => p.id === receiptClientFilter)?.name || 'Selected'}` : 'All Clients'}
+                      {receiptClientFilter !== '' ? `Client: ${profiles.find((p: any) => p.id === receiptClientFilter)?.name || 'Selected'}` : 'All Clients'}
                     </Text>
                   </TouchableOpacity>
 

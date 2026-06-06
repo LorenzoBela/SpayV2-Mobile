@@ -48,11 +48,13 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAllAdminData, getExportLedgerCsv, callAdminApi } from '../../services/adminService';
+import { fetchAdminReports, fetchAdminClients, getExportLedgerCsv, callAdminApi } from '../../services/adminService';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Svg, { Circle, Text as SvgText, Path, Rect, Defs, LinearGradient, Stop, G } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -73,17 +75,8 @@ const shortMonthNames = [
 
 export default function AdminReportsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
-  const layout = useResponsiveLayout();
-
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const layout = useResponsiveLayout();  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-
-  // Raw Database States
-  const [allProfiles, setAllProfiles] = useState<any[]>([]);
-  const [allOrders, setAllOrders] = useState<any[]>([]);
-  const [allPayments, setAllPayments] = useState<any[]>([]);
 
   // Timeframe Filter States
   const [allTime, setAllTime] = useState(true);
@@ -132,60 +125,46 @@ export default function AdminReportsScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
-  const loadData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAllAdminData();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to sync analytical reports database.');
-      }
+  const queryClient = useQueryClient();
 
-      setAllProfiles(result.profiles || []);
-      setAllOrders(result.orders || []);
-      setAllPayments(result.payments || []);
+  const { data: reportsData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin-reports', { allTime, startMonth, startYear, endMonth, endYear }],
+    queryFn: () => fetchAdminReports({ allTime, startMonth, startYear, endMonth, endYear }),
+  });
 
-      const paymentsList = result.payments || [];
-      if (paymentsList.length > 0) {
-        const now = new Date();
-        const years = Array.from(new Set(paymentsList.map((p: any) => new Date(p.due_date).getFullYear())));
-        const minYear = Math.min(...years, now.getFullYear() - 1);
-        const maxYear = Math.max(...years, now.getFullYear());
+  const { data: clientsSelectionData } = useQuery({
+    queryKey: ['admin-clients-selection'],
+    queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+  });
 
-        setStartYear(minYear);
-        setEndYear(maxYear);
-        setTempStartYear(minYear);
-        setTempEndYear(maxYear);
-      }
-    } catch (err: any) {
-      console.warn('[AdminReportsScreen] Loading error:', err);
-      setError(err?.message || 'Sync failed.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  const allProfiles = clientsSelectionData?.clients || [];
+  const error = queryError ? (queryError as Error).message : null;
+
+  const loadData = async (showLoader?: boolean) => {
+    await Promise.all([
+      refetch(),
+      queryClient.invalidateQueries({ queryKey: ['admin-clients-selection'] })
+    ]);
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData(false);
+    await loadData();
+    setRefreshing(false);
   };
 
-  // Determine available years from payments dataset
+  useRealtimeSync(
+    ['orders', 'payments', 'profiles'],
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reports'] });
+    }
+  );
+
+  // Determine available years statically to avoid loading massive history
   const availableYears = useMemo(() => {
-    if (allPayments.length === 0) return [new Date().getFullYear()];
-    const yearsSet = new Set<number>();
-    allPayments.forEach(p => {
-      if (p.due_date) yearsSet.add(new Date(p.due_date).getFullYear());
-    });
-    const arr = Array.from(yearsSet);
-    arr.sort((a, b) => b - a);
-    return arr;
-  }, [allPayments]);
+    const currentYear = new Date().getFullYear();
+    return [currentYear + 1, currentYear, currentYear - 1, currentYear - 2];
+  }, []);
 
   // Apply filters
   const handleApplyFilters = () => {
@@ -240,346 +219,32 @@ export default function AdminReportsScreen() {
     }
   };
 
-  // In-Memory Report Computations (Web Parity)
-  const reportData = useMemo(() => {
-    if (!allPayments.length || !allOrders.length || !allProfiles.length) {
-      return {
-        metrics: {
-          totalRevenue: 0,
-          outstanding: 0,
-          overdueAmount: 0,
-          collectionRate: 0,
-          growthRate: 0,
-          avgPaymentValue: 0,
-          avgMonthlyRevenue: 0,
-          avgDaysOverdue: 0,
-          revenuePerClient: 0,
-          activeClients: 0,
-          totalOrders: 0,
-          retentionRate: 0,
-          avgPaymentVelocity: 0,
-        },
-        monthlyData: [],
-        clientLeaderboard: [],
-        itemLeaderboard: [],
-        delinquentClients: [],
-        dayPatterns: [],
-        yearComparison: [],
-        forecastData: [],
-        termAnalysis: [],
-      };
-    }
+  // Extract report variables from backend payload with defaults to avoid UI breakage
+  const reportsPayload = reportsData?.success ? reportsData : null;
 
-    const now = new Date();
-    const validPaymentDates = allPayments
-      .map(p => p.payment_date ? new Date(p.payment_date) : null)
-      .filter((d): d is Date => d !== null);
+  const metrics = reportsPayload?.metrics || {
+    totalRevenue: 0,
+    outstanding: 0,
+    overdueAmount: 0,
+    collectionRate: 0,
+    growthRate: 0,
+    avgPaymentValue: 0,
+    avgMonthlyRevenue: 0,
+    avgDaysOverdue: 0,
+    activeClients: 0,
+    totalOrders: 0,
+    retentionRate: 0,
+    avgPaymentVelocity: 0,
+  };
 
-    const minYear = validPaymentDates.length > 0
-      ? Math.min(...validPaymentDates.map(d => d.getFullYear()))
-      : now.getFullYear() - 1;
-
-    const maxYear = allPayments.length > 0
-      ? Math.max(...allPayments.map(p => new Date(p.due_date).getFullYear()))
-      : now.getFullYear();
-
-    let startDate: Date;
-    let endDate: Date;
-
-    if (allTime) {
-      startDate = new Date(minYear, 0, 1);
-      endDate = new Date(maxYear, 11, 31, 23, 59, 59, 999);
-    } else {
-      startDate = new Date(startYear, startMonth - 1, 1);
-      endDate = new Date(endYear, endMonth, 0, 23, 59, 59, 999);
-    }
-
-    // 1. Current Period Payments filtering
-    const activePayments = allPayments.filter(p => {
-      const dDate = new Date(p.due_date);
-      return dDate >= startDate && dDate <= endDate;
-    });
-
-    const paidPayments = allPayments.filter(p => {
-      if (!p.is_paid || !p.payment_date) return false;
-      const pDate = new Date(p.payment_date);
-      return pDate >= startDate && pDate <= endDate;
-    });
-
-    const unpaidPayments = allPayments.filter(p => {
-      if (p.is_paid) return false;
-      const dDate = new Date(p.due_date);
-      return dDate >= startDate && dDate <= endDate;
-    });
-
-    const overduePayments = unpaidPayments.filter(p => new Date(p.due_date) < now);
-
-    const totalRevenue = paidPayments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-    const outstanding = unpaidPayments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-    const overdueAmount = overduePayments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-    const totalDue = totalRevenue + outstanding;
-    const collectionRate = totalDue > 0 ? Math.round((totalRevenue / totalDue) * 100) : 0;
-
-    // 2. Growth Rate (MoM/PoP)
-    const periodDurationMs = endDate.getTime() - startDate.getTime();
-    const prevStartDate = new Date(startDate.getTime() - periodDurationMs);
-    const prevEndDate = new Date(startDate.getTime() - 1);
-
-    const prevPaidPayments = allPayments.filter(p => {
-      if (!p.is_paid || !p.payment_date) return false;
-      const pDate = new Date(p.payment_date);
-      return pDate >= prevStartDate && pDate <= prevEndDate;
-    });
-    const prevRevenue = prevPaidPayments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-    const growthRate = prevRevenue > 0 ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 1000) / 10 : 0;
-
-    // 3. Averages
-    const paidCount = paidPayments.length;
-    const avgPaymentValue = paidCount > 0 ? totalRevenue / paidCount : 0;
-
-    const diffMonths = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth()) + 1;
-    const avgMonthlyRevenue = diffMonths > 0 ? totalRevenue / diffMonths : totalRevenue;
-
-    // 4. Overdue default timeline
-    let totalOverdueDays = 0;
-    overduePayments.forEach(p => {
-      const dDate = new Date(p.due_date);
-      const diffTime = Math.abs(now.getTime() - dDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      totalOverdueDays += diffDays;
-    });
-    const avgDaysOverdue = overduePayments.length > 0 ? Math.round(totalOverdueDays / overduePayments.length) : 0;
-
-    // 5. Client metrics
-    const activeOrdersInPeriod = allOrders.filter(o => {
-      const oDate = new Date(o.order_date);
-      return oDate >= startDate && oDate <= endDate;
-    });
-    const activeClientIds = new Set(activeOrdersInPeriod.map(o => o.user_id));
-    const activeClientsCount = activeClientIds.size;
-    const revenuePerClient = activeClientsCount > 0 ? totalRevenue / activeClientsCount : 0;
-
-    // 6. Retention Rate
-    let returningClientsCount = 0;
-    activeClientIds.forEach(clientId => {
-      const clientOrders = allOrders.filter(o => o.user_id === clientId);
-      const hasOrderBefore = clientOrders.some(o => new Date(o.order_date) < startDate);
-      if (hasOrderBefore) {
-        returningClientsCount++;
-      }
-    });
-    const retentionRate = activeClientsCount > 0 ? Math.round((returningClientsCount / activeClientsCount) * 1000) / 10 : 0;
-
-    // 7. Payment velocity (avg days order creation -> Month 1 payment date)
-    let totalVelocityDays = 0;
-    let velocityCompletedCount = 0;
-    activeOrdersInPeriod.forEach(o => {
-      const orderPayments = allPayments.filter(p => p.order_id === o.id);
-      const firstPayment = orderPayments.find(p => p.month_number === 1);
-      if (firstPayment?.is_paid && firstPayment.payment_date) {
-        const pDate = new Date(firstPayment.payment_date);
-        const oDate = new Date(o.order_date);
-        const diffTime = Math.abs(pDate.getTime() - oDate.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        totalVelocityDays += diffDays;
-        velocityCompletedCount++;
-      }
-    });
-    const avgPaymentVelocity = velocityCompletedCount > 0 ? Math.round((totalVelocityDays / velocityCompletedCount) * 10) / 10 : 0;
-
-    // 8. Delinquent Clients (with 2 or more overdue payments)
-    const clientRiskMap: Record<string, { id: string; name: string; email: string; overdueCount: number; overdueAmount: number; longestOverdue: number }> = {};
-    const allOverduePayments = allPayments.filter(p => !p.is_paid && new Date(p.due_date) < now);
-
-    allOverduePayments.forEach(p => {
-      const order = allOrders.find(o => o.id === p.order_id);
-      if (!order) return;
-      const client = allProfiles.find(pr => pr.id === order.user_id);
-      if (!client) return;
-
-      if (!clientRiskMap[client.id]) {
-        clientRiskMap[client.id] = { id: client.id, name: client.name, email: client.email, overdueCount: 0, overdueAmount: 0, longestOverdue: 0 };
-      }
-      clientRiskMap[client.id].overdueCount += 1;
-      clientRiskMap[client.id].overdueAmount += Number(p.amount_due);
-
-      const dDate = new Date(p.due_date);
-      const overdueTime = Math.abs(now.getTime() - dDate.getTime());
-      const overdueDays = Math.ceil(overdueTime / (1000 * 60 * 60 * 24));
-      if (overdueDays > clientRiskMap[client.id].longestOverdue) {
-        clientRiskMap[client.id].longestOverdue = overdueDays;
-      }
-    });
-
-    const delinquentClientsList = Object.values(clientRiskMap)
-      .filter(c => c.overdueCount >= 2)
-      .sort((a, b) => b.overdueAmount - a.overdueAmount);
-
-    // 9. Day of week patterns
-    const dayPatterns = Array.from({ length: 7 }, (_, i) => ({ day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i], collected: 0, count: 0 }));
-    paidPayments.forEach(p => {
-      if (!p.payment_date) return;
-      const dayIndex = new Date(p.payment_date).getDay();
-      dayPatterns[dayIndex].collected += Number(p.amount_due);
-      dayPatterns[dayIndex].count += 1;
-    });
-
-    // 10. Year-over-Year comparison data
-    const currentYearDataMap: Record<string, number> = {};
-    const prevYearDataMap: Record<string, number> = {};
-    allPayments.forEach(p => {
-      if (!p.is_paid || !p.payment_date) return;
-      const pDate = new Date(p.payment_date);
-      const year = pDate.getFullYear();
-      const monthKey = shortMonthNames[pDate.getMonth()];
-      const amt = Number(p.amount_due);
-
-      if (year === now.getFullYear()) {
-        currentYearDataMap[monthKey] = (currentYearDataMap[monthKey] || 0) + amt;
-      } else if (year === now.getFullYear() - 1) {
-        prevYearDataMap[monthKey] = (prevYearDataMap[monthKey] || 0) + amt;
-      }
-    });
-
-    const yearComparisonData = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => ({
-      month: m,
-      currentYear: currentYearDataMap[m] || 0,
-      previousYear: prevYearDataMap[m] || 0
-    }));
-
-    // 11. Next 3 Months Revenue Forecast
-    const forecastMonthsData = [];
-    for (let i = 1; i <= 3; i++) {
-      const targetMonthDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const startOfForecast = new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth(), 1);
-      const endOfForecast = new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() + 1, 0, 23, 59, 59, 999);
-
-      const monthName = `${shortMonthNames[targetMonthDate.getMonth()]} '${String(targetMonthDate.getFullYear()).substring(2)}`;
-      const forecastPayments = allPayments.filter(p => {
-        if (p.is_paid) return false;
-        const dDate = new Date(p.due_date);
-        return dDate >= startOfForecast && dDate <= endOfForecast;
-      });
-
-      forecastMonthsData.push({
-        month: monthName,
-        projected: forecastPayments.reduce((sum, p) => sum + Number(p.amount_due), 0),
-        count: forecastPayments.length
-      });
-    }
-
-    // 12. Amortization Terms Sales distribution
-    const termMap: Record<number, { term: string; count: number; value: number }> = {
-      1: { term: '1 M', count: 0, value: 0 },
-      3: { term: '3 M', count: 0, value: 0 },
-      6: { term: '6 M', count: 0, value: 0 },
-      12: { term: '12 M', count: 0, value: 0 },
-    };
-    activeOrdersInPeriod.forEach(o => {
-      const m = o.installment_months;
-      if (termMap[m]) {
-        termMap[m].count += 1;
-        termMap[m].value += Number(o.amount);
-      }
-    });
-    const termAnalysis = Object.values(termMap);
-
-    // 13. Spender & Product leaderboards
-    const orderCountByClient = new Map<string, number>();
-    allOrders.forEach((order) => {
-      orderCountByClient.set(order.user_id, (orderCountByClient.get(order.user_id) ?? 0) + 1);
-    });
-
-    const paymentsByClient = new Map<string, typeof allPayments>();
-    allPayments.forEach((payment) => {
-      const order = allOrders.find(o => o.id === payment.order_id);
-      if (!order) return;
-      const clientId = order.user_id;
-      const clientPayments = paymentsByClient.get(clientId) ?? [];
-      clientPayments.push(payment);
-      paymentsByClient.set(clientId, clientPayments);
-    });
-
-    const clientRows = allProfiles.map((client) => {
-      const clientPayments = paymentsByClient.get(client.id) ?? [];
-      const paid = clientPayments.filter(p => {
-        if (!p.is_paid || !p.payment_date) return false;
-        const pDate = new Date(p.payment_date);
-        return pDate >= startDate && pDate <= endDate;
-      });
-      const unpaid = clientPayments.filter(p => {
-        if (p.is_paid) return false;
-        const dDate = new Date(p.due_date);
-        return dDate >= startDate && dDate <= endDate;
-      });
-
-      return {
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        orders: orderCountByClient.get(client.id) ?? 0,
-        paidAmount: paid.reduce((sum, p) => sum + Number(p.amount_due), 0),
-        outstandingAmount: unpaid.reduce((sum, p) => sum + Number(p.amount_due), 0),
-      };
-    }).sort((a, b) => (b.paidAmount + b.outstandingAmount) - (a.paidAmount + a.outstandingAmount));
-
-    const itemRows = activeOrdersInPeriod.reduce<Record<string, { itemName: string; orderCount: number; totalValue: number }>>((acc, order) => {
-      const row = acc[order.item_name] ?? { itemName: order.item_name, orderCount: 0, totalValue: 0 };
-      row.orderCount += 1;
-      row.totalValue += Number(order.amount);
-      acc[order.item_name] = row;
-      return acc;
-    }, {});
-
-    // Monthly Chart Data (Active payments aggregated per month)
-    const monthlyMap = new Map<string, { month: string; collected: number; projected: number; paidCount: number; dueCount: number }>();
-    for (const payment of activePayments) {
-      const sourceDate = new Date(payment.due_date);
-      const key = `${sourceDate.getFullYear()}-${String(sourceDate.getMonth() + 1).padStart(2, '0')}`;
-      const month = sourceDate.toLocaleDateString('en-PH', { month: 'short', year: '2-digit' });
-      const row = monthlyMap.get(key) ?? { month, collected: 0, projected: 0, paidCount: 0, dueCount: 0 };
-      if (payment.is_paid) {
-        row.collected += Number(payment.amount_due);
-        row.paidCount += 1;
-      } else {
-        row.projected += Number(payment.amount_due);
-      }
-      row.dueCount += 1;
-      monthlyMap.set(key, row);
-    }
-
-    const monthlyChartData = Array.from(monthlyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, row]) => row);
-
-    return {
-      metrics: {
-        totalRevenue,
-        outstanding,
-        overdueAmount,
-        collectionRate,
-        growthRate,
-        avgPaymentValue,
-        avgMonthlyRevenue,
-        avgDaysOverdue,
-        revenuePerClient,
-        activeClients: activeClientsCount,
-        totalOrders: activeOrdersInPeriod.length,
-        retentionRate,
-        avgPaymentVelocity
-      },
-      monthlyData: monthlyChartData,
-      clientLeaderboard: clientRows.slice(0, 5),
-      itemLeaderboard: Object.values(itemRows).sort((a, b) => b.totalValue - a.totalValue).slice(0, 5),
-      delinquentClients: delinquentClientsList,
-      dayPatterns,
-      yearComparison: yearComparisonData,
-      forecastData: forecastMonthsData,
-      termAnalysis
-    };
-  }, [allPayments, allOrders, allProfiles, startMonth, startYear, endMonth, endYear, allTime]);
-
-  const { metrics, monthlyData, clientLeaderboard, itemLeaderboard, delinquentClients, dayPatterns, yearComparison, forecastData, termAnalysis } = reportData;
+  const monthlyData = reportsPayload?.monthlyData || [];
+  const clientLeaderboard = reportsPayload?.clientLeaderboard || [];
+  const itemLeaderboard = reportsPayload?.itemLeaderboard || [];
+  const delinquentClients = reportsPayload?.delinquentClients || [];
+  const dayPatterns = reportsPayload?.dayPatterns || [];
+  const yearComparison = reportsPayload?.yearComparison || [];
+  const forecastData = reportsPayload?.forecastData || [];
+  const termAnalysis = reportsPayload?.termAnalysis || [];
 
   // Financial Health Score (Weighted index)
   const healthScore = useMemo(() => {
@@ -646,7 +311,7 @@ export default function AdminReportsScreen() {
         type: bulkType,
         month: selectedBulkMonth || undefined,
         year: selectedBulkYear || undefined,
-        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map(c => c.id) : undefined)
+        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map((c: any) => c.id) : undefined)
       });
 
       if (response.status === 'success' || response.status === 'info') {
@@ -680,7 +345,7 @@ export default function AdminReportsScreen() {
         type: bulkType,
         month: selectedBulkMonth || undefined,
         year: selectedBulkYear || undefined,
-        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map(c => c.id) : undefined)
+        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map((c: any) => c.id) : undefined)
       });
 
       if (response.success) {
@@ -700,7 +365,7 @@ export default function AdminReportsScreen() {
 
   const filteredClientsForSelection = useMemo(() => {
     const q = clientSearch.toLowerCase().trim();
-    return allProfiles.filter(c =>
+    return allProfiles.filter((c: any) =>
       c.name?.toLowerCase().includes(q) ||
       c.email?.toLowerCase().includes(q)
     );
@@ -713,8 +378,8 @@ export default function AdminReportsScreen() {
   };
 
   const handleSelectAllClients = () => {
-    const allFilteredIds = filteredClientsForSelection.map(c => c.id);
-    const allSelected = allFilteredIds.every(id => selectedClientIds.includes(id));
+    const allFilteredIds = filteredClientsForSelection.map((c: any) => c.id);
+    const allSelected = allFilteredIds.every((id: any) => selectedClientIds.includes(id));
     if (allSelected) {
       setSelectedClientIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
     } else {
@@ -1028,18 +693,18 @@ export default function AdminReportsScreen() {
                   const innerWidth = chartWidth - paddingLeft - paddingRight;
                   const innerHeight = chartHeight - paddingTop - paddingBottom;
 
-                  const maxVal = Math.max(...monthlyData.map(d => Math.max(d.collected, d.projected)), 1000) * 1.1;
+                  const maxVal = Math.max(...monthlyData.map((d: any) => Math.max(d.collected, d.projected)), 1000) * 1.1;
 
-                  const points = monthlyData.map((d, index) => {
+                  const points = monthlyData.map((d: any, index: number) => {
                     const x = paddingLeft + (monthlyData.length > 1 ? (index / (monthlyData.length - 1)) * innerWidth : innerWidth / 2);
                     const yCollected = paddingTop + innerHeight - (d.collected / maxVal) * innerHeight;
                     const yProjected = paddingTop + innerHeight - (d.projected / maxVal) * innerHeight;
                     return { x, yCollected, yProjected, month: d.month };
                   });
 
-                  const collectedPath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yCollected}`).join(' ');
+                  const collectedPath = points.map((p: any, idx: number) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yCollected}`).join(' ');
                   const collectedAreaPath = `${collectedPath} L ${points[points.length - 1].x} ${paddingTop + innerHeight} L ${points[0].x} ${paddingTop + innerHeight} Z`;
-                  const projectedPath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yProjected}`).join(' ');
+                  const projectedPath = points.map((p: any, idx: number) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yProjected}`).join(' ');
 
                   return (
                     <View style={styles.svgWrapper}>
@@ -1074,7 +739,7 @@ export default function AdminReportsScreen() {
                         <Path d={projectedPath} stroke={isDarkMode ? '#64748b' : '#94a3b8'} strokeWidth={1.8} strokeDasharray="4 4" fill="transparent" />
 
                         {/* Dots and Labels */}
-                        {points.map((p, idx) => (
+                        {points.map((p: any, idx: number) => (
                           <G key={idx}>
                             <Circle cx={p.x} cy={p.yCollected} r={4} fill={t.accent} />
                             <SvgText x={p.x} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
@@ -1181,10 +846,10 @@ export default function AdminReportsScreen() {
 
               <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.barChartScroll}>
                 {(() => {
-                  const maxYoy = Math.max(...yearComparison.map(d => Math.max(d.currentYear, d.previousYear)), 1000) * 1.1;
+                  const maxYoy = Math.max(...yearComparison.map((d: any) => Math.max(d.currentYear, d.previousYear)), 1000) * 1.1;
                   return (
                     <View style={styles.yoyContainer}>
-                      {yearComparison.map((m, idx) => {
+                      {yearComparison.map((m: any, idx: number) => {
                         const prevHeight = maxYoy > 0 ? (m.previousYear / maxYoy) * 100 : 0;
                         const currHeight = maxYoy > 0 ? (m.currentYear / maxYoy) * 100 : 0;
 
@@ -1227,15 +892,15 @@ export default function AdminReportsScreen() {
                 <View style={[styles.forecastSummary, { backgroundColor: t.border }]}>
                   <Text style={styles.forecastSummaryLabel}>Total Projected Forecast</Text>
                   <Text style={[styles.forecastSummaryVal, { color: t.textPrimary }]}>
-                    {formatCurrency(forecastData.reduce((sum, d) => sum + d.projected, 0))}
+                    {formatCurrency(forecastData.reduce((sum: number, d: any) => sum + d.projected, 0))}
                   </Text>
                   <Text style={[styles.forecastSummaryCount, { color: t.textSecondary }]}>
-                    From {forecastData.reduce((sum, d) => sum + d.count, 0)} pending installments.
+                    From {forecastData.reduce((sum: number, d: any) => sum + d.count, 0)} pending installments.
                   </Text>
                 </View>
 
                 <View style={styles.forecastRows}>
-                  {forecastData.map((d, index) => (
+                  {forecastData.map((d: any, index: number) => (
                     <View key={index} style={[styles.forecastRow, { borderBottomColor: t.border }]}>
                       <Text style={[styles.forecastRowMonth, { color: t.textPrimary }]}>{d.month}</Text>
                       <Text style={[styles.forecastRowAmt, { color: t.accent }]}>{formatCurrency(d.projected)}</Text>
@@ -1259,10 +924,10 @@ export default function AdminReportsScreen() {
 
               <View style={styles.behaviorChartWrapper}>
                 {(() => {
-                  const maxDay = Math.max(...dayPatterns.map(d => d.collected), 1000) * 1.1;
+                  const maxDay = Math.max(...dayPatterns.map((d: any) => d.collected), 1000) * 1.1;
                   return (
                     <View style={styles.barChartRow}>
-                      {dayPatterns.map((d, idx) => {
+                      {dayPatterns.map((d: any, idx: number) => {
                         const h = maxDay > 0 ? (d.collected / maxDay) * 100 : 0;
                         return (
                           <View key={idx} style={styles.behaviorCol}>
@@ -1294,10 +959,10 @@ export default function AdminReportsScreen() {
 
               <View style={styles.behaviorChartWrapper}>
                 {(() => {
-                  const maxTerm = Math.max(...termAnalysis.map(d => d.value), 1000) * 1.1;
+                  const maxTerm = Math.max(...termAnalysis.map((d: any) => d.value), 1000) * 1.1;
                   return (
                     <View style={styles.barChartRow}>
-                      {termAnalysis.map((d, idx) => {
+                      {termAnalysis.map((d: any, idx: number) => {
                         const h = maxTerm > 0 ? (d.value / maxTerm) * 100 : 0;
                         return (
                           <View key={idx} style={styles.behaviorCol}>
@@ -1326,7 +991,7 @@ export default function AdminReportsScreen() {
         <Text style={styles.sectionHeader}>Top Revenue Contributors</Text>
         <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           {clientLeaderboard.length > 0 ? (
-            clientLeaderboard.map((client, index) => (
+            clientLeaderboard.map((client: any, index: number) => (
               <View
                 key={client.id}
                 style={[
@@ -1355,7 +1020,7 @@ export default function AdminReportsScreen() {
         <Text style={styles.sectionHeader}>Delinquency Risk Assessment</Text>
         <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           {delinquentClients.length > 0 ? (
-            delinquentClients.map((client) => {
+            delinquentClients.map((client: any) => {
               const isReminding = !!remindingMap[client.id];
               return (
                 <View
@@ -1415,7 +1080,7 @@ export default function AdminReportsScreen() {
         <Text style={styles.sectionHeader}>Top Selling Items</Text>
         <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginBottom: 30 }]}>
           {itemLeaderboard.length > 0 ? (
-            itemLeaderboard.map((item, index) => (
+            itemLeaderboard.map((item: any, index: number) => (
               <View
                 key={item.itemName}
                 style={[
@@ -2033,7 +1698,7 @@ export default function AdminReportsScreen() {
             {/* Scroll checklist */}
             <ScrollView style={styles.clientModalScroll}>
               {filteredClientsForSelection.length > 0 ? (
-                filteredClientsForSelection.map((c) => {
+                filteredClientsForSelection.map((c: any) => {
                   const isSelected = selectedClientIds.includes(c.id);
                   return (
                     <TouchableOpacity

@@ -42,9 +42,10 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { fetchAdminReminders, fetchAdminClients, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { WebView } from 'react-native-webview';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 
 const formatCurrency = (val: number | string) => {
@@ -87,16 +88,8 @@ export default function AdminRemindersScreen() {
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
 
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-
-  // Data states
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [reminderLogs, setReminderLogs] = useState<any[]>([]);
 
   // Search & Tab state
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,110 +113,57 @@ export default function AdminRemindersScreen() {
   const [isSendingBulk, setIsSendingBulk] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
-  const loadData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAllAdminData();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to sync reminders ledger logs.');
-      }
-      setProfiles(result.profiles || []);
-      setOrders(result.orders || []);
-      setPayments(result.payments || []);
-      setReminderLogs(result.reminderLogs || []);
-    } catch (err: any) {
-      console.warn('[AdminRemindersScreen] Load error:', err);
-      setError(err?.message || 'Sync failed.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const { data: remindersData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin-reminders'],
+    queryFn: () => fetchAdminReminders(),
+  });
+
+  const { data: clientsSelectionData } = useQuery({
+    queryKey: ['admin-clients-selection'],
+    queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+  });
+
+  const error = queryError ? (queryError as Error).message : null;
+
+  const loadData = async (showLoader?: boolean) => {
+    await Promise.all([
+      refetch(),
+      queryClient.invalidateQueries({ queryKey: ['admin-clients-selection'] })
+    ]);
+  };
 
   useRealtimeSync(
     ['orders', 'payments', 'reminder_logs'],
-    () => loadData(false)
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reminders'] });
+    }
   );
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData(false);
+    await loadData();
+    setRefreshing(false);
   };
 
-  // Helper/Selectors
-  const clientsList = useMemo(() => {
-    return profiles.filter((p: any) => p.role === 'CLIENT');
-  }, [profiles]);
+  const payload = remindersData?.success ? remindersData : null;
+  const reminderTargets = payload?.reminderTargets || [];
+  const reminderLogs = payload?.reminderLogs || [];
+  const serverStats = payload?.stats || { total: 0, overdue: 0, dueSoon: 0, clientsCount: 0 };
 
+  const clientsList = clientsSelectionData?.clients || [];
+
+  // Determine available years statically
   const availableYears = useMemo(() => {
-    if (payments.length === 0) return [new Date().getFullYear().toString()];
-    const yearsSet = new Set<number>();
-    payments.forEach(p => {
-      if (p.due_date) yearsSet.add(new Date(p.due_date).getFullYear());
-    });
-    const arr = Array.from(yearsSet);
-    arr.sort((a, b) => b - a);
-    return arr.map(String);
-  }, [payments]);
-
-  // Compute targets
-  const reminderTargets = useMemo(() => {
-    const now = new Date();
-    const inSevenDays = new Date();
-    inSevenDays.setDate(now.getDate() + 7);
-
-    return payments
-      .filter((p: any) => !p.is_paid)
-      .map((p: any) => {
-        const order = p && p.order_id ? orders.find(o => o && o.id === p.order_id) : null;
-        const client = order && order.user_id ? profiles.find(pr => pr && pr.id === order.user_id) : null;
-        const dDate = new Date(p.due_date);
-
-        const status: 'overdue' | 'due-soon' | 'scheduled' =
-          dDate < now ? 'overdue' : dDate <= inSevenDays ? 'due-soon' : 'scheduled';
-
-        // Find latest log for this payment
-        const paymentLogs = reminderLogs.filter((log: any) => log && log.payment_id === p.id);
-        paymentLogs.sort((a, b) => {
-          const tA = a && a.sent_at ? new Date(a.sent_at).getTime() : 0;
-          const tB = b && b.sent_at ? new Date(b.sent_at).getTime() : 0;
-          return tB - tA;
-        });
-        const lastSentAt = paymentLogs[0]?.sent_at || null;
-
-        return {
-          id: p.id,
-          clientName: client?.name || 'Unknown Client',
-          clientEmail: client?.email || '',
-          clientId: client?.id || '',
-          itemName: order?.item_name || 'Purchase Order',
-          amountDue: Number(p.amount_due),
-          dueDate: p.due_date,
-          lastSentAt,
-          status,
-        };
-      });
-  }, [payments, orders, profiles, reminderLogs]);
-
-  // Dynamic stats
-  const stats = useMemo(() => {
-    return {
-      total: reminderTargets.length,
-      overdue: reminderTargets.filter(t => t.status === 'overdue').length,
-      dueSoon: reminderTargets.filter(t => t.status === 'due-soon').length,
-      clientsCount: clientsList.length,
-    };
-  }, [reminderTargets, clientsList]);
+    const currentYear = new Date().getFullYear();
+    return [currentYear.toString(), (currentYear - 1).toString(), (currentYear - 2).toString()];
+  }, []);
 
   // Filter targets for list display
   const filteredTargets = useMemo(() => {
     const text = searchQuery.trim().toLowerCase();
-    return reminderTargets.filter((target) => {
+    return reminderTargets.filter((target: any) => {
       const matchesText = !text ||
         target.clientName.toLowerCase().includes(text) ||
         target.clientEmail.toLowerCase().includes(text) ||
@@ -233,32 +173,7 @@ export default function AdminRemindersScreen() {
     });
   }, [searchQuery, activeSubFilter, reminderTargets]);
 
-  // Formatting trigger logs
-  const formattedLogs = useMemo(() => {
-    try {
-      return reminderLogs.map((log: any) => {
-        if (!log) return null;
-        const payment = log.payment_id ? payments.find(p => p && p.id === log.payment_id) : null;
-        const order = payment && payment.order_id ? orders.find(o => o && o.id === payment.order_id) : null;
-        const client = order && order.user_id ? profiles.find(pr => pr && pr.id === order.user_id) : null;
-        const sender = log.sent_by_id ? profiles.find(p => p && p.id === log.sent_by_id) : null;
-
-        return {
-          id: log.id || Math.random().toString(),
-          clientName: client?.name || 'Unknown Client',
-          itemName: order?.item_name || 'Item Ledger',
-          amountDue: payment ? Number(payment.amount_due) : 0,
-          dueDate: payment ? payment.due_date : '',
-          sentAt: log.sent_at,
-          sentBy: log.automated ? 'System' : (sender?.name || 'Admin'),
-          automated: !!log.automated,
-        };
-      }).filter(Boolean);
-    } catch (e) {
-      console.warn('[AdminRemindersScreen] Error formatting logs:', e);
-      return [];
-    }
-  }, [reminderLogs, payments, orders, profiles]);
+  const formattedLogs = reminderLogs;
 
   // Pagination Math
   const totalPages = Math.max(1, Math.ceil(filteredTargets.length / PAGE_SIZE));
@@ -275,7 +190,7 @@ export default function AdminRemindersScreen() {
   // Compute delinquent clients
   const delinquentClients = useMemo(() => {
     const overdueCounts: Record<string, number> = {};
-    reminderTargets.forEach(t => {
+    reminderTargets.forEach((t: any) => {
       if (t.status === 'overdue') {
         overdueCounts[t.clientEmail] = (overdueCounts[t.clientEmail] || 0) + 1;
       }
@@ -283,17 +198,26 @@ export default function AdminRemindersScreen() {
     const overdueEmails = new Set(
       Object.keys(overdueCounts).filter(email => overdueCounts[email] >= 2)
     );
-    return clientsList.filter(c => overdueEmails.has(c.email));
+    return clientsList.filter((c: any) => overdueEmails.has(c.email));
   }, [reminderTargets, clientsList]);
 
   // Search filter for clients checklist
   const filteredClientsForSelection = useMemo(() => {
     const q = clientSearch.toLowerCase().trim();
-    return clientsList.filter(c =>
+    return clientsList.filter((c: any) =>
       c.name?.toLowerCase().includes(q) ||
       c.email?.toLowerCase().includes(q)
     );
   }, [clientsList, clientSearch]);
+
+  const stats = useMemo(() => {
+    return {
+      total: serverStats.total,
+      overdue: serverStats.overdue,
+      dueSoon: serverStats.dueSoon,
+      clientsCount: serverStats.clientsCount,
+    };
+  }, [serverStats]);
 
   // Actions
   const handleSendReminder = async (paymentId: string, itemName: string, clientName: string) => {
@@ -315,15 +239,15 @@ export default function AdminRemindersScreen() {
 
   const handleToggleSelectClient = (id: string) => {
     setSelectedClientIds(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((c: any) => c !== id) : [...prev, id]
     );
   };
 
   const handleSelectAllClients = () => {
-    const allFilteredIds = filteredClientsForSelection.map(c => c.id);
-    const allSelected = allFilteredIds.every(id => selectedClientIds.includes(id));
+    const allFilteredIds = filteredClientsForSelection.map((c: any) => c.id);
+    const allSelected = allFilteredIds.every((id: any) => selectedClientIds.includes(id));
     if (allSelected) {
-      setSelectedClientIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
+      setSelectedClientIds(prev => prev.filter((id: any) => !allFilteredIds.includes(id)));
     } else {
       setSelectedClientIds(prev => Array.from(new Set([...prev, ...allFilteredIds])));
     }
@@ -349,7 +273,7 @@ export default function AdminRemindersScreen() {
         type: bulkType,
         month: selectedBulkMonth || undefined,
         year: selectedBulkYear || undefined,
-        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map(c => c.id) : undefined)
+        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map((c: any) => c.id) : undefined)
       });
 
       if (response.status === 'success' || response.status === 'info') {
@@ -382,7 +306,7 @@ export default function AdminRemindersScreen() {
         type: bulkType,
         month: selectedBulkMonth || undefined,
         year: selectedBulkYear || undefined,
-        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map(c => c.id) : undefined)
+        clientIds: bulkType === 'selected' ? selectedClientIds : (bulkType === 'overdue' ? delinquentClients.map((c: any) => c.id) : undefined)
       });
 
       if (response.success) {
@@ -570,7 +494,7 @@ export default function AdminRemindersScreen() {
             <Text style={styles.sectionHeaderTitle}>Dues Outstanding ({filteredTargets.length})</Text>
             <View style={styles.pendingList}>
               {paginatedTargets.length > 0 ? (
-                paginatedTargets.map((target) => (
+                paginatedTargets.map((target: any) => (
                   <View key={target.id} style={[styles.pendingItemCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                     <View style={styles.pendingItemHeader}>
                       <View style={{ flex: 1, marginRight: 8 }}>
@@ -659,7 +583,7 @@ export default function AdminRemindersScreen() {
             {paginatedLogs.length > 0 ? (
               <>
                 <View style={[styles.logsContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                  {paginatedLogs.map((log, idx) => {
+                  {paginatedLogs.map((log: any, idx: number) => {
                     if (!log) return null;
                     return (
                       <View key={log.id} style={[styles.logItemRow, idx < paginatedLogs.length - 1 ? { borderBottomColor: t.border } : null]}>
@@ -1261,7 +1185,7 @@ export default function AdminRemindersScreen() {
             {/* Scroll checklist */}
             <ScrollView style={styles.clientModalScroll}>
               {filteredClientsForSelection.length > 0 ? (
-                filteredClientsForSelection.map((c) => {
+                filteredClientsForSelection.map((c: any) => {
                   const isSelected = selectedClientIds.includes(c.id);
                   return (
                     <TouchableOpacity

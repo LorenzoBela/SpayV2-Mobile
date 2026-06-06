@@ -1,5 +1,5 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -43,8 +43,10 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import AdminHeader from '../../components/AdminHeader';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { fetchAdminClients, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
 
 
 const formatCurrency = (val: number | string) => {
@@ -68,15 +70,7 @@ export default function AdminClientsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Data states
-  const [profiles, setProfiles] = useState<any[]>([]);
-  const [limits, setLimits] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
+  const queryClient = useQueryClient();
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,6 +92,7 @@ export default function AdminClientsScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 6;
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const [refreshing, setRefreshing] = useState(false);
 
   const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [orderPage, setOrderPage] = useState(1);
@@ -117,69 +112,33 @@ export default function AdminClientsScreen() {
     }));
   };
 
-  const loadData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAllAdminData();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to sync ledger records.');
-      }
-      setProfiles(result.profiles || []);
-      setOrders(result.orders || []);
-      setPayments(result.payments || []);
-      setLimits(result.accountLimits || []);
-    } catch (err: any) {
-      console.warn('[AdminClientsScreen] Load error:', err);
-      setError(err?.message || 'Sync failed.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const { data: clientsData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin-clients', currentPage, searchQuery, activeTab],
+    queryFn: () => fetchAdminClients({
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      searchQuery,
+      status: activeTab,
+    }),
+  });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useRealtimeSync(
-    ['orders', 'payments', 'account_limits', 'profiles'],
-    () => loadData(false)
-  );
+  const error = queryError ? (queryError as Error).message : (clientsData && !clientsData.success ? clientsData.error : null);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadData(false);
+    refetch().finally(() => setRefreshing(false));
   };
 
-  // Helper selectors for a client
-  const getClientLimit = (clientId: string) => {
-    const lim = limits.find(l => l.user_id === clientId);
-    return lim ? Number(lim.credit_limit) : 50000.00;
-  };
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeTab]);
 
-  const getClientStats = (clientId: string) => {
-    const clientOrders = orders.filter(o => o.user_id === clientId);
-    const clientPayments = payments.filter(p => clientOrders.some(o => o.id === p.order_id));
-    const totalSpent = clientOrders.reduce((sum, o) => sum + Number(o.amount), 0);
-    const unpaidPayments = clientPayments.filter(p => !p.is_paid);
-    const totalOutstanding = unpaidPayments.reduce((sum, p) => sum + Number(p.amount_due), 0);
-    const activeOrders = clientOrders.filter(o => !o.is_paid).length;
-
-    return {
-      totalSpent,
-      totalOutstanding,
-      activeOrders,
-      orderCount: clientOrders.length,
-      orders: clientOrders.map(order => {
-        const orderPayments = payments.filter(p => p.order_id === order.id);
-        return {
-          ...order,
-          payments: orderPayments,
-        };
-      }),
-    };
-  };
+  useRealtimeSync(
+    ['orders', 'payments', 'account_limits', 'profiles'],
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
+    }
+  );
 
   const getMonthlyBreakdown = (clientOrders: any[]) => {
     const monthlyBreakdownMap: Record<string, {
@@ -247,41 +206,14 @@ export default function AdminClientsScreen() {
     return result.sort((a, b) => a.monthKey.localeCompare(b.monthKey));
   };
 
-  // Process data for rendering lists
-  const processedClients = profiles.map(profile => {
-    const stats = getClientStats(profile.id);
-    const limit = getClientLimit(profile.id);
-    return {
-      ...profile,
-      ...stats,
-      limit,
-    };
-  });
+  const processedClients = useMemo(() => clientsData?.clients || [], [clientsData]);
+  const filteredClients = processedClients;
+  const totalPages = Math.max(1, Math.ceil((clientsData?.totalCount || 0) / PAGE_SIZE));
+  const paginatedClients = processedClients;
 
-  const filteredClients = processedClients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchQuery.toLowerCase());
-
-    if (!matchesSearch) return false;
-
-    if (activeTab === 'active') {
-      return client.activeOrders > 0;
-    } else if (activeTab === 'pending') {
-      return client.activeOrders === 0;
-    }
-    return true;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredClients.length / PAGE_SIZE));
-  const paginatedClients = filteredClients.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  // Calculate top spending clients
-  const topSpenders = [...processedClients]
-    .sort((a, b) => b.totalSpent - a.totalSpent)
-    .slice(0, 5);
-
-  const totalRevenue = processedClients.reduce((sum, c) => sum + c.totalSpent, 0);
-  const totalOutstanding = processedClients.reduce((sum, c) => sum + c.totalOutstanding, 0);
+  const topSpenders = useMemo(() => clientsData?.topSpenders || [], [clientsData]);
+  const totalRevenue = clientsData?.stats?.totalRevenue || 0;
+  const totalOutstanding = clientsData?.stats?.totalOutstanding || 0;
 
   const handleEditProfileSubmit = async () => {
     if (!editName || !editEmail) {
@@ -308,7 +240,7 @@ export default function AdminClientsScreen() {
           email: editEmail,
           mobile_number: editMobile,
         }));
-        loadData(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
       } else {
         Alert.alert('Error', response.error || 'Failed to update client profile.');
       }
@@ -335,7 +267,7 @@ export default function AdminClientsScreen() {
               if (response.success) {
                 Alert.alert('Deleted', 'Client profile successfully deleted.');
                 setIsDetailsOpen(false);
-                loadData(false);
+                queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
               } else {
                 Alert.alert('Error', response.error || 'Failed to delete client.');
               }
@@ -399,7 +331,7 @@ export default function AdminClientsScreen() {
         title="Admin Control Center"
         subtitle="Loading client profiles and database structures..."
         error={error}
-        onRetry={() => loadData()}
+        onRetry={() => refetch()}
       />
     );
   }
@@ -457,7 +389,7 @@ export default function AdminClientsScreen() {
         <View style={styles.statsRow}>
           <View style={[styles.miniStatCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <Text style={styles.miniStatLabel}>Total Clients</Text>
-            <Text style={[styles.miniStatVal, { color: t.textPrimary }]}>{profiles.length}</Text>
+            <Text style={[styles.miniStatVal, { color: t.textPrimary }]}>{processedClients.length}</Text>
           </View>
           <View style={[styles.miniStatCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <Text style={styles.miniStatLabel}>Outstanding Balance</Text>
@@ -470,7 +402,7 @@ export default function AdminClientsScreen() {
           <View style={[styles.topSpendersCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>🏆 Top Spenders Ranking</Text>
             <View style={styles.spendersList}>
-              {topSpenders.map((spender, idx) => (
+              {topSpenders.map((spender: any, idx: number) => (
                 <TouchableOpacity
                   key={spender.id}
                   style={styles.spenderRow}
@@ -517,7 +449,7 @@ export default function AdminClientsScreen() {
 
         <View style={viewMode === 'grid' ? styles.clientGridContainer : styles.clientsListContainer}>
           {paginatedClients.length > 0 ? (
-            paginatedClients.map((client) => {
+            paginatedClients.map((client: any) => {
               if (viewMode === 'grid') {
                 return (
                   <TouchableOpacity

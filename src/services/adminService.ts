@@ -180,6 +180,66 @@ export const fetchAllAdminData = async () => {
   }
 };
 
+export const fetchAdminDashboardData = async () => {
+  try {
+    const response = await callAdminApi('fetch-admin-dashboard');
+    return response;
+  } catch (error: any) {
+    console.error('[adminService] Error in fetchAdminDashboardData:', error);
+    return { success: false, error: error?.message || 'Network error.' };
+  }
+};
+
+export const fetchAdminPayments = async (filters: { page?: number; pageSize?: number; searchQuery?: string; ledgerFilter?: string }) => {
+  try {
+    const response = await callAdminApi('fetch-admin-payments', filters);
+    return response;
+  } catch (error: any) {
+    console.error('[adminService] Error in fetchAdminPayments:', error);
+    return { success: false, error: error?.message || 'Network error.' };
+  }
+};
+
+export const fetchAdminOrders = async (filters: { page?: number; pageSize?: number; searchQuery?: string; status?: string; filterMonthKey?: string }) => {
+  try {
+    const response = await callAdminApi('fetch-admin-orders', filters);
+    return response;
+  } catch (error: any) {
+    console.error('[adminService] Error in fetchAdminOrders:', error);
+    return { success: false, error: error?.message || 'Network error.' };
+  }
+};
+
+export const fetchAdminClients = async (filters: { page?: number; pageSize?: number; searchQuery?: string; status?: string }) => {
+  try {
+    const response = await callAdminApi('fetch-admin-clients', filters);
+    return response;
+  } catch (error: any) {
+    console.error('[adminService] Error in fetchAdminClients:', error);
+    return { success: false, error: error?.message || 'Network error.' };
+  }
+};
+
+export const fetchAdminReports = async (filters: { startYear?: number; startMonth?: number; endYear?: number; endMonth?: number; allTime?: boolean }) => {
+  try {
+    const response = await callAdminApi('fetch-admin-reports', filters);
+    return response;
+  } catch (error: any) {
+    console.error('[adminService] Error in fetchAdminReports:', error);
+    return { success: false, error: error?.message || 'Network error.' };
+  }
+};
+
+export const fetchAdminReminders = async () => {
+  try {
+    const response = await callAdminApi('fetch-admin-reminders');
+    return response;
+  } catch (error: any) {
+    console.error('[adminService] Error in fetchAdminReminders:', error);
+    return { success: false, error: error?.message || 'Network error.' };
+  }
+};
+
 export const getNotifications = async (limit = 100) => {
   try {
     const notifications = await fetchNotifications(limit);

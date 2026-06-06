@@ -70,7 +70,8 @@ import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import PremiumLoader from '../../components/PremiumLoader';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
-import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { fetchAdminDashboardData, callAdminApi } from '../../services/adminService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 
 
@@ -270,12 +271,16 @@ export default function AdminDashboardScreen() {
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  // Stats variables
-  const [stats, setStats] = useState({
+  const { data: dashboardData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin-dashboard'],
+    queryFn: fetchAdminDashboardData,
+  });
+
+  const error = queryError ? (queryError as Error).message : (dashboardData && !dashboardData.success ? dashboardData.error : null);
+
+  const stats = dashboardData?.stats || {
     activeLimitExposure: 0,
     outstandingBalance: 0,
     activeClientsCount: 0,
@@ -283,8 +288,9 @@ export default function AdminDashboardScreen() {
     overduePaymentsCount: 0,
     completionRate: 0,
     collectionEfficiency: 0,
-  });
-  const [unpaidBillingSchedules, setUnpaidBillingSchedules] = useState<any[]>([]);
+  };
+
+  const unpaidBillingSchedules = dashboardData?.unpaidBillingSchedules || [];
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
   const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
     monthName: '',
@@ -298,21 +304,22 @@ export default function AdminDashboardScreen() {
   const [trendsTab, setTrendsTab] = useState<'categories' | 'installments'>('categories');
   const [rankingToggle, setRankingToggle] = useState<'spenders' | 'delinquents' | 'signups'>('spenders');
 
-  const [inflows, setInflows] = useState({
+  const inflows = dashboardData?.inflows || {
     thisWeekExpected: 0,
     nextWeekExpected: 0,
     nextMonthExpected: 0,
-    nextDeadline: null as string | null,
+    nextDeadline: null,
     nextDeadlineAmount: 0,
-  });
+  };
 
-  const [recentOrders, setRecentOrders] = useState<any[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
-  const [productCategories, setProductCategories] = useState<any[]>([]);
-  const [installmentAnalysis, setInstallmentAnalysis] = useState<any[]>([]);
-  const [topClients, setTopClients] = useState<any[]>([]);
-  const [problemClients, setProblemClients] = useState<any[]>([]);
-  const [recentClients, setRecentClients] = useState<any[]>([]);
+  const recentOrders = dashboardData?.recentOrders || [];
+  const activities = dashboardData?.activities || [];
+  const productCategories = dashboardData?.productCategories || [];
+  const installmentAnalysis = dashboardData?.installmentAnalysis || [];
+  const topClients = dashboardData?.topClients || [];
+  const problemClients = dashboardData?.problemClients || [];
+  const recentClients = dashboardData?.recentClients || [];
+  const clientsList = dashboardData?.clientsList || [];
 
   // Time & Weather Live display
   const [currentTime, setCurrentTime] = useState(() => dayjs());
@@ -331,7 +338,6 @@ export default function AdminDashboardScreen() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // New Order Form state
-  const [clientsList, setClientsList] = useState<Array<{ id: string; name: string; email: string; avatar_url?: string | null }>>([]);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [itemName, setItemName] = useState('');
@@ -392,355 +398,18 @@ export default function AdminDashboardScreen() {
     hasTarget: false,
   });
 
-  const loadData = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const currentUserEmail = user?.email;
-      const dbData = await fetchAllAdminData();
-      if (!dbData.success) {
-        throw new Error(dbData.error || 'Failed to pull ledger metrics.');
-      }
-
-      const { profiles = [], accountLimits = [], orders = [], payments = [], reminderLogs = [] } = dbData;
-
-      // 1. Calculate active limits exposure
-      const totalLimit = accountLimits.reduce((sum, limit) => sum + Number(limit.credit_limit), 0);
-
-      // 2. Outstanding Balance (unpaid payments)
-      const unpaid = payments.filter((p: any) => !p.is_paid);
-      const outstanding = unpaid.reduce((sum, p) => sum + Number(p.amount_due), 0);
-
-      // 3. Active clients
-      const activeClients = profiles.length;
-
-      // 4. Overdue payments & defaults
-      const now = new Date();
-      const overdue = unpaid.filter((p: any) => parseUtcDate(p.due_date) < now);
-      const defaults = overdue.reduce((sum, p) => sum + Number(p.amount_due), 0);
-
-      // 5. Completion Rate & Collection Efficiency
-      const totalDueAmount = payments.reduce((sum: any, p: any) => sum + Number(p.amount_due), 0);
-      const collectedAmount = payments.filter((p: any) => p.is_paid).reduce((sum: any, p: any) => sum + Number(p.amount_due), 0);
-      const efficiency = totalDueAmount > 0 ? Math.round((collectedAmount / totalDueAmount) * 100) : 0;
-
-      const totalPaymentsCount = payments.length;
-      const paidPaymentsCount = payments.filter((p: any) => p.is_paid).length;
-      const rate = totalPaymentsCount > 0 ? Math.round((paidPaymentsCount / totalPaymentsCount) * 100) : 0;
-
-      setStats({
-        activeLimitExposure: totalLimit,
-        outstandingBalance: outstanding,
-        activeClientsCount: activeClients,
-        platformDefaults: defaults,
-        overduePaymentsCount: overdue.length,
-        completionRate: rate,
-        collectionEfficiency: efficiency,
-      });
-
-      // 6. Next Billing schedule (unpaid billing months grouped chronologically)
-      // Filter to only show months starting from the next calendar month (matches web)
-      const todayDate = new Date();
-      const nextCalMonthStart = getNextCalendarMonthStart(todayDate);
-      const fromMonthKey = getCalendarMonthKey(nextCalMonthStart);
-
-      const unpaidPaymentsByMonth = new Map<string, any[]>();
-      unpaid.forEach((payment: any) => {
-        const monthKey = getBillingMonthKey(payment.due_date);
-        // Skip billing months before the next calendar month
-        if (monthKey < fromMonthKey) return;
-        const list = unpaidPaymentsByMonth.get(monthKey) || [];
-        list.push(payment);
-        unpaidPaymentsByMonth.set(monthKey, list);
-      });
-
-      const sortedKeys = Array.from(unpaidPaymentsByMonth.keys()).sort();
-      const schedulesList = sortedKeys.map(monthKey => {
-        const monthPayments = unpaidPaymentsByMonth.get(monthKey) || [];
-        const earliestDue = monthPayments.length > 0
-          ? monthPayments.map((p: any) => p.due_date).sort((a: string, b: string) => parseUtcDate(a).getTime() - parseUtcDate(b).getTime())[0]
-          : null;
-
-        const [yearStr, monthStr] = monthKey.split('-');
-        const monthName = new Date(Number(yearStr), Number(monthStr) - 1, 1).toLocaleDateString('en-US', {
-          month: 'long',
-          year: 'numeric',
-        });
-
-        const clientBillingMap = new Map<string, any>();
-        monthPayments.forEach((payment: any) => {
-          const order = orders.find((o: any) => o.id === payment.order_id);
-          const profile = order ? profiles.find((pr: any) => pr.id === order.user_id) : null;
-
-          // Use a fallback for unmatched orders/profiles so payments are never silently dropped
-          const clientId = profile?.id ?? order?.user_id ?? '_unlinked';
-          const clientName = profile?.name ?? 'Unknown Client';
-          const clientEmail = profile?.email ?? '';
-
-          const clientData = clientBillingMap.get(clientId) || {
-            clientId,
-            clientName,
-            email: clientEmail,
-            totalOwed: 0,
-            items: [],
-          };
-
-          clientData.totalOwed += Number(payment.amount_due);
-          clientData.items.push({
-            itemName: order?.item_name ?? 'Unknown Item',
-            amountDue: Number(payment.amount_due),
-            dueDate: payment.due_date,
-            monthNumber: payment.month_number,
-            installmentMonths: order?.installment_months ?? 0,
-          });
-
-          clientBillingMap.set(clientId, clientData);
-        });
-
-        const billingClients = Array.from(clientBillingMap.values()).sort((a, b) => b.totalOwed - a.totalOwed);
-        // Calculate totalDue directly from all payments (matches web behavior)
-        const billingTotal = monthPayments.reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
-
-        return {
-          monthKey,
-          monthName,
-          totalDue: billingTotal,
-          earliestDueDate: earliestDue,
-          clients: billingClients,
-        };
-      });
-
-      setUnpaidBillingSchedules(schedulesList);
-      setSelectedScheduleIndex(0);
-
-      // 7. Calculate all cash inflows, activities, categories, terms, and rankings client-side
-      // todayDate already declared above in billing schedule section
-      const nowParts = getUtc8DateParts(todayDate);
-      const utc8Today = new Date(Date.UTC(nowParts.year, nowParts.month, nowParts.date));
-      const dayOfWeek = utc8Today.getUTCDay();
-
-      const startOfWeek = createUtc8Date(nowParts.year, nowParts.month, nowParts.date - dayOfWeek, 0, 0, 0, 0);
-      const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
-      const endOfNextWeek = new Date(endOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-      const nextMonthStartInflow = getNextCalendarMonthStart(todayDate);
-      const nextMonthParts = getUtc8DateParts(nextMonthStartInflow);
-      const lastDayOfNextMonth = new Date(Date.UTC(nextMonthParts.year, nextMonthParts.month + 1, 0)).getUTCDate();
-      const endOfNextMonth = createUtc8Date(nextMonthParts.year, nextMonthParts.month, lastDayOfNextMonth, 23, 59, 59, 999);
-
-      const thisWeekExp = unpaid
-        .filter((p: any) => {
-          const d = parseUtcDate(p.due_date);
-          return d >= startOfWeek && d < endOfWeek;
-        })
-        .reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
-
-      const nextWeekExp = unpaid
-        .filter((p: any) => {
-          const d = parseUtcDate(p.due_date);
-          return d >= endOfWeek && d < endOfNextWeek;
-        })
-        .reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
-
-      const nextMonthExp = payments
-        .filter((p: any) => {
-          const d = parseUtcDate(p.due_date);
-          return d >= nextMonthStartInflow && d <= endOfNextMonth;
-        })
-        .reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
-
-      const nextUpcoming = unpaid
-        .filter((p: any) => parseUtcDate(p.due_date) > todayDate)
-        .sort((a: any, b: any) => parseUtcDate(a.due_date).getTime() - parseUtcDate(b.due_date).getTime())[0];
-
-      setInflows({
-        thisWeekExpected: thisWeekExp,
-        nextWeekExpected: nextWeekExp,
-        nextMonthExpected: nextMonthExp,
-        nextDeadline: nextUpcoming ? nextUpcoming.due_date : null,
-        nextDeadlineAmount: nextUpcoming ? Number(nextUpcoming.amount_due) : 0,
-      });
-
-      // 8. Recent Orders
-      const recentOrdersMapped = orders.slice(0, 10).map((o: any) => {
-        const clientProfile = profiles.find((p: any) => p.id === o.user_id);
-        return {
-          id: o.id,
-          itemName: o.item_name,
-          clientName: clientProfile ? clientProfile.name : 'Unknown',
-          amount: Number(o.amount),
-          installmentMonths: o.installment_months,
-          orderDate: o.order_date,
-          isPaid: o.is_paid,
-        };
-      });
-      setRecentOrders(recentOrdersMapped);
-
-      // 9. Timeline Feed Activities
-      const recentOrdersForActivity = orders.slice(0, 10);
-      const recentPaymentsForActivity = payments.filter((p: any) => p.is_paid).slice(0, 10);
-
-      const activitiesMapped = [
-        ...recentOrdersForActivity.map((o: any) => {
-          const clientProfile = profiles.find((p: any) => p.id === o.user_id);
-          return {
-            type: 'order' as const,
-            createdAt: o.order_date,
-            name: clientProfile ? clientProfile.name : 'Client',
-            detail: o.item_name,
-            amount: Number(o.amount),
-          };
-        }),
-        ...recentPaymentsForActivity.map((p: any) => {
-          const order = orders.find((o: any) => o.id === p.order_id);
-          const clientProfile = order ? profiles.find((pr: any) => pr.id === order.user_id) : null;
-          return {
-            type: 'payment' as const,
-            createdAt: p.payment_date || p.due_date,
-            name: clientProfile ? clientProfile.name : 'Client',
-            detail: `Payment for Order: ${order ? order.item_name : 'Unknown Item'}`,
-            amount: Number(p.amount_due),
-          };
-        })
-      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 15);
-      setActivities(activitiesMapped);
-
-      // 10. Product Categories Share
-      const categoriesMap: Record<string, { category: string; orderCount: number; totalValue: number }> = {};
-      const categorizeItem = (name: string) => {
-        const lower = (name || '').toLowerCase();
-        if (/phone|laptop|computer|tv|headphone|earbuds|electronic|fan|led|clock|gadget|tablet|camera/.test(lower)) return 'Electronics';
-        if (/serum|cosmetic|makeup|lashes|brow|pencil|skincare|beauty|hair|keratin/.test(lower)) return 'Beauty & Cosmetics';
-        if (/dress|pants|rashguard|clothes|fashion|shirt|wear|shoe|bag/.test(lower)) return 'Fashion & Clothing';
-        if (/ramen|food|snack|eat|drink|beverage|coffee|tea/.test(lower)) return 'Food & Beverages';
-        if (/diaper|pet|care/.test(lower)) return 'Pet Care';
-        return 'Other';
-      };
-
-      orders.forEach((o: any) => {
-        const cat = categorizeItem(o.item_name);
-        if (!categoriesMap[cat]) {
-          categoriesMap[cat] = { category: cat, orderCount: 0, totalValue: 0 };
-        }
-        categoriesMap[cat].orderCount += 1;
-        categoriesMap[cat].totalValue += Number(o.amount);
-      });
-      const productCategoriesMapped = Object.values(categoriesMap).sort((a, b) => b.totalValue - a.totalValue);
-      setProductCategories(productCategoriesMapped);
-
-      // 11. Installment Term Analysis
-      const analysisMap = new Map<number, { months: number; count: number; total: number; collected: number; outstanding: number }>();
-      orders.forEach((o: any) => {
-        const term = Number(o.installment_months);
-        if (!analysisMap.has(term)) {
-          analysisMap.set(term, { months: term, count: 0, total: 0, collected: 0, outstanding: 0 });
-        }
-        const data = analysisMap.get(term)!;
-        data.count += 1;
-        data.total += Number(o.amount);
-      });
-
-      payments.forEach((p: any) => {
-        const order = orders.find((o: any) => o.id === p.order_id);
-        if (!order) return;
-        const term = Number(order.installment_months);
-        if (!analysisMap.has(term)) {
-          analysisMap.set(term, { months: term, count: 0, total: 0, collected: 0, outstanding: 0 });
-        }
-        const data = analysisMap.get(term)!;
-        if (p.is_paid) {
-          data.collected += Number(p.amount_due);
-        } else {
-          data.outstanding += Number(p.amount_due);
-        }
-      });
-
-      const installmentAnalysisMapped = Array.from(analysisMap.values()).sort((a, b) => a.months - b.months);
-      setInstallmentAnalysis(installmentAnalysisMapped);
-
-      // 12. Rankings
-      const spendersMap = new Map<string, { userId: string; totalSpent: number; count: number }>();
-      orders.forEach((o: any) => {
-        const uid = o.user_id;
-        const entry = spendersMap.get(uid) || { userId: uid, totalSpent: 0, count: 0 };
-        entry.totalSpent += Number(o.amount);
-        entry.count += 1;
-        spendersMap.set(uid, entry);
-      });
-
-      const topClientsMapped = Array.from(spendersMap.values())
-        .map(entry => {
-          const clientProfile = profiles.find((p: any) => p.id === entry.userId);
-          return {
-            name: clientProfile ? clientProfile.name : 'Unknown',
-            email: clientProfile ? clientProfile.email : 'Unknown',
-            totalSpent: entry.totalSpent,
-            count: entry.count,
-          };
-        })
-        .sort((a, b) => b.totalSpent - a.totalSpent)
-        .slice(0, 5);
-      setTopClients(topClientsMapped);
-
-      const overduePayments = unpaid.filter((p: any) => parseUtcDate(p.due_date) < todayDate);
-      const delinquentsMap = new Map<string, { userId: string; overdueCount: number }>();
-      overduePayments.forEach((p: any) => {
-        const order = orders.find((o: any) => o.id === p.order_id);
-        if (!order) return;
-        const uid = order.user_id;
-        const entry = delinquentsMap.get(uid) || { userId: uid, overdueCount: 0 };
-        entry.overdueCount += 1;
-        delinquentsMap.set(uid, entry);
-      });
-
-      const problemClientsMapped = Array.from(delinquentsMap.values())
-        .map(entry => {
-          const clientProfile = profiles.find((p: any) => p.id === entry.userId);
-          return {
-            name: clientProfile ? clientProfile.name : 'Unknown',
-            email: clientProfile ? clientProfile.email : 'Unknown',
-            overdueCount: entry.overdueCount,
-          };
-        })
-        .sort((a, b) => b.overdueCount - a.overdueCount)
-        .slice(0, 5);
-      setProblemClients(problemClientsMapped);
-
-      const clientProfiles = profiles.filter((p: any) => p.role === 'CLIENT' || (currentUserEmail && p.email === currentUserEmail));
-      const recentClientsMapped = clientProfiles
-        .map((p: any) => ({
-          name: p.name,
-          email: p.email,
-          createdAt: p.created_at,
-        }))
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 5);
-      setRecentClients(recentClientsMapped);
-
-      // Save clients list for forms
-      setClientsList(profiles.map((p: any) => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url })));
-    } catch (err: any) {
-      console.warn('[AdminDashboardScreen] Loading error:', err);
-      setError(err?.message || 'Sync failed.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
   useRealtimeSync(
     ['orders', 'payments', 'account_limits', 'profiles'],
-    () => loadData(false)
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
+    }
   );
 
-  const onRefresh = () => {
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData(false);
+    await refetch();
+    setRefreshing(false);
   };
 
   // Flip countdown updater
@@ -821,7 +490,7 @@ export default function AdminDashboardScreen() {
           setBulkOrders([]);
           setClientSelectorActiveOrderId(null);
           setBulkClientSearchQuery('');
-          loadData(false);
+          queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
         } else {
           PremiumAlert.alert('Error', response.error || 'Failed to schedule bulk orders.');
         }
@@ -860,7 +529,7 @@ export default function AdminDashboardScreen() {
           setBulkOrders([]);
           setClientSelectorActiveOrderId(null);
           setBulkClientSearchQuery('');
-          loadData(false);
+          queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
         } else {
           PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
         }
@@ -886,7 +555,7 @@ export default function AdminDashboardScreen() {
         PremiumAlert.alert('Success', `Global baseline limits allocated!`);
         setIsGlobalLimitOpen(false);
         setGlobalLimitAmount('');
-        loadData(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
       } else {
         PremiumAlert.alert('Error', response.error || 'Failed to adjust global limits.');
       }
@@ -920,12 +589,12 @@ export default function AdminDashboardScreen() {
   const activeExposurePercent = stats.activeLimitExposure > 0
     ? Math.min(100, Math.round((stats.outstandingBalance / stats.activeLimitExposure) * 100))
     : 0;
-  const filteredClients = clientsList.filter((client) => {
+  const filteredClients = clientsList.filter((client: any) => {
     const query = clientSearchQuery.trim().toLowerCase();
     if (!query) return true;
     return `${client.name} ${client.email}`.toLowerCase().includes(query);
   });
-  const selectedClient = clientsList.find((client) => client.id === selectedClientId);
+  const selectedClient = clientsList.find((client: any) => client.id === selectedClientId);
   const parsedOrderAmount = isBulkMode
     ? bulkOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0)
     : (Number(orderAmount) || 0);
@@ -948,7 +617,7 @@ export default function AdminDashboardScreen() {
         title="Admin Control Center"
         subtitle="Loading system metrics and syncing ledgers..."
         error={error}
-        onRetry={() => loadData()}
+        onRetry={() => refetch()}
       />
     );
   }
@@ -1288,7 +957,7 @@ export default function AdminDashboardScreen() {
           <View style={styles.rankingsBody}>
             {rankingToggle === 'spenders' && (
               topClients.length > 0 ? (
-                topClients.map((c, idx) => (
+                topClients.map((c: any, idx: number) => (
                   <View key={idx} style={styles.rankingRow}>
                     <View style={styles.rankingRowLeft}>
                       <Text style={styles.rankingIndex}>#{idx + 1}</Text>
@@ -1307,7 +976,7 @@ export default function AdminDashboardScreen() {
 
             {rankingToggle === 'delinquents' && (
               problemClients.length > 0 ? (
-                problemClients.map((c, idx) => (
+                problemClients.map((c: any, idx: number) => (
                   <View key={idx} style={styles.rankingRow}>
                     <View style={styles.rankingRowLeft}>
                       <Text style={[styles.rankingIndex, { color: '#ef4444' }]}>#{idx + 1}</Text>
@@ -1325,7 +994,7 @@ export default function AdminDashboardScreen() {
 
             {rankingToggle === 'signups' && (
               recentClients.length > 0 ? (
-                recentClients.map((c, idx) => (
+                recentClients.map((c: any, idx: number) => (
                   <View key={idx} style={styles.rankingRow}>
                     <View>
                       <Text style={[styles.rankingName, { color: t.textPrimary }]}>{c.name}</Text>
@@ -1415,7 +1084,7 @@ export default function AdminDashboardScreen() {
                   </View>
                   {/* Table Body */}
                   {recentOrders.length > 0 ? (
-                    recentOrders.map((o) => (
+                    recentOrders.map((o: any) => (
                       <View key={o.id} style={[styles.tableBodyRow, { borderBottomColor: t.border }]}>
                         <Text style={[styles.tableCell, { width: 100, fontWeight: 'bold', color: t.textPrimary }]} numberOfLines={1}>
                           {o.clientName}
@@ -1452,7 +1121,7 @@ export default function AdminDashboardScreen() {
             ) : (
               <View style={styles.timelineContainer}>
                 {activities.length > 0 ? (
-                  activities.map((act, index) => (
+                  activities.map((act: any, index: number) => (
                     <View key={index} style={[styles.timelineItem, { borderLeftColor: t.border }]}>
                       <View style={[
                         styles.timelineBullet,
@@ -1524,7 +1193,7 @@ export default function AdminDashboardScreen() {
             {trendsTab === 'categories' ? (
               <View style={styles.trendsContainer}>
                 {productCategories.length > 0 ? (
-                  productCategories.map((c, idx) => {
+                  productCategories.map((c: any, idx: number) => {
                     const maxVal = productCategories[0].totalValue || 1;
                     const percentage = Math.max(5, Math.round((c.totalValue / maxVal) * 100));
                     return (
@@ -1560,7 +1229,7 @@ export default function AdminDashboardScreen() {
                     <Text style={[styles.tableHeaderCell, { width: 120, textAlign: 'right', color: t.textSecondary }]}>OUTSTANDING</Text>
                   </View>
                   {installmentAnalysis.length > 0 ? (
-                    installmentAnalysis.map((item, idx) => (
+                    installmentAnalysis.map((item: any, idx: number) => (
                       <View key={idx} style={[styles.tableBodyRow, { borderBottomColor: t.border }]}>
                         <Text style={[styles.tableCell, { width: 100, fontWeight: 'bold', color: t.textPrimary }]}>
                           {item.months} Months
@@ -1670,7 +1339,7 @@ export default function AdminDashboardScreen() {
                     </View>
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
-                      {filteredClients.map((client) => {
+                      {filteredClients.map((client: any) => {
                         const selected = selectedClientId === client.id;
                         return (
                           <TouchableOpacity
@@ -1806,7 +1475,7 @@ export default function AdminDashboardScreen() {
                             }}
                           >
                             <Text style={[styles.selectedClientName, { color: order.clientId ? t.textPrimary : t.textSecondary }]}>
-                              {order.clientId ? (clientsList.find(p => p.id === order.clientId)?.name || 'Unknown Client') : 'Choose Client...'}
+                              {order.clientId ? (clientsList.find((p: any) => p.id === order.clientId)?.name || 'Unknown Client') : 'Choose Client...'}
                             </Text>
                             <ChevronDown size={14} color={t.textSecondary} />
                           </TouchableOpacity>
