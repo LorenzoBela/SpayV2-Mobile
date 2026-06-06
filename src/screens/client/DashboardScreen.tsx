@@ -35,6 +35,7 @@ import {
   CreditCard,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -887,6 +888,8 @@ export default function DashboardScreen() {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  useRealtimeSync(['orders', 'payments', 'account_limits'], fetchDashboardData);
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -16,6 +16,7 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,6 +60,7 @@ import {
   CheckCircle2,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useNavigation } from '@react-navigation/native';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -329,7 +331,7 @@ export default function AdminDashboardScreen() {
   const [actionLoading, setActionLoading] = useState(false);
 
   // New Order Form state
-  const [clientsList, setClientsList] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [clientsList, setClientsList] = useState<Array<{ id: string; name: string; email: string; avatar_url?: string | null }>>([]);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [itemName, setItemName] = useState('');
@@ -717,7 +719,7 @@ export default function AdminDashboardScreen() {
       setRecentClients(recentClientsMapped);
 
       // Save clients list for forms
-      setClientsList(profiles.map((p: any) => ({ id: p.id, name: p.name, email: p.email })));
+      setClientsList(profiles.map((p: any) => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url })));
     } catch (err: any) {
       console.warn('[AdminDashboardScreen] Loading error:', err);
       setError(err?.message || 'Sync failed.');
@@ -730,6 +732,11 @@ export default function AdminDashboardScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useRealtimeSync(
+    ['orders', 'payments', 'account_limits', 'profiles'],
+    () => loadData(false)
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -1676,11 +1683,10 @@ export default function AdminDashboardScreen() {
                             onPress={() => setSelectedClientId(client.id)}
                             activeOpacity={0.86}
                           >
-                            <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
-                              <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
-                                {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                              </Text>
-                            </View>
+                            <Image
+                              source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                              style={styles.clientAvatar}
+                            />
                             <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
                             <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
                           </TouchableOpacity>
@@ -1985,11 +1991,10 @@ export default function AdminDashboardScreen() {
                         setBulkClientSearchQuery('');
                       }}
                     >
-                      <View style={[styles.clientAvatar, { backgroundColor: t.accentLight }]}>
-                        <Text style={[styles.clientAvatarText, { color: t.accent }]}>
-                          {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
+                      <Image
+                        source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                        style={styles.clientAvatar}
+                      />
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={[styles.clientChoiceName, { color: t.textPrimary }]}>{client.name}</Text>
                         <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]}>{client.email}</Text>

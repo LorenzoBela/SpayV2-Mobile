@@ -43,6 +43,7 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { PaymentsSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
@@ -669,6 +670,8 @@ export default function PaymentsScreen() {
   useEffect(() => {
     fetchPayments();
   }, []);
+
+  useRealtimeSync(['orders', 'payments'], fetchPayments);
 
   const onRefresh = () => {
     setRefreshing(true);

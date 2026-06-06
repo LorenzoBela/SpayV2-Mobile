@@ -33,6 +33,7 @@ import {
   List,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { OrdersSkeleton } from '../../components/SkeletonLoader';
@@ -205,6 +206,8 @@ export default function OrdersScreen() {
   useEffect(() => {
     fetchOrdersAndAnalytics();
   }, []);
+
+  useRealtimeSync(['orders', 'payments'], fetchOrdersAndAnalytics);
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -37,6 +37,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import Svg, { Path, Circle as SvgCircle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import { supabase } from '../../utils/supabase';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -271,6 +272,7 @@ export default function BudgetScreen() {
           currentAmount: parseFloat(g.current_amount),
           targetDate: g.target_date ? new Date(g.target_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
           category: g.category || 'General',
+
           status: g.status || 'active',
         }));
         setGoals(formattedGoals);
@@ -338,6 +340,11 @@ export default function BudgetScreen() {
   useEffect(() => {
     fetchBudgetData();
   }, []);
+
+  useRealtimeSync(
+    ['orders', 'payments', 'user_budget_categories', 'user_budget_goals'],
+    fetchBudgetData
+  );
 
   // Projections computing
   const projections = useMemo(() => {

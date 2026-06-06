@@ -11,7 +11,10 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
   StatusBar,
+  KeyboardAvoidingView,
+  Image,
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
@@ -40,6 +43,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { WebView } from 'react-native-webview';
 import dayjs from 'dayjs';
 
@@ -140,6 +144,11 @@ export default function AdminRemindersScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useRealtimeSync(
+    ['orders', 'payments', 'reminder_logs'],
+    () => loadData(false)
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -1073,11 +1082,10 @@ export default function AdminRemindersScreen() {
                               onPress={() => setActivePreviewTab(idx)}
                             >
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={styles.previewTabAvatar}>
-                                  <Text style={styles.previewTabAvatarText}>
-                                    {client.name.substring(0, 1).toUpperCase()}
-                                  </Text>
-                                </View>
+                                <Image
+                                  source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                                  style={styles.previewTabAvatarImage}
+                                />
                                 <View style={{ maxWidth: 100 }}>
                                   <Text style={[styles.previewTabBtnName, { color: t.textPrimary }]} numberOfLines={1}>
                                     {client.name}
@@ -1274,12 +1282,11 @@ export default function AdminRemindersScreen() {
                           {isSelected && <Check size={12} color="#ffffff" />}
                         </View>
                         
-                        {/* Letter Avatar */}
-                        <View style={styles.clientAvatar}>
-                          <Text style={styles.clientAvatarText}>
-                            {c.name.substring(0, 1).toUpperCase()}
-                          </Text>
-                        </View>
+                        {/* Client Avatar */}
+                        <Image
+                          source={{ uri: c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || c.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          style={styles.clientAvatar}
+                        />
 
                         <View style={styles.clientCheckDetails}>
                           <Text style={[styles.clientCheckName, { color: t.textPrimary }]}>{c.name}</Text>
@@ -1887,6 +1894,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(148, 163, 184, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  previewTabAvatarImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
   },
   previewTabAvatarText: {
     color: '#64748b',

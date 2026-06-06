@@ -1,4 +1,3 @@
-import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
 import {
@@ -14,6 +13,7 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -46,6 +46,7 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { parseUtcDate } from '../../utils/date';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
@@ -193,6 +194,11 @@ export default function AdminOrdersScreen() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useRealtimeSync(
+    ['orders', 'payments', 'account_limits', 'profiles'],
+    () => loadData(false)
+  );
 
   useEffect(() => {
     setCurrentPage(1);
@@ -354,18 +360,18 @@ export default function AdminOrdersScreen() {
   const handleAssignSubmit = async () => {
     if (isBulkMode) {
       if (bulkOrders.length === 0) {
-        PremiumAlert.alert('Empty Form', 'Please add at least one order.');
+        Alert.alert('Empty Form', 'Please add at least one order.');
         return;
       }
       for (let i = 0; i < bulkOrders.length; i++) {
         const o = bulkOrders[i];
         if (!o.clientId || !o.itemName || !o.amount) {
-          PremiumAlert.alert('Incomplete Form', `Please complete all fields for Order #${i + 1}.`);
+          Alert.alert('Incomplete Form', `Please complete all fields for Order #${i + 1}.`);
           return;
         }
         const parsedAmt = parseFloat(o.amount);
         if (isNaN(parsedAmt) || parsedAmt <= 0) {
-          PremiumAlert.alert('Invalid Amount', `Please enter a valid purchase amount for Order #${i + 1}.`);
+          Alert.alert('Invalid Amount', `Please enter a valid purchase amount for Order #${i + 1}.`);
           return;
         }
       }
@@ -387,21 +393,21 @@ export default function AdminOrdersScreen() {
         const response = await callAdminApi('schedule-order', payload);
 
         if (response.success) {
-          PremiumAlert.alert('Success', `Successfully scheduled ${bulkOrders.length} orders!`);
+          Alert.alert('Success', `Successfully scheduled ${bulkOrders.length} orders!`);
           setIsAssignOpen(false);
           clearAssignForm();
           loadData(false);
         } else {
-          PremiumAlert.alert('Error', response.error || 'Failed to schedule bulk orders.');
+          Alert.alert('Error', response.error || 'Failed to schedule bulk orders.');
         }
       } catch (e: any) {
-        PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+        Alert.alert('Network Error', e?.message || 'Server connection failed.');
       } finally {
         setActionLoading(false);
       }
     } else {
       if (!selectedClientId || !itemName || !amount) {
-        PremiumAlert.alert('Incomplete Form', 'Please provide a client, item name, and purchase amount.');
+        Alert.alert('Incomplete Form', 'Please provide a client, item name, and purchase amount.');
         return;
       }
 
@@ -418,15 +424,15 @@ export default function AdminOrdersScreen() {
         });
 
         if (response.success) {
-          PremiumAlert.alert('Success', `Installment scheduled for ${itemName}!`);
+          Alert.alert('Success', `Installment scheduled for ${itemName}!`);
           setIsAssignOpen(false);
           clearAssignForm();
           loadData(false);
         } else {
-          PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
+          Alert.alert('Error', response.error || 'Failed to schedule installment plan.');
         }
       } catch (e: any) {
-        PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+        Alert.alert('Network Error', e?.message || 'Server connection failed.');
       } finally {
         setActionLoading(false);
       }
@@ -450,7 +456,7 @@ export default function AdminOrdersScreen() {
 
   const handleEditSubmit = async () => {
     if (!editItemName || !editAmount) {
-      PremiumAlert.alert('Incomplete Form', 'Please provide item name and purchase amount.');
+      Alert.alert('Incomplete Form', 'Please provide item name and purchase amount.');
       return;
     }
 
@@ -460,7 +466,7 @@ export default function AdminOrdersScreen() {
     const clientChanged = editClientId !== selectedOrder.user_id;
 
     if (hasPaidPayments && (amountChanged || termsChanged || clientChanged)) {
-      PremiumAlert.alert(
+      Alert.alert(
         'Locked Fields',
         'Cannot modify client, terms, or purchase amount because payment collections have already started for this order.'
       );
@@ -481,22 +487,22 @@ export default function AdminOrdersScreen() {
       });
 
       if (response.success) {
-        PremiumAlert.alert('Success', `Order details updated!`);
+        Alert.alert('Success', `Order details updated!`);
         setIsEditOpen(false);
         setIsDetailsOpen(false);
         loadData(false);
       } else {
-        PremiumAlert.alert('Error', response.error || 'Failed to update order details.');
+        Alert.alert('Error', response.error || 'Failed to update order details.');
       }
     } catch (e: any) {
-      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+      Alert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDeleteSubmit = (orderId: string, itemName: string) => {
-    PremiumAlert.alert(
+    Alert.alert(
       'Delete Order Ledger',
       `Are you sure you want to permanently delete order "${itemName}" and all associated payments? This will restore client credit capacity.`,
       [
@@ -509,14 +515,14 @@ export default function AdminOrdersScreen() {
             try {
               const response = await callAdminApi('delete-order', { id: orderId });
               if (response.success) {
-                PremiumAlert.alert('Deleted', 'Order successfully removed.');
+                Alert.alert('Deleted', 'Order successfully removed.');
                 setIsDetailsOpen(false);
                 loadData(false);
               } else {
-                PremiumAlert.alert('Error', response.error || 'Failed to delete order.');
+                Alert.alert('Error', response.error || 'Failed to delete order.');
               }
             } catch (e: any) {
-              PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+              Alert.alert('Network Error', e?.message || 'Server connection failed.');
             } finally {
               setActionLoading(false);
             }
@@ -942,7 +948,7 @@ export default function AdminOrdersScreen() {
 
                 <TouchableOpacity
                   style={[styles.modalActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: '#ef4444' }]}
-                  onPress={() => handleDeleteSubmit(selectedOrder.id, selectedOrder.itemName)}
+                  onPress={() => handleDeleteSubmit(selectedOrder.id, selectedOrder.item_name)}
                 >
                   <Trash2 size={16} color="#ef4444" />
                   <Text style={[styles.modalActionText, { color: '#ef4444' }]}>Delete Order</Text>
@@ -1077,11 +1083,10 @@ export default function AdminOrdersScreen() {
                             onPress={() => setSelectedClientId(client.id)}
                             activeOpacity={0.86}
                           >
-                            <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
-                              <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
-                                {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                              </Text>
-                            </View>
+                            <Image
+                              source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                              style={styles.clientAvatar}
+                            />
                             <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
                             <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
                           </TouchableOpacity>
@@ -1398,11 +1403,10 @@ export default function AdminOrdersScreen() {
                         setBulkClientSearchQuery('');
                       }}
                     >
-                      <View style={[styles.clientAvatar, { backgroundColor: t.accentLight }]}>
-                        <Text style={[styles.clientAvatarText, { color: t.accent }]}>
-                          {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
+                      <Image
+                        source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                        style={styles.clientAvatar}
+                      />
                       <View style={{ flex: 1, marginLeft: 12 }}>
                         <Text style={[styles.clientChoiceName, { color: t.textPrimary }]}>{client.name}</Text>
                         <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]}>{client.email}</Text>

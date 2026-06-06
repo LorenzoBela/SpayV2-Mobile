@@ -1,4 +1,3 @@
-import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
 import {
@@ -45,6 +44,7 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import AdminHeader from '../../components/AdminHeader';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 
 
 const formatCurrency = (val: number | string) => {
@@ -126,9 +126,9 @@ export default function AdminClientsScreen() {
         throw new Error(result.error || 'Failed to sync ledger records.');
       }
       setProfiles(result.profiles || []);
-      setLimits(result.accountLimits || []);
       setOrders(result.orders || []);
       setPayments(result.payments || []);
+      setLimits(result.accountLimits || []);
     } catch (err: any) {
       console.warn('[AdminClientsScreen] Load error:', err);
       setError(err?.message || 'Sync failed.');
@@ -142,9 +142,10 @@ export default function AdminClientsScreen() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, activeTab]);
+  useRealtimeSync(
+    ['orders', 'payments', 'account_limits', 'profiles'],
+    () => loadData(false)
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -284,7 +285,7 @@ export default function AdminClientsScreen() {
 
   const handleEditProfileSubmit = async () => {
     if (!editName || !editEmail) {
-      PremiumAlert.alert('Invalid Input', 'Name and Email are required.');
+      Alert.alert('Invalid Input', 'Name and Email are required.');
       return;
     }
 
@@ -298,7 +299,7 @@ export default function AdminClientsScreen() {
       });
 
       if (response.success) {
-        PremiumAlert.alert('Success', `Client profile updated successfully!`);
+        Alert.alert('Success', `Client profile updated successfully!`);
         setIsEditProfileOpen(false);
         // Update local modal data
         setSelectedClient((prev: any) => ({
@@ -309,17 +310,17 @@ export default function AdminClientsScreen() {
         }));
         loadData(false);
       } else {
-        PremiumAlert.alert('Error', response.error || 'Failed to update client profile.');
+        Alert.alert('Error', response.error || 'Failed to update client profile.');
       }
     } catch (e: any) {
-      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+      Alert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDeleteClientSubmit = () => {
-    PremiumAlert.alert(
+    Alert.alert(
       'Confirm Deletion',
       `Are you sure you want to permanently delete client profile ${selectedClient.name}? This will remove all their orders, limits, and records.`,
       [
@@ -332,14 +333,14 @@ export default function AdminClientsScreen() {
             try {
               const response = await callAdminApi('delete-client', { id: selectedClient.id });
               if (response.success) {
-                PremiumAlert.alert('Deleted', 'Client profile successfully deleted.');
+                Alert.alert('Deleted', 'Client profile successfully deleted.');
                 setIsDetailsOpen(false);
                 loadData(false);
               } else {
-                PremiumAlert.alert('Error', response.error || 'Failed to delete client.');
+                Alert.alert('Error', response.error || 'Failed to delete client.');
               }
             } catch (e: any) {
-              PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+              Alert.alert('Network Error', e?.message || 'Server connection failed.');
             } finally {
               setActionLoading(false);
             }
