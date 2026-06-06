@@ -136,9 +136,12 @@ export default function LoginScreen() {
       return;
     }
 
+    console.log('[Auth] Configuring Google Auth with Web Client ID:', GOOGLE_WEB_CLIENT_ID);
     GoogleAuth.configure({
       webClientId: GOOGLE_WEB_CLIENT_ID,
       iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    }).then(() => {
+      console.log('[Auth] Google Auth configured successfully');
     }).catch((error) => {
       console.warn('[Auth] Failed to configure Google Auth:', error);
     });
@@ -171,19 +174,30 @@ export default function LoginScreen() {
     email?: string | null;
     photo?: string | null;
   }) => {
-    const { error } = await supabase.auth.signInWithIdToken({
-      provider: 'google',
-      token: idToken,
-    });
+    console.log('[Auth] completeSupabaseSignIn called with user email:', user?.email);
+    try {
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
 
-    if (error) throw error;
+      if (error) {
+        console.error('[Auth] Supabase signInWithIdToken error:', error);
+        throw error;
+      }
 
-    await saveGoogleAccount(user);
+      console.log('[Auth] Supabase authentication successful');
+      await saveGoogleAccount(user);
+    } catch (err) {
+      console.error('[Auth] completeSupabaseSignIn catch block error:', err);
+      throw err;
+    }
   };
 
   const handleGoogleSignIn = async (options?: { silent?: boolean }) => {
     try {
       setLoading(true);
+      console.log('[Auth] handleGoogleSignIn called, options:', options);
 
       if (!GOOGLE_WEB_CLIENT_ID) {
         throw new Error('Google Sign-In is missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.');
@@ -191,9 +205,13 @@ export default function LoginScreen() {
 
       if (options?.silent) {
         try {
+          console.log('[Auth] Attempting silent Google Sign-In...');
           const user = await GoogleAuth.getCurrentUser();
+          console.log('[Auth] getCurrentUser response:', user);
           const tokens = user ? await GoogleAuth.getTokens() : null;
+          console.log('[Auth] getTokens response:', tokens ? { hasIdToken: !!tokens.idToken } : null);
           if (user && tokens?.idToken) {
+            console.log('[Auth] Silent Google Sign-In succeeded, logging into Supabase...');
             await completeSupabaseSignIn(tokens.idToken, user);
             return;
           }
@@ -202,7 +220,9 @@ export default function LoginScreen() {
         }
       }
 
+      console.log('[Auth] Calling GoogleAuth.signIn()...');
       const response = await GoogleAuth.signIn();
+      console.log('[Auth] GoogleAuth.signIn() full response:', JSON.stringify(response, null, 2));
       
       if (response.type === 'success') {
         const idToken = response.data.idToken;
@@ -210,15 +230,25 @@ export default function LoginScreen() {
           throw new Error('Google Sign-In failed: No ID token received.');
         }
 
+        console.log('[Auth] Google Sign-In success, logging into Supabase with ID token...');
         await completeSupabaseSignIn(idToken, response.data.user);
+        console.log('[Auth] Supabase login complete');
       } else if (response.type === 'cancelled') {
-        console.log('[Auth] Google Sign-In cancelled by user');
+        console.log('[Auth] Google Sign-In response says: cancelled');
       } else if (response.type === 'noSavedCredentialFound') {
+        console.log('[Auth] Google Sign-In response says: noSavedCredentialFound');
         PremiumAlert.alert('Sign In Failed', 'No saved Google credential was found on this device.');
+      } else {
+        console.log('[Auth] Google Sign-In response has unknown type:', (response as any).type);
       }
     } catch (error: any) {
+      console.error('[Auth] Google Sign-In catch block error:', error);
+      if (error && typeof error === 'object') {
+        console.error('[Auth] Google Sign-In error properties:', Object.keys(error));
+        console.error('[Auth] Google Sign-In error details:', JSON.stringify(error, null, 2));
+      }
       if (error?.code === 'SIGN_IN_CANCELLED' || error?.message?.toLowerCase?.().includes('cancel')) {
-        console.log('[Auth] Google Sign-In cancelled by user');
+        console.log('[Auth] Google Sign-In cancelled by user (error code/message)');
       } else {
         PremiumAlert.alert('Sign In Failed', error.message || 'An error occurred during Google Sign In.');
       }

@@ -57,6 +57,7 @@ import {
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAllAdminData, callAdminApi } from '../../services/adminService';
 import dayjs from 'dayjs';
@@ -91,23 +92,6 @@ function formatRelativeDate(value: string) {
   });
 }
 
-function getBillingMonthKey(dueDateStr: string): string {
-  const d = new Date(dueDateStr);
-  if (d.getDate() >= 5) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-  const prev = new Date(d);
-  prev.setMonth(prev.getMonth() - 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatBillingMonthKey(monthKey: string): string {
-  const [year, month] = monthKey.split('-');
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  });
-}
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -464,7 +448,7 @@ export default function AdminPaymentsScreen() {
     return payments.map(p => {
       const order = orderById.get(p.order_id);
       const client = profileById.get(order?.user_id);
-      const isOverdue = !p.is_paid && new Date(p.due_date).getTime() < now;
+      const isOverdue = !p.is_paid && parseUtcDate(p.due_date).getTime() < now;
 
       return {
         ...p,
@@ -535,7 +519,7 @@ export default function AdminPaymentsScreen() {
     const schedulesList = sortedKeys.map(monthKey => {
       const monthPayments = unpaidByMonth.get(monthKey) || [];
       const earliestDue = monthPayments.length > 0
-        ? monthPayments.map(p => p.due_date).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
+        ? monthPayments.map(p => p.due_date).sort((a, b) => parseUtcDate(a).getTime() - parseUtcDate(b).getTime())[0]
         : null;
         
       const [yearStr, monthStr] = monthKey.split('-');
@@ -592,7 +576,7 @@ export default function AdminPaymentsScreen() {
       setTimeLeft(prev => ({ ...prev, hasTarget: false }));
       return;
     }
-    const targetDate = new Date(nextBillingSchedule.earliestDueDate);
+    const targetDate = parseUtcDate(nextBillingSchedule.earliestDueDate);
     const calc = () => {
       const diff = targetDate.getTime() - Date.now();
       if (diff <= 0) {
@@ -770,7 +754,7 @@ export default function AdminPaymentsScreen() {
       if (breakdownFilter === 'overdue') return payment.isOverdue && !payment.is_paid;
       return true;
     })
-    .sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime());
+    .sort((a, b) => parseUtcDate(b.due_date).getTime() - parseUtcDate(a.due_date).getTime());
   }, [breakdownFilter, processedPayments, subTab]);
 
   const totalBreakdownTablePages = Math.max(1, Math.ceil(filteredBreakdownPayments.length / PAGE_SIZE));
@@ -866,7 +850,7 @@ export default function AdminPaymentsScreen() {
     if (logFilterType !== 'all' && log.action_type !== logFilterType) return false;
 
     if (logFilterPeriod !== 'all') {
-      const logDate = new Date(log.performed_at).getTime();
+      const logDate = parseUtcDate(log.performed_at).getTime();
       const dayMs = 24 * 60 * 60 * 1000;
       const nowMs = Date.now();
       if (logFilterPeriod === 'today' && nowMs - logDate > dayMs) return false;
@@ -1048,7 +1032,7 @@ export default function AdminPaymentsScreen() {
   const handleResendReceipt = async (clientId: string, dateStr: string) => {
     setActionLoading(true);
     try {
-      const date = new Date(dateStr);
+      const date = parseUtcDate(dateStr);
       const response = await callAdminApi('resend-receipt', {
         clientId,
         year: date.getFullYear(),

@@ -47,6 +47,7 @@ import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { PaymentsSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { getBillingMonthKey, getCalendarMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 
 // --- DATABASE INTERFACES ---
 interface PaymentReschedule {
@@ -100,34 +101,13 @@ interface ForecastMonth {
 }
 
 // --- BILLING TIMELINE & COUNTDOWN CALCULATIONS ---
-function getBillingMonthKey(dueDate: Date): string {
-  const d = new Date(dueDate);
-  if (d.getDate() >= 5) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-  const prev = new Date(d);
-  prev.setMonth(prev.getMonth() - 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function getCalendarMonthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatBillingMonthKey(monthKey: string): string {
-  const [year, month] = monthKey.split('-');
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  });
-}
 
 function groupUnpaidBillingMonths(payments: PaymentItem[]) {
   const unpaidPaymentsByMonth = new Map<string, PaymentItem[]>();
   payments.forEach(payment => {
     if (payment.isPaid) return;
 
-    const monthKey = getBillingMonthKey(new Date(payment.rawDueDate));
+    const monthKey = getBillingMonthKey(payment.rawDueDate);
     const list = unpaidPaymentsByMonth.get(monthKey) || [];
     list.push(payment);
     unpaidPaymentsByMonth.set(monthKey, list);
@@ -137,8 +117,8 @@ function groupUnpaidBillingMonths(payments: PaymentItem[]) {
   return sortedMonthKeys.map(monthKey => {
     const monthPayments = unpaidPaymentsByMonth
       .get(monthKey)!
-      .sort((a, b) => new Date(a.rawDueDate).getTime() - new Date(b.rawDueDate).getTime());
-    const earliestDueDate = new Date(monthPayments[0]?.rawDueDate || Date.now());
+      .sort((a, b) => parseUtcDate(a.rawDueDate).getTime() - parseUtcDate(b.rawDueDate).getTime());
+    const earliestDueDate = parseUtcDate(monthPayments[0]?.rawDueDate || Date.now());
     const totalDue = monthPayments.reduce((sum, payment) => sum + payment.amountDue, 0);
 
     return {
@@ -475,7 +455,7 @@ export default function PaymentsScreen() {
 
           const rawDueDate = p.due_date;
           const isPaid = p.is_paid;
-          const isOverdue = !isPaid && new Date(rawDueDate).getTime() < nowMs;
+          const isOverdue = !isPaid && parseUtcDate(rawDueDate).getTime() < nowMs;
 
           return {
             id: p.id,
@@ -484,10 +464,11 @@ export default function PaymentsScreen() {
             amountDue: parseFloat(p.amount_due),
             monthNumber: p.month_number,
             installmentMonths: p.order?.installment_months || 12,
-            dueDate: new Date(rawDueDate).toLocaleDateString('en-US', {
+            dueDate: parseUtcDate(rawDueDate).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
+              timeZone: 'Asia/Manila',
             }),
             rawDueDate,
             isPaid,
@@ -517,10 +498,10 @@ export default function PaymentsScreen() {
     const paidCount = paidPayments.length;
 
     const unpaidPayments = allPayments.filter(p => !p.isPaid);
-    const pendingPayments = unpaidPayments.filter(p => new Date(p.rawDueDate).getTime() >= nowMs);
+    const pendingPayments = unpaidPayments.filter(p => parseUtcDate(p.rawDueDate).getTime() >= nowMs);
     const pendingCount = pendingPayments.length;
 
-    const overduePayments = unpaidPayments.filter(p => new Date(p.rawDueDate).getTime() < nowMs);
+    const overduePayments = unpaidPayments.filter(p => parseUtcDate(p.rawDueDate).getTime() < nowMs);
     const overdueCount = overduePayments.length;
 
     const paidAmount = paidPayments.reduce((sum, p) => sum + p.amountDue, 0);
@@ -529,19 +510,19 @@ export default function PaymentsScreen() {
 
     // Streaks
     const onTimePayments = paidPayments.filter(
-      p => p.paymentDate && new Date(p.paymentDate).getTime() <= new Date(p.rawDueDate).getTime()
+      p => p.paymentDate && parseUtcDate(p.paymentDate).getTime() <= parseUtcDate(p.rawDueDate).getTime()
     );
     const onTimeRate = paidCount > 0 ? Math.round((onTimePayments.length / paidCount) * 100) : 100;
 
     const completedPaymentsSorted = [...paidPayments].sort((a, b) => {
-      const dateA = a.paymentDate ? new Date(a.paymentDate).getTime() : new Date(a.rawDueDate).getTime();
-      const dateB = b.paymentDate ? new Date(b.paymentDate).getTime() : new Date(b.rawDueDate).getTime();
+      const dateA = a.paymentDate ? parseUtcDate(a.paymentDate).getTime() : parseUtcDate(a.rawDueDate).getTime();
+      const dateB = b.paymentDate ? parseUtcDate(b.paymentDate).getTime() : parseUtcDate(b.rawDueDate).getTime();
       return dateB - dateA;
     });
 
     let currentStreak = 0;
     for (const p of completedPaymentsSorted) {
-      if (p.paymentDate && new Date(p.paymentDate).getTime() <= new Date(p.rawDueDate).getTime()) {
+      if (p.paymentDate && parseUtcDate(p.paymentDate).getTime() <= parseUtcDate(p.rawDueDate).getTime()) {
         currentStreak++;
       } else {
         break;
@@ -552,7 +533,7 @@ export default function PaymentsScreen() {
     let tempStreak = 0;
     const completedPaymentsChronological = [...completedPaymentsSorted].reverse();
     for (const p of completedPaymentsChronological) {
-      if (p.paymentDate && new Date(p.paymentDate).getTime() <= new Date(p.rawDueDate).getTime()) {
+      if (p.paymentDate && parseUtcDate(p.paymentDate).getTime() <= parseUtcDate(p.rawDueDate).getTime()) {
         tempStreak++;
         if (tempStreak > maxStreak) {
           maxStreak = tempStreak;
@@ -569,8 +550,8 @@ export default function PaymentsScreen() {
     let totalDaysLate = 0;
     const latePaymentsCount = paidCount - onTimePayments.length;
     paidPayments.forEach(p => {
-      if (p.paymentDate && new Date(p.paymentDate).getTime() > new Date(p.rawDueDate).getTime()) {
-        const days = Math.ceil((new Date(p.paymentDate).getTime() - new Date(p.rawDueDate).getTime()) / (1000 * 60 * 60 * 24));
+      if (p.paymentDate && parseUtcDate(p.paymentDate).getTime() > parseUtcDate(p.rawDueDate).getTime()) {
+        const days = Math.ceil((parseUtcDate(p.paymentDate).getTime() - parseUtcDate(p.rawDueDate).getTime()) / (1000 * 60 * 60 * 24));
         totalDaysLate += Math.max(0, days);
       }
     });
@@ -578,7 +559,7 @@ export default function PaymentsScreen() {
     const healthScore = Math.min(100, Math.max(0, Math.round(onTimeRate - (avgDaysLate * 2))));
 
     // Budget suggestion
-    const unpaidMonthsList = Array.from(new Set(unpaidPayments.map(p => getBillingMonthKey(new Date(p.rawDueDate)))));
+    const unpaidMonthsList = Array.from(new Set(unpaidPayments.map(p => getBillingMonthKey(p.rawDueDate))));
     const unpaidInstallmentMonths = Math.max(1, unpaidMonthsList.length);
     const budgetSuggestion = totalDebt > 0 ? Math.ceil(totalDebt / unpaidInstallmentMonths) : 0;
 
@@ -600,7 +581,7 @@ export default function PaymentsScreen() {
     // 5th-of-Month Due Date Grouping
     const breakdownGroupsMap = new Map<string, PaymentItem[]>();
     allPayments.forEach(p => {
-      const key = getBillingMonthKey(new Date(p.rawDueDate));
+      const key = getBillingMonthKey(p.rawDueDate);
       const list = breakdownGroupsMap.get(key) || [];
       list.push(p);
       breakdownGroupsMap.set(key, list);
@@ -622,11 +603,11 @@ export default function PaymentsScreen() {
 
       const monthTotalPayments = groupPayments.length;
       const monthPaidCount = groupPayments.filter(p => p.isPaid).length;
-      const monthPendingCount = groupPayments.filter(p => !p.isPaid && new Date(p.rawDueDate).getTime() >= nowMs).length;
-      const monthOverdueCount = groupPayments.filter(p => !p.isPaid && new Date(p.rawDueDate).getTime() < nowMs).length;
+      const monthPendingCount = groupPayments.filter(p => !p.isPaid && parseUtcDate(p.rawDueDate).getTime() >= nowMs).length;
+      const monthOverdueCount = groupPayments.filter(p => !p.isPaid && parseUtcDate(p.rawDueDate).getTime() < nowMs).length;
 
-      const earliestDue = new Date(Math.min(...groupPayments.map(p => new Date(p.rawDueDate).getTime())));
-      const latestDue = new Date(Math.max(...groupPayments.map(p => new Date(p.rawDueDate).getTime())));
+      const earliestDue = new Date(Math.min(...groupPayments.map(p => parseUtcDate(p.rawDueDate).getTime())));
+      const latestDue = new Date(Math.max(...groupPayments.map(p => parseUtcDate(p.rawDueDate).getTime())));
 
       const collectionRate = monthTotalAmount > 0 ? (monthPaidAmount / monthTotalAmount) * 100 : 100;
 
@@ -698,7 +679,7 @@ export default function PaymentsScreen() {
   useEffect(() => {
     if (!nextPaymentCountdown || !nextPaymentCountdown.dueDate) return;
 
-    const targetDate = new Date(nextPaymentCountdown.dueDate);
+    const targetDate = parseUtcDate(nextPaymentCountdown.dueDate);
     const calculateTime = () => {
       const difference = targetDate.getTime() - Date.now();
       if (difference <= 0) {
@@ -785,13 +766,13 @@ export default function PaymentsScreen() {
 
     if (duesFilter === 'paid') return pay.isPaid;
     if (duesFilter === 'pending') return !pay.isPaid;
-    if (duesFilter === 'upcoming') return !pay.isPaid && new Date(pay.rawDueDate).getTime() >= nowMs;
-    if (duesFilter === 'overdue') return !pay.isPaid && new Date(pay.rawDueDate).getTime() < nowMs;
+    if (duesFilter === 'upcoming') return !pay.isPaid && parseUtcDate(pay.rawDueDate).getTime() >= nowMs;
+    if (duesFilter === 'overdue') return !pay.isPaid && parseUtcDate(pay.rawDueDate).getTime() < nowMs;
 
     return true;
   }).sort((a, b) => {
-    const timeA = new Date(a.rawDueDate).getTime();
-    const timeB = new Date(b.rawDueDate).getTime();
+    const timeA = parseUtcDate(a.rawDueDate).getTime();
+    const timeB = parseUtcDate(b.rawDueDate).getTime();
     return duesSort === 'asc' ? timeA - timeB : timeB - timeA;
   });
 

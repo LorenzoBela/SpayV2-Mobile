@@ -62,6 +62,7 @@ import { supabase } from '../../utils/supabase';
 import { useNavigation } from '@react-navigation/native';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { parseUtcDate, getBillingMonthKey, getCalendarMonthKey, getUtc8DateParts, createUtc8Date, getNextCalendarMonthStart } from '../../utils/date';
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import PremiumLoader from '../../components/PremiumLoader';
@@ -80,24 +81,17 @@ const formatCurrency = (val: number | string) => {
 };
 
 function formatRelativeDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'Unknown date';
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
-function getBillingMonthKey(dueDateStr: string): string {
-  const d = new Date(dueDateStr);
-  if (d.getDate() >= 5) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-  const prev = new Date(d);
-  prev.setMonth(prev.getMonth() - 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-}
+
 
 // Flip clock sub-component
 interface FlipCardProps {
@@ -344,6 +338,42 @@ export default function AdminDashboardScreen() {
   const [purchaseDate, setPurchaseDate] = useState(() => dayjs().format('YYYY-MM-DD'));
   const [firstPaymentDate, setFirstPaymentDate] = useState('');
 
+  // Form states - New Order (Bulk mode additions)
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [bulkOrders, setBulkOrders] = useState<Array<{ id: string; clientId: string; itemName: string; amount: string; months: string; purchaseDate: string; firstPaymentDate: string; remarks: string }>>([]);
+  const [clientSelectorActiveOrderId, setClientSelectorActiveOrderId] = useState<string | null>(null);
+  const [bulkClientSearchQuery, setBulkClientSearchQuery] = useState('');
+
+  const addBulkOrderRow = () => {
+    setBulkOrders(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(),
+        clientId: '',
+        itemName: '',
+        amount: '',
+        months: '6',
+        purchaseDate: dayjs().format('YYYY-MM-DD'),
+        firstPaymentDate: '',
+        remarks: '',
+      }
+    ]);
+  };
+
+  const removeBulkOrderRow = (id: string) => {
+    setBulkOrders(prev => prev.filter(o => o.id !== id));
+  };
+
+  const updateBulkOrderRow = (id: string, field: string, value: any) => {
+    setBulkOrders(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
+  };
+
+  useEffect(() => {
+    if (isBulkMode && bulkOrders.length === 0) {
+      addBulkOrderRow();
+    }
+  }, [isBulkMode]);
+
   // Global Limit Input state
   const [globalLimitAmount, setGlobalLimitAmount] = useState('');
 
@@ -364,6 +394,8 @@ export default function AdminDashboardScreen() {
     if (showLoader) setLoading(true);
     setError(null);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentUserEmail = user?.email;
       const dbData = await fetchAllAdminData();
       if (!dbData.success) {
         throw new Error(dbData.error || 'Failed to pull ledger metrics.');
@@ -383,7 +415,7 @@ export default function AdminDashboardScreen() {
 
       // 4. Overdue payments & defaults
       const now = new Date();
-      const overdue = unpaid.filter((p: any) => new Date(p.due_date) < now);
+      const overdue = unpaid.filter((p: any) => parseUtcDate(p.due_date) < now);
       const defaults = overdue.reduce((sum, p) => sum + Number(p.amount_due), 0);
 
       // 5. Completion Rate & Collection Efficiency
@@ -406,9 +438,16 @@ export default function AdminDashboardScreen() {
       });
 
       // 6. Next Billing schedule (unpaid billing months grouped chronologically)
+      // Filter to only show months starting from the next calendar month (matches web)
+      const todayDate = new Date();
+      const nextCalMonthStart = getNextCalendarMonthStart(todayDate);
+      const fromMonthKey = getCalendarMonthKey(nextCalMonthStart);
+
       const unpaidPaymentsByMonth = new Map<string, any[]>();
       unpaid.forEach((payment: any) => {
         const monthKey = getBillingMonthKey(payment.due_date);
+        // Skip billing months before the next calendar month
+        if (monthKey < fromMonthKey) return;
         const list = unpaidPaymentsByMonth.get(monthKey) || [];
         list.push(payment);
         unpaidPaymentsByMonth.set(monthKey, list);
@@ -418,7 +457,7 @@ export default function AdminDashboardScreen() {
       const schedulesList = sortedKeys.map(monthKey => {
         const monthPayments = unpaidPaymentsByMonth.get(monthKey) || [];
         const earliestDue = monthPayments.length > 0
-          ? monthPayments.map((p: any) => p.due_date).sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime())[0]
+          ? monthPayments.map((p: any) => p.due_date).sort((a: string, b: string) => parseUtcDate(a).getTime() - parseUtcDate(b).getTime())[0]
           : null;
 
         const [yearStr, monthStr] = monthKey.split('-');
@@ -430,32 +469,36 @@ export default function AdminDashboardScreen() {
         const clientBillingMap = new Map<string, any>();
         monthPayments.forEach((payment: any) => {
           const order = orders.find((o: any) => o.id === payment.order_id);
-          if (!order) return;
-          const profile = profiles.find((pr: any) => pr.id === order.user_id);
-          if (!profile) return;
+          const profile = order ? profiles.find((pr: any) => pr.id === order.user_id) : null;
 
-          const clientData = clientBillingMap.get(profile.id) || {
-            clientId: profile.id,
-            clientName: profile.name,
-            email: profile.email,
+          // Use a fallback for unmatched orders/profiles so payments are never silently dropped
+          const clientId = profile?.id ?? order?.user_id ?? '_unlinked';
+          const clientName = profile?.name ?? 'Unknown Client';
+          const clientEmail = profile?.email ?? '';
+
+          const clientData = clientBillingMap.get(clientId) || {
+            clientId,
+            clientName,
+            email: clientEmail,
             totalOwed: 0,
             items: [],
           };
 
           clientData.totalOwed += Number(payment.amount_due);
           clientData.items.push({
-            itemName: order.item_name,
+            itemName: order?.item_name ?? 'Unknown Item',
             amountDue: Number(payment.amount_due),
             dueDate: payment.due_date,
             monthNumber: payment.month_number,
-            installmentMonths: order.installment_months,
+            installmentMonths: order?.installment_months ?? 0,
           });
 
-          clientBillingMap.set(profile.id, clientData);
+          clientBillingMap.set(clientId, clientData);
         });
 
         const billingClients = Array.from(clientBillingMap.values()).sort((a, b) => b.totalOwed - a.totalOwed);
-        const billingTotal = billingClients.reduce((sum, c) => sum + c.totalOwed, 0);
+        // Calculate totalDue directly from all payments (matches web behavior)
+        const billingTotal = monthPayments.reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
 
         return {
           monthKey,
@@ -470,44 +513,44 @@ export default function AdminDashboardScreen() {
       setSelectedScheduleIndex(0);
 
       // 7. Calculate all cash inflows, activities, categories, terms, and rankings client-side
-      const todayDate = new Date();
-      const startOfWeek = new Date(todayDate);
-      startOfWeek.setDate(todayDate.getDate() - todayDate.getDay());
-      startOfWeek.setHours(0, 0, 0, 0);
+      // todayDate already declared above in billing schedule section
+      const nowParts = getUtc8DateParts(todayDate);
+      const utc8Today = new Date(Date.UTC(nowParts.year, nowParts.month, nowParts.date));
+      const dayOfWeek = utc8Today.getUTCDay();
 
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 7);
+      const startOfWeek = createUtc8Date(nowParts.year, nowParts.month, nowParts.date - dayOfWeek, 0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const endOfNextWeek = new Date(endOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      const endOfNextWeek = new Date(endOfWeek);
-      endOfNextWeek.setDate(endOfWeek.getDate() + 7);
-
-      const nextMonthStartInflow = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 1);
-      const endOfNextMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 2, 0, 23, 59, 59, 999);
+      const nextMonthStartInflow = getNextCalendarMonthStart(todayDate);
+      const nextMonthParts = getUtc8DateParts(nextMonthStartInflow);
+      const lastDayOfNextMonth = new Date(Date.UTC(nextMonthParts.year, nextMonthParts.month + 1, 0)).getUTCDate();
+      const endOfNextMonth = createUtc8Date(nextMonthParts.year, nextMonthParts.month, lastDayOfNextMonth, 23, 59, 59, 999);
 
       const thisWeekExp = unpaid
         .filter((p: any) => {
-          const d = new Date(p.due_date);
+          const d = parseUtcDate(p.due_date);
           return d >= startOfWeek && d < endOfWeek;
         })
         .reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
 
       const nextWeekExp = unpaid
         .filter((p: any) => {
-          const d = new Date(p.due_date);
+          const d = parseUtcDate(p.due_date);
           return d >= endOfWeek && d < endOfNextWeek;
         })
         .reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
 
       const nextMonthExp = payments
         .filter((p: any) => {
-          const d = new Date(p.due_date);
+          const d = parseUtcDate(p.due_date);
           return d >= nextMonthStartInflow && d <= endOfNextMonth;
         })
         .reduce((sum: number, p: any) => sum + Number(p.amount_due), 0);
 
       const nextUpcoming = unpaid
-        .filter((p: any) => new Date(p.due_date) > todayDate)
-        .sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+        .filter((p: any) => parseUtcDate(p.due_date) > todayDate)
+        .sort((a: any, b: any) => parseUtcDate(a.due_date).getTime() - parseUtcDate(b.due_date).getTime())[0];
 
       setInflows({
         thisWeekExpected: thisWeekExp,
@@ -638,7 +681,7 @@ export default function AdminDashboardScreen() {
         .slice(0, 5);
       setTopClients(topClientsMapped);
 
-      const overduePayments = unpaid.filter((p: any) => new Date(p.due_date) < todayDate);
+      const overduePayments = unpaid.filter((p: any) => parseUtcDate(p.due_date) < todayDate);
       const delinquentsMap = new Map<string, { userId: string; overdueCount: number }>();
       overduePayments.forEach((p: any) => {
         const order = orders.find((o: any) => o.id === p.order_id);
@@ -662,7 +705,7 @@ export default function AdminDashboardScreen() {
         .slice(0, 5);
       setProblemClients(problemClientsMapped);
 
-      const clientProfiles = profiles.filter((p: any) => p.role === 'CLIENT' || p.email === 'lorenzo91145@gmail.com');
+      const clientProfiles = profiles.filter((p: any) => p.role === 'CLIENT' || (currentUserEmail && p.email === currentUserEmail));
       const recentClientsMapped = clientProfiles
         .map((p: any) => ({
           name: p.name,
@@ -724,39 +767,101 @@ export default function AdminDashboardScreen() {
   }, [nextBillingSchedule.earliestDueDate]);
 
   const handleScheduleOrderSubmit = async () => {
-    if (!selectedClientId || !itemName || !orderAmount) {
-      PremiumAlert.alert('Incomplete Form', 'Please provide client selection, item name, and amount.');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const response = await callAdminApi('schedule-order', {
-        clientId: selectedClientId,
-        itemName,
-        amount: parseFloat(orderAmount),
-        months: parseInt(installmentMonths, 10),
-        purchaseDate,
-        firstPaymentDate: firstPaymentDate || undefined,
-      });
-
-      if (response.success) {
-        PremiumAlert.alert('Success', `Installment scheduled for ${itemName}!`);
-        setIsNewOrderOpen(false);
-        // Clear fields
-        setSelectedClientId('');
-        setItemName('');
-        setOrderAmount('');
-        setInstallmentMonths('6');
-        setFirstPaymentDate('');
-        loadData(false);
-      } else {
-        PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
+    if (isBulkMode) {
+      if (bulkOrders.length === 0) {
+        PremiumAlert.alert('Empty Form', 'Please add at least one order.');
+        return;
       }
-    } catch (e: any) {
-      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
-    } finally {
-      setActionLoading(false);
+      for (let i = 0; i < bulkOrders.length; i++) {
+        const o = bulkOrders[i];
+        if (!o.clientId || !o.itemName || !o.amount) {
+          PremiumAlert.alert('Incomplete Form', `Please complete all fields for Order #${i + 1}.`);
+          return;
+        }
+        const parsedAmt = parseFloat(o.amount);
+        if (isNaN(parsedAmt) || parsedAmt <= 0) {
+          PremiumAlert.alert('Invalid Amount', `Please enter a valid purchase amount for Order #${i + 1}.`);
+          return;
+        }
+      }
+
+      setActionLoading(true);
+      try {
+        const payload = {
+          orders: bulkOrders.map(o => ({
+            clientId: o.clientId,
+            itemName: o.itemName,
+            amount: parseFloat(o.amount),
+            months: parseInt(o.months, 10),
+            purchaseDate: o.purchaseDate,
+            firstPaymentDate: o.firstPaymentDate || undefined,
+            remarks: o.remarks || undefined,
+          }))
+        };
+
+        const response = await callAdminApi('schedule-order', payload);
+
+        if (response.success) {
+          PremiumAlert.alert('Success', `Successfully scheduled ${bulkOrders.length} orders!`);
+          setIsNewOrderOpen(false);
+          // Clear fields
+          setSelectedClientId('');
+          setItemName('');
+          setOrderAmount('');
+          setInstallmentMonths('6');
+          setFirstPaymentDate('');
+          setIsBulkMode(false);
+          setBulkOrders([]);
+          setClientSelectorActiveOrderId(null);
+          setBulkClientSearchQuery('');
+          loadData(false);
+        } else {
+          PremiumAlert.alert('Error', response.error || 'Failed to schedule bulk orders.');
+        }
+      } catch (e: any) {
+        PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+      } finally {
+        setActionLoading(false);
+      }
+    } else {
+      if (!selectedClientId || !itemName || !orderAmount) {
+        PremiumAlert.alert('Incomplete Form', 'Please provide client selection, item name, and amount.');
+        return;
+      }
+
+      setActionLoading(true);
+      try {
+        const response = await callAdminApi('schedule-order', {
+          clientId: selectedClientId,
+          itemName,
+          amount: parseFloat(orderAmount),
+          months: parseInt(installmentMonths, 10),
+          purchaseDate,
+          firstPaymentDate: firstPaymentDate || undefined,
+        });
+
+        if (response.success) {
+          PremiumAlert.alert('Success', `Installment scheduled for ${itemName}!`);
+          setIsNewOrderOpen(false);
+          // Clear fields
+          setSelectedClientId('');
+          setItemName('');
+          setOrderAmount('');
+          setInstallmentMonths('6');
+          setFirstPaymentDate('');
+          setIsBulkMode(false);
+          setBulkOrders([]);
+          setClientSelectorActiveOrderId(null);
+          setBulkClientSearchQuery('');
+          loadData(false);
+        } else {
+          PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
+        }
+      } catch (e: any) {
+        PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
@@ -814,14 +919,14 @@ export default function AdminDashboardScreen() {
     return `${client.name} ${client.email}`.toLowerCase().includes(query);
   });
   const selectedClient = clientsList.find((client) => client.id === selectedClientId);
-  const parsedOrderAmount = Number(orderAmount);
+  const parsedOrderAmount = isBulkMode
+    ? bulkOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0)
+    : (Number(orderAmount) || 0);
   const parsedMonths = Number(installmentMonths) || 1;
-  const estimatedMonthlyDue = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0
-    ? parsedOrderAmount / parsedMonths
-    : 0;
-  const projectedOutstanding = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0
-    ? stats.outstandingBalance + parsedOrderAmount
-    : stats.outstandingBalance;
+  const estimatedMonthlyDue = isBulkMode
+    ? bulkOrders.reduce((sum, o) => sum + ((Number(o.amount) || 0) / (Number(o.months) || 1)), 0)
+    : (parsedOrderAmount / parsedMonths);
+  const projectedOutstanding = stats.outstandingBalance + parsedOrderAmount;
   const projectedExposurePercent = stats.activeLimitExposure > 0
     ? Math.min(100, Math.round((projectedOutstanding / stats.activeLimitExposure) * 100))
     : 0;
@@ -1527,127 +1632,272 @@ export default function AdminDashboardScreen() {
               </LinearGradient>
 
               <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
-                <View style={styles.formSectionHeader}>
-                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
-                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} accounts</Text>
+                {/* Bulk Mode Toggle */}
+                <View style={styles.toggleRow}>
+                  <Text style={[styles.toggleLabel, { color: t.textPrimary }]}>Bulk Order Scheduling</Text>
+                  <TouchableOpacity
+                    style={[styles.switchTrack, isBulkMode ? styles.switchTrackActive : styles.switchTrackInactive]}
+                    onPress={() => setIsBulkMode(!isBulkMode)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.switchThumb, isBulkMode ? styles.switchThumbActive : styles.switchThumbInactive]} />
+                  </TouchableOpacity>
                 </View>
 
-                <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
-                  <Search size={15} color={t.textSecondary} />
-                  <TextInput
-                    style={[styles.searchInput, { color: t.textPrimary }]}
-                    placeholder="Search name or email"
-                    placeholderTextColor={t.textSecondary}
-                    value={clientSearchQuery}
-                    onChangeText={setClientSearchQuery}
-                  />
-                </View>
+                {!isBulkMode ? (
+                  <>
+                    <View style={styles.formSectionHeader}>
+                      <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Client</Text>
+                      <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} accounts</Text>
+                    </View>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
-                  {filteredClients.map((client) => {
-                    const selected = selectedClientId === client.id;
-                    return (
-                      <TouchableOpacity
-                        key={client.id}
-                        style={[
-                          styles.clientChoiceCard,
-                          { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
-                          selected && styles.clientChoiceCardActive,
-                        ]}
-                        onPress={() => setSelectedClientId(client.id)}
-                        activeOpacity={0.86}
-                      >
-                        <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
-                          <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
-                            {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
-                          </Text>
-                        </View>
-                        <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
-                        <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
-                  <Users size={15} color={t.accent} />
-                  <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
-                    {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
-                  </Text>
-                </View>
-
-                <View style={styles.formSectionHeader}>
-                  <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
-                  <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
-                </View>
-
-                <View style={styles.inputGrid}>
-                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
-                    <TextInput
-                      style={[styles.premiumInput, { color: t.textPrimary }]}
-                      placeholder="MacBook Pro M3"
-                      placeholderTextColor={t.textSecondary}
-                      value={itemName}
-                      onChangeText={setItemName}
-                    />
-                  </View>
-
-                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
-                    <View style={styles.amountInputRow}>
-                      <Text style={styles.currencyPrefix}>PHP</Text>
+                    <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff' }]}>
+                      <Search size={15} color={t.textSecondary} />
                       <TextInput
-                        style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
-                        placeholder="79,990"
-                        keyboardType="numeric"
+                        style={[styles.searchInput, { color: t.textPrimary }]}
+                        placeholder="Search name or email"
                         placeholderTextColor={t.textSecondary}
-                        value={orderAmount}
-                        onChangeText={setOrderAmount}
+                        value={clientSearchQuery}
+                        onChangeText={setClientSearchQuery}
                       />
                     </View>
-                  </View>
-                </View>
 
-                <View style={styles.termGrid}>
-                  {['3', '6', '12', '24'].map((m) => {
-                    const selected = installmentMonths === m;
-                    const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
-                    return (
-                      <TouchableOpacity
-                        key={m}
-                        style={[
-                          styles.termCard,
-                          { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
-                        ]}
-                        onPress={() => setInstallmentMonths(m)}
-                        activeOpacity={0.86}
-                      >
-                        <View style={styles.termTitleRow}>
-                          <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
-                          <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>Months</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.clientRail}>
+                      {filteredClients.map((client) => {
+                        const selected = selectedClientId === client.id;
+                        return (
+                          <TouchableOpacity
+                            key={client.id}
+                            style={[
+                              styles.clientChoiceCard,
+                              { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
+                              selected && styles.clientChoiceCardActive,
+                            ]}
+                            onPress={() => setSelectedClientId(client.id)}
+                            activeOpacity={0.86}
+                          >
+                            <View style={[styles.clientAvatar, { backgroundColor: selected ? t.accent : t.accentLight }]}>
+                              <Text style={[styles.clientAvatarText, { color: selected ? '#ffffff' : t.accent }]}>
+                                {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                            <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <View style={[styles.selectedClientStrip, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.12)' : '#fff7ed', borderColor: t.accentLight }]}>
+                      <Users size={15} color={t.accent} />
+                      <Text style={[styles.selectedClientText, { color: selectedClient ? t.textPrimary : t.textSecondary }]} numberOfLines={1}>
+                        {selectedClient ? `${selectedClient.name} is selected` : 'Select a client to continue'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.formSectionHeader}>
+                      <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
+                      <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
+                    </View>
+
+                    <View style={styles.inputGrid}>
+                      <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                        <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
+                        <TextInput
+                          style={[styles.premiumInput, { color: t.textPrimary }]}
+                          placeholder="MacBook Pro M3"
+                          placeholderTextColor={t.textSecondary}
+                          value={itemName}
+                          onChangeText={setItemName}
+                        />
+                      </View>
+
+                      <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                        <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT</Text>
+                        <View style={styles.amountInputRow}>
+                          <Text style={styles.currencyPrefix}>PHP</Text>
+                          <TextInput
+                            style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
+                            placeholder="79,990"
+                            keyboardType="numeric"
+                            placeholderTextColor={t.textSecondary}
+                            value={orderAmount}
+                            onChangeText={setOrderAmount}
+                          />
                         </View>
-                        <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
-                          {monthly > 0 ? formatCurrency(monthly) : '--'}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                      </View>
+                    </View>
 
-                <View style={styles.dateGrid}>
-                  <DatePicker
-                    label="Purchase Date"
-                    value={purchaseDate}
-                    onChange={setPurchaseDate}
-                  />
-                  <DatePicker
-                    label="First Due Date"
-                    value={firstPaymentDate}
-                    onChange={setFirstPaymentDate}
-                    placeholder="Auto: 5th next month"
-                  />
-                </View>
+                    <View style={styles.termGrid}>
+                      {['1', '3', '6', '12'].map((m) => {
+                        const selected = installmentMonths === m;
+                        const monthly = Number.isFinite(parsedOrderAmount) && parsedOrderAmount > 0 ? parsedOrderAmount / Number(m) : 0;
+                        return (
+                          <TouchableOpacity
+                            key={m}
+                            style={[
+                              styles.termCard,
+                              { backgroundColor: selected ? t.accent : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
+                            ]}
+                            onPress={() => setInstallmentMonths(m)}
+                            activeOpacity={0.86}
+                          >
+                            <View style={styles.termTitleRow}>
+                              <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
+                              <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>{Number(m) === 1 ? 'Month' : 'Months'}</Text>
+                            </View>
+                            <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
+                              {monthly > 0 ? formatCurrency(monthly) : '--'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <View style={styles.dateGrid}>
+                      <DatePicker
+                        label="Purchase Date"
+                        value={purchaseDate}
+                        onChange={setPurchaseDate}
+                      />
+                      <DatePicker
+                        label="First Due Date"
+                        value={firstPaymentDate}
+                        onChange={setFirstPaymentDate}
+                        placeholder="Auto: 5th next month"
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <View style={{ gap: 16 }}>
+                    {bulkOrders.map((order, idx) => (
+                      <View
+                        key={order.id}
+                        style={[
+                          styles.bulkCard,
+                          {
+                            backgroundColor: isDarkMode ? '#111827' : '#ffffff',
+                            borderColor: t.cardBorder,
+                          },
+                        ]}
+                      >
+                        <View style={styles.bulkCardHeader}>
+                          <Text style={[styles.bulkOrderNumber, { color: t.accent }]}>Order #{idx + 1}</Text>
+                          {bulkOrders.length > 1 && (
+                            <TouchableOpacity onPress={() => removeBulkOrderRow(order.id)}>
+                              <Text style={[styles.removeText, { color: '#ef4444' }]}>Remove</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT *</Text>
+                          <TouchableOpacity
+                            style={styles.inlineClientSelector}
+                            onPress={() => {
+                              setClientSelectorActiveOrderId(order.id);
+                              setBulkClientSearchQuery('');
+                            }}
+                          >
+                            <Text style={[styles.selectedClientName, { color: order.clientId ? t.textPrimary : t.textSecondary }]}>
+                              {order.clientId ? (clientsList.find(p => p.id === order.clientId)?.name || 'Unknown Client') : 'Choose Client...'}
+                            </Text>
+                            <ChevronDown size={14} color={t.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.inputGrid}>
+                          <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                            <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME *</Text>
+                            <TextInput
+                              style={[styles.premiumInput, { color: t.textPrimary }]}
+                              placeholder="e.g. Phone, Laptop"
+                              placeholderTextColor={t.textSecondary}
+                              value={order.itemName}
+                              onChangeText={(text) => updateBulkOrderRow(order.id, 'itemName', text)}
+                            />
+                          </View>
+
+                          <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                            <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT (PHP) *</Text>
+                            <View style={styles.amountInputRow}>
+                              <Text style={styles.currencyPrefix}>PHP</Text>
+                              <TextInput
+                                style={[styles.premiumInput, styles.amountInput, { color: t.textPrimary }]}
+                                placeholder="0.00"
+                                keyboardType="numeric"
+                                placeholderTextColor={t.textSecondary}
+                                value={order.amount}
+                                onChangeText={(text) => updateBulkOrderRow(order.id, 'amount', text)}
+                              />
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.termGrid}>
+                          {['1', '3', '6', '12'].map((m) => {
+                            const selected = order.months === m;
+                            const parsedAmt = Number(order.amount) || 0;
+                            const monthly = parsedAmt > 0 ? parsedAmt / Number(m) : 0;
+                            return (
+                              <TouchableOpacity
+                                key={m}
+                                style={[
+                                  styles.termCard,
+                                  { backgroundColor: selected ? t.accent : (isDarkMode ? '#0b0f19' : '#f8fafc'), borderColor: selected ? t.accent : t.cardBorder },
+                                ]}
+                                onPress={() => updateBulkOrderRow(order.id, 'months', m)}
+                                activeOpacity={0.86}
+                              >
+                                <View style={styles.termTitleRow}>
+                                  <Text style={[styles.termMonths, { color: selected ? '#ffffff' : t.textPrimary }]}>{m}</Text>
+                                  <Text style={[styles.termCaption, { color: selected ? 'rgba(255,255,255,0.78)' : t.textSecondary }]}>{Number(m) === 1 ? 'Month' : 'Months'}</Text>
+                                </View>
+                                <Text style={[styles.termDue, { color: selected ? '#ffffff' : t.textPrimary }]} numberOfLines={1}>
+                                  {monthly > 0 ? formatCurrency(monthly) : '--'}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+
+                        <View style={styles.dateGrid}>
+                          <DatePicker
+                            label="Purchase Date"
+                            value={order.purchaseDate}
+                            onChange={(date) => updateBulkOrderRow(order.id, 'purchaseDate', date)}
+                          />
+                          <DatePicker
+                            label="First Due Date"
+                            value={order.firstPaymentDate}
+                            onChange={(date) => updateBulkOrderRow(order.id, 'firstPaymentDate', date)}
+                            placeholder="Auto: 5th next month"
+                          />
+                        </View>
+
+                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS / SPECIFICATIONS</Text>
+                          <TextInput
+                            style={[styles.premiumInput, { color: t.textPrimary, minHeight: 40, textAlignVertical: 'top' }]}
+                            placeholder="Write details or remarks..."
+                            placeholderTextColor={t.textSecondary}
+                            value={order.remarks}
+                            onChangeText={(text) => updateBulkOrderRow(order.id, 'remarks', text)}
+                          />
+                        </View>
+                      </View>
+                    ))}
+
+                    <TouchableOpacity
+                      style={[styles.addOrderBtn, { borderColor: t.accent }]}
+                      onPress={addBulkOrderRow}
+                      activeOpacity={0.8}
+                    >
+                      <Plus size={16} color={t.accent} />
+                      <Text style={[styles.addOrderBtnText, { color: t.accent }]}>Add Another Order</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
                   <View style={styles.exposurePreviewTop}>
@@ -1674,6 +1924,81 @@ export default function AdminDashboardScreen() {
                   <Text style={styles.primaryActionText}>{actionLoading ? 'Scheduling...' : 'Assign Order'}</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </SwipeDismissModal>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Sub-modal to select client for bulk orders */}
+      <Modal visible={clientSelectorActiveOrderId !== null} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <SwipeDismissModal onDismiss={() => setClientSelectorActiveOrderId(null)}>
+            <View style={[styles.premiumSheet, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, minHeight: 450 }]}>
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={styles.sheetIconBadge}>
+                    <Users size={18} color="#ffffff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER ASSIGNMENT</Text>
+                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Choose Client</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setClientSelectorActiveOrderId(null)}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff', margin: 16, width: '92%', alignSelf: 'center' }]}>
+                <Search size={15} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary }]}
+                  placeholder="Search name or email"
+                  placeholderTextColor={t.textSecondary}
+                  value={bulkClientSearchQuery}
+                  onChangeText={setBulkClientSearchQuery}
+                />
+              </View>
+
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}>
+                {clientsList
+                  .filter((c: any) => {
+                    const q = bulkClientSearchQuery.trim().toLowerCase();
+                    if (!q) return true;
+                    return `${c.name} ${c.email}`.toLowerCase().includes(q);
+                  })
+                  .map((client: any) => (
+                    <TouchableOpacity
+                      key={client.id}
+                      style={[
+                        styles.rankingRow,
+                        { borderBottomColor: t.cardBorder, paddingVertical: 12, borderBottomWidth: 1 }
+                      ]}
+                      onPress={() => {
+                        if (clientSelectorActiveOrderId) {
+                          updateBulkOrderRow(clientSelectorActiveOrderId, 'clientId', client.id);
+                        }
+                        setClientSelectorActiveOrderId(null);
+                        setBulkClientSearchQuery('');
+                      }}
+                    >
+                      <View style={[styles.clientAvatar, { backgroundColor: t.accentLight }]}>
+                        <Text style={[styles.clientAvatarText, { color: t.accent }]}>
+                          {(client.name || client.email || '?').slice(0, 1).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[styles.clientChoiceName, { color: t.textPrimary }]}>{client.name}</Text>
+                        <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]}>{client.email}</Text>
+                      </View>
+                      <ChevronRight size={16} color={t.textSecondary} />
+                    </TouchableOpacity>
+                  ))
+                }
+              </ScrollView>
             </View>
           </SwipeDismissModal>
         </KeyboardAvoidingView>
@@ -3047,5 +3372,96 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(148, 163, 184, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  toggleLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  switchTrack: {
+    width: 46,
+    height: 24,
+    borderRadius: 12,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  switchTrackActive: {
+    backgroundColor: '#ee4d2d',
+  },
+  switchTrackInactive: {
+    backgroundColor: '#cbd5e1',
+  },
+  switchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  switchThumbInactive: {
+    alignSelf: 'flex-start',
+  },
+  bulkCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+    marginBottom: 16,
+  },
+  bulkCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  bulkOrderNumber: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  removeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  inlineClientSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  selectedClientName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  addOrderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    paddingVertical: 14,
+    gap: 6,
+    marginBottom: 10,
+  },
+  addOrderBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

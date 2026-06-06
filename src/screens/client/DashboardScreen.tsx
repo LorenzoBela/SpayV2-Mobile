@@ -43,6 +43,7 @@ import PremiumLoader from '../../components/PremiumLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import HeaderActions, { HeaderWeatherTime } from '../../components/HeaderActions';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import dayjs from 'dayjs';
@@ -101,12 +102,13 @@ const formatCurrency = (val: number | string) => {
 };
 
 function formatRelativeDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'Unknown date';
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
@@ -121,24 +123,6 @@ const getCategory = (itemName: string): string => {
   return 'Other';
 };
 
-function getBillingMonthKey(dueDate: Date): string {
-  const d = new Date(dueDate);
-  if (d.getDate() >= 5) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }
-
-  const prev = new Date(d);
-  prev.setMonth(prev.getMonth() - 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function formatBillingMonthKey(monthKey: string): string {
-  const [year, month] = monthKey.split('-');
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  });
-}
 
 function groupUnpaidBillingMonths(
   payments: Array<{
@@ -746,10 +730,10 @@ export default function DashboardScreen() {
         const order = ordersMap.get(p.order_id);
         return {
           id: p.id,
-          dueDate: new Date(p.due_date),
+          dueDate: parseUtcDate(p.due_date),
           amountDue: parseFloat(p.amount_due),
           isPaid: p.is_paid,
-          paymentDate: p.payment_date ? new Date(p.payment_date) : null,
+          paymentDate: p.payment_date ? parseUtcDate(p.payment_date) : null,
           itemName: order?.item_name || 'Purchase Order',
           monthNumber: p.month_number,
           installmentMonths: order?.installment_months || 0,
@@ -876,7 +860,7 @@ export default function DashboardScreen() {
       }
 
       dbOrders.forEach(order => {
-        const orderDate = new Date(order.order_date);
+        const orderDate = parseUtcDate(order.order_date);
         const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`;
         if (trendsMap.has(monthKey)) {
           const current = trendsMap.get(monthKey);

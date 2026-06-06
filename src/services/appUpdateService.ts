@@ -49,6 +49,7 @@ const APK_MIME_TYPE = 'application/vnd.android.package-archive';
 const FLAG_GRANT_READ_URI_PERMISSION = 1;
 const FLAG_ACTIVITY_NEW_TASK = 268435456;
 const CHECK_COOLDOWN_MS = 5 * 60 * 1000; // Check at most every 5 minutes automatically
+const MIN_APK_BYTES = 1024 * 1024;
 
 let promptVisible = false;
 let lastAutomaticCheckAt = 0;
@@ -209,6 +210,27 @@ export const downloadAndInstallConfiguredApkAsync = async (apkUrlOverride?: stri
   try {
     const targetUri = `${FileSystem.cacheDirectory}spay-latest.apk`;
     const downloaded = await FileSystem.downloadAsync(apkUrl, targetUri);
+    const status = typeof downloaded.status === 'number' ? downloaded.status : 200;
+    const contentType = Object.entries(downloaded.headers ?? {}).find(
+      ([key]) => key.toLowerCase() === 'content-type',
+    )?.[1];
+    const fileInfo = await FileSystem.getInfoAsync(downloaded.uri);
+
+    if (status < 200 || status >= 300) {
+      await FileSystem.deleteAsync(downloaded.uri, { idempotent: true });
+      throw new Error(`APK download failed with HTTP ${status}.`);
+    }
+
+    if (typeof contentType === 'string' && contentType.includes('text/html')) {
+      await FileSystem.deleteAsync(downloaded.uri, { idempotent: true });
+      throw new Error('APK download returned a web page instead of an Android package.');
+    }
+
+    if (!fileInfo.exists || (typeof fileInfo.size === 'number' && fileInfo.size < MIN_APK_BYTES)) {
+      await FileSystem.deleteAsync(downloaded.uri, { idempotent: true });
+      throw new Error('APK download was incomplete.');
+    }
+
     const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
 
     await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {

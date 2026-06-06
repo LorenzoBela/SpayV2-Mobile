@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1060678352430",
+    "project_id": "spayv2",
+    "storage_bucket": "spayv2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1060678352430:android:4733efad288727da5ae9bf",
+        "android_client_info": {
+          "package_name": "com.cerberuzz91141.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1060678352430-8ffdmnpqcob41b5n2s9rhedv4bkaahtb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cerberuzz91141.mobile",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "1060678352430-ji0e69vmpcia4dl6mcgj5anambl6skjt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cerberuzz91141.mobile",
+            "certificate_hash": "0ac7a19151f50a6a3d314240cd94abc155f5da28"
+          }
+        },
+        {
+          "client_id": "1060678352430-8nn0b116tp82k050gl930vdjj794r6v7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC4lw-KJVg7Q9jUvWbH1qEqh2a4QSNWr0U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1060678352430-8nn0b116tp82k050gl930vdjj794r6v7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

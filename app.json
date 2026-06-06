@@ -1,87 +1,87 @@
-{
-  "expo": {
-    "name": "S-Pay V2",
-    "slug": "mobile",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
-    "scheme": "exp+mobile",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-screen.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0b0f19"
-    },
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "package": "com.cerberuzz91141.mobile",
-      "versionCode": 2,
-      "googleServicesFile": "./google-services.json",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png",
-        "backgroundColor": "#0b0f19"
-      },
-      "permissions": [
-        "CAMERA",
-        "INTERNET",
-        "MODIFY_AUDIO_SETTINGS",
-        "POST_NOTIFICATIONS",
-        "READ_EXTERNAL_STORAGE",
-        "RECORD_AUDIO",
-        "REQUEST_INSTALL_PACKAGES",
-        "SYSTEM_ALERT_WINDOW",
-        "USE_BIOMETRIC",
-        "USE_FINGERPRINT",
-        "VIBRATE",
-        "WRITE_EXTERNAL_STORAGE"
-      ]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/e0f4bfb6-3c41-4ece-9361-3997de377857",
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0,
-      "requestHeaders": {
-        "expo-channel-name": "production"
-      }
-    },
-    "runtimeVersion": "1.0.0",
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "defaultChannel": "spay-system-v2"
-        }
-      ],
-      "@react-native-firebase/app",
-      [
-        "@react-native-firebase/messaging",
-        {
-          "autolinkEnabled": true
-        }
-      ],
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash-screen.png",
-          "resizeMode": "contain",
-          "backgroundColor": "#0b0f19"
-        }
-      ]
-    ],
-    "extra": {
-      "androidApkUrl": "https://github.com/LorenzoBela/SpayV2-Mobile/releases/download/latest/SPay%20V2.apk",
-      "androidApkManifestUrl": "https://github.com/LorenzoBela/SpayV2-Mobile/releases/download/latest/spay-latest.json",
-      "eas": {
-        "projectId": "e0f4bfb6-3c41-4ece-9361-3997de377857"
-      }
-    }
-  }
+﻿{
+    "expo":  {
+                 "name":  "S-Pay V2",
+                 "slug":  "mobile",
+                 "version":  "1.0.0",
+                 "orientation":  "portrait",
+                 "icon":  "./assets/icon.png",
+                 "userInterfaceStyle":  "automatic",
+                 "scheme":  "exp+mobile",
+                 "newArchEnabled":  true,
+                 "splash":  {
+                                "image":  "./assets/splash-screen.png",
+                                "resizeMode":  "contain",
+                                "backgroundColor":  "#0b0f19"
+                            },
+                 "ios":  {
+                             "supportsTablet":  true
+                         },
+                 "android":  {
+                                 "package":  "com.cerberuzz91141.mobile",
+                                 "versionCode":  8,
+                                 "googleServicesFile":  "./google-services.json",
+                                 "adaptiveIcon":  {
+                                                      "foregroundImage":  "./assets/android-icon-foreground.png",
+                                                      "backgroundImage":  "./assets/android-icon-background.png",
+                                                      "monochromeImage":  "./assets/android-icon-monochrome.png",
+                                                      "backgroundColor":  "#0b0f19"
+                                                  },
+                                 "permissions":  [
+                                                     "CAMERA",
+                                                     "INTERNET",
+                                                     "MODIFY_AUDIO_SETTINGS",
+                                                     "POST_NOTIFICATIONS",
+                                                     "READ_EXTERNAL_STORAGE",
+                                                     "RECORD_AUDIO",
+                                                     "REQUEST_INSTALL_PACKAGES",
+                                                     "SYSTEM_ALERT_WINDOW",
+                                                     "USE_BIOMETRIC",
+                                                     "USE_FINGERPRINT",
+                                                     "VIBRATE",
+                                                     "WRITE_EXTERNAL_STORAGE"
+                                                 ]
+                             },
+                 "web":  {
+                             "favicon":  "./assets/favicon.png"
+                         },
+                 "updates":  {
+                                 "url":  "https://u.expo.dev/e0f4bfb6-3c41-4ece-9361-3997de377857",
+                                 "checkAutomatically":  "ON_LOAD",
+                                 "fallbackToCacheTimeout":  0,
+                                 "requestHeaders":  {
+                                                        "expo-channel-name":  "production"
+                                                    }
+                             },
+                 "runtimeVersion":  "1.0.0",
+                 "plugins":  [
+                                 [
+                                     "expo-notifications",
+                                     {
+                                         "defaultChannel":  "spay-system-v2"
+                                     }
+                                 ],
+                                 "@react-native-firebase/app",
+                                 [
+                                     "@react-native-firebase/messaging",
+                                     {
+                                         "autolinkEnabled":  true
+                                     }
+                                 ],
+                                 [
+                                     "expo-splash-screen",
+                                     {
+                                         "image":  "./assets/splash-screen.png",
+                                         "resizeMode":  "contain",
+                                         "backgroundColor":  "#0b0f19"
+                                     }
+                                 ]
+                             ],
+                 "extra":  {
+                               "androidApkUrl":  "https://github.com/LorenzoBela/SpayV2-Mobile/releases/download/latest/SPay.V2.apk",
+                               "androidApkManifestUrl":  "https://github.com/LorenzoBela/SpayV2-Mobile/releases/download/latest/spay-latest.json",
+                               "eas":  {
+                                           "projectId":  "e0f4bfb6-3c41-4ece-9361-3997de377857"
+                                       }
+                           }
+             }
 }

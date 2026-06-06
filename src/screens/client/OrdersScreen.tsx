@@ -38,6 +38,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { OrdersSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { parseUtcDate } from '../../utils/date';
 
 interface PaymentItem {
   id: string;
@@ -136,11 +137,11 @@ export default function OrdersScreen() {
       // Calculate Streak & On-Time Rate
       const allPaidPayments = paymentsData
         .filter(p => p.is_paid)
-        .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime());
+        .sort((a, b) => parseUtcDate(b.payment_date || b.due_date).getTime() - parseUtcDate(a.payment_date || a.due_date).getTime());
 
       let paymentStreak = 0;
       for (const p of allPaidPayments) {
-        if (p.payment_date && new Date(p.payment_date) <= new Date(p.due_date)) {
+        if (p.payment_date && parseUtcDate(p.payment_date) <= parseUtcDate(p.due_date)) {
           paymentStreak++;
         } else {
           break;
@@ -149,7 +150,7 @@ export default function OrdersScreen() {
 
       const completedCount = allPaidPayments.length;
       const onTimeCount = allPaidPayments.filter(
-        p => p.payment_date && new Date(p.payment_date) <= new Date(p.due_date)
+        p => p.payment_date && parseUtcDate(p.payment_date) <= parseUtcDate(p.due_date)
       ).length;
       const onTimeRate = completedCount > 0 ? Math.round((onTimeCount / completedCount) * 100) : 100;
 
@@ -397,7 +398,7 @@ export default function OrdersScreen() {
                 const isExpanded = expandedOrderId === order.id;
                 const progress = order.progressPercent;
                 const hasOverdue = order.payments.some(
-                  p => !p.isPaid && new Date(p.dueDate).getTime() < Date.now()
+                  p => !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now()
                 );
 
                 if (viewMode === 'card') {
@@ -418,7 +419,7 @@ export default function OrdersScreen() {
                         <View style={styles.headerLeft}>
                           <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.itemName}</Text>
                           <Text style={[styles.orderItemDate, { color: t.textSecondary }]}>
-                            Ordered {new Date(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            Ordered {parseUtcDate(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                           </Text>
                         </View>
                         <View style={styles.headerRight}>
@@ -487,7 +488,7 @@ export default function OrdersScreen() {
 
                           <View style={styles.scheduleList}>
                             {order.payments.map(p => {
-                              const isPaymentOverdue = !p.isPaid && new Date(p.dueDate).getTime() < Date.now();
+                              const isPaymentOverdue = !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now();
                               let labelColor = t.textSecondary;
                               let statusText = 'Pending';
                               let statusBg = t.divider;
@@ -507,7 +508,7 @@ export default function OrdersScreen() {
                                   <View>
                                     <Text style={[styles.scheduleMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
                                     <Text style={[styles.scheduleDate, { color: t.textSecondary }]}>
-                                      Due {new Date(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                      Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                                     </Text>
                                   </View>
                                   <View style={styles.scheduleRight}>
@@ -569,7 +570,7 @@ export default function OrdersScreen() {
                               {order.itemName}
                             </Text>
                             <Text style={[styles.orderListRowDate, { color: t.textSecondary }]}>
-                              {new Date(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {parseUtcDate(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                             </Text>
                           </View>
                         </View>
@@ -629,7 +630,7 @@ export default function OrdersScreen() {
 
                           <View style={styles.scheduleList}>
                             {order.payments.map(p => {
-                              const isPaymentOverdue = !p.isPaid && new Date(p.dueDate).getTime() < Date.now();
+                              const isPaymentOverdue = !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now();
                               let labelColor = t.textSecondary;
                               let statusText = 'Pending';
                               let statusBg = t.divider;
@@ -649,7 +650,7 @@ export default function OrdersScreen() {
                                   <View>
                                     <Text style={[styles.scheduleMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
                                     <Text style={[styles.scheduleDate, { color: t.textSecondary }]}>
-                                      Due {new Date(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                      Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                                     </Text>
                                   </View>
                                   <View style={styles.scheduleRight}>
@@ -795,13 +796,13 @@ export default function OrdersScreen() {
               <Text style={[styles.modalListLabel, { color: t.textSecondary }]}>OUTSTANDING DUES</Text>
               <View style={styles.duesContainer}>
                 {unpaidInstallments.map((p, idx) => {
-                  const isPaymentOverdue = new Date(p.dueDate).getTime() < Date.now();
+                  const isPaymentOverdue = parseUtcDate(p.dueDate).getTime() < Date.now();
                   return (
                     <View key={p.id || idx} style={[styles.dueRow, { borderColor: t.divider }]}>
                       <View>
                         <Text style={[styles.dueRowMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
                         <Text style={[styles.dueRowDate, { color: t.textSecondary }]}>
-                          Due {new Date(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                          Due {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

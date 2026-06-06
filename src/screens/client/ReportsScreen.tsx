@@ -47,6 +47,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { ReportsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { parseUtcDate } from '../../utils/date';
 
 
 export default function ReportsScreen() {
@@ -131,7 +132,7 @@ export default function ReportsScreen() {
           itemName: o.item_name,
           amount: parseFloat(o.amount),
           installmentMonths: parseInt(o.installment_months, 10),
-          orderDate: new Date(o.order_date),
+          orderDate: parseUtcDate(o.order_date),
           isPaid: o.is_paid,
         });
       });
@@ -148,9 +149,9 @@ export default function ReportsScreen() {
           orderId: p.order_id,
           monthNumber: parseInt(p.month_number, 10),
           amountDue: parseFloat(p.amount_due),
-          dueDate: new Date(p.due_date),
+          dueDate: parseUtcDate(p.due_date),
           isPaid: p.is_paid,
-          paymentDate: p.payment_date ? new Date(p.payment_date) : null,
+          paymentDate: p.payment_date ? parseUtcDate(p.payment_date) : null,
           itemName: order.itemName,
           installmentMonths: order.installmentMonths,
           orderDate: order.orderDate,
@@ -162,7 +163,7 @@ export default function ReportsScreen() {
         itemName: o.item_name,
         amount: parseFloat(o.amount),
         installmentMonths: parseInt(o.installment_months, 10),
-        orderDate: new Date(o.order_date),
+        orderDate: parseUtcDate(o.order_date),
         isPaid: o.is_paid,
       }));
 

@@ -54,7 +54,6 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
     lightColor: '#ee4d2d',
-    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ALERTS, {
@@ -63,7 +62,6 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 350, 150, 350],
     lightColor: '#ef4444',
-    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ADS, {
@@ -72,7 +70,6 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
     lightColor: '#3b82f6',
-    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.SYSTEM, {
@@ -81,7 +78,6 @@ export async function setupAndroidNotificationChannels() {
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
     lightColor: '#10b981',
-    sound: 'default',
   });
 }
 
@@ -223,7 +219,7 @@ export async function mirrorToLocalTray(notification: AppNotification) {
     content: {
       title: notification.title,
       body: notification.body,
-      sound: 'default',
+      sound: true,
       priority: Notifications.AndroidNotificationPriority.MAX,
       vibrate: [0, 250, 150, 250],
       data: {

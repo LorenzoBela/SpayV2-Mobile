@@ -102,11 +102,17 @@ export const fetchAllAdminData = async () => {
     endOfNextWeek.setDate(endOfWeek.getDate() + 7);
 
     // Fetch from Supabase
-    // 1. Profiles (role = CLIENT or email lorenzo91145@gmail.com)
+    // 1. Profiles (role = CLIENT or current user's email)
+    const { data: { user } } = await supabase.auth.getUser();
+    const userEmail = user?.email;
+    const filterQuery = userEmail 
+      ? `role.eq.CLIENT,email.eq.${userEmail}`
+      : `role.eq.CLIENT`;
+
     const { data: profiles, error: pErr } = await supabase
       .from('admin_profiles_view')
       .select('id, name, email, mobile_number, created_at, role, avatar_url')
-      .or(`role.eq.CLIENT,email.eq.lorenzo91145@gmail.com`);
+      .or(filterQuery);
 
     if (pErr) throw pErr;
 

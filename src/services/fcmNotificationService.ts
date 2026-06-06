@@ -17,7 +17,6 @@ async function setupNotifeeChannels() {
       importance: AndroidImportance.HIGH,
       sound: 'default',
       vibration: true,
-      vibrationPattern: [0, 250, 150, 250],
       visibility: AndroidVisibility.PUBLIC,
     });
   }
@@ -38,7 +37,6 @@ export async function displayFcmRemoteMessage(remoteMessage: FirebaseMessagingTy
       channelId: input.channelId,
       importance: AndroidImportance.HIGH,
       sound: 'default',
-      vibrationPattern: [0, 250, 150, 250],
       pressAction: { id: 'default' },
     },
   });
@@ -57,7 +55,7 @@ async function upsertFcmToken(userId: string, fcmToken: string) {
         last_seen_at: new Date().toISOString(),
         revoked_at: null,
       },
-      { onConflict: 'fcm_token' },
+      { onConflict: 'expo_push_token' },
     );
 }
 
@@ -101,7 +99,6 @@ export function subscribeToForegroundFcmMessages() {
         channelId: input.channelId,
         importance: AndroidImportance.HIGH,
         sound: 'default',
-        vibrationPattern: [0, 250, 150, 250],
         pressAction: { id: 'default' },
       },
     });

@@ -161,7 +161,7 @@ $script:GradleHeapMb = 8192
 $script:ProductionVersionCode = $null
 $script:ProductionVersionName = $null
 $script:GitHubRepo = "LorenzoBela/SpayV2-Mobile"
-$script:GitHubApkFileName = "SPay V2.apk"
+$script:GitHubApkFileName = "SPay.V2.apk"
 $script:GitHubManifestFileName = "spay-latest.json"
 
 function Set-ProductionBuildMetadata {
@@ -798,7 +798,18 @@ function Ensure-CMakeLibCppShared {
     param([string]$Path, [string]$TargetName)
     if (-not (Test-Path $Path)) { return }
     $raw = Get-Content -Path $Path -Raw
+
     $raw = $raw -replace '`cmake_minimum_required', 'cmake_minimum_required'
+    $raw = $raw -replace '`n', "`n"
+    $escapedTargetName = [regex]::Escape($TargetName)
+
+    if ($raw -notmatch "add_library\s*\(\s*$escapedTargetName\b") {
+        return
+    }
+
+    if ($raw -match "add_library\s*\(\s*$escapedTargetName\b[^\)]*\bIMPORTED\b") {
+        return
+    }
 
     if ($raw -notmatch 'find_library\(CPP_SHARED_LIB c\+\+_shared\)') {
         if ($raw -match 'find_library\([^\n]*log[^\n]*\)') {
@@ -806,13 +817,34 @@ function Ensure-CMakeLibCppShared {
         } else {
              $raw = [regex]::Replace($raw, '(cmake_minimum_required\([^\)]*\)\s*)', { $args[0].Groups[1].Value + "`nfind_library(CPP_SHARED_LIB c++_shared)`n`nif(NOT CPP_SHARED_LIB)`n  set(CPP_SHARED_LIB c++_shared)`nendif()`n" })
         }
+        if ($raw -notmatch 'find_library\(CPP_SHARED_LIB c\+\+_shared\)') {
+            $raw = "find_library(CPP_SHARED_LIB c++_shared)`n`nif(NOT CPP_SHARED_LIB)`n  set(CPP_SHARED_LIB c++_shared)`nendif()`n`n$raw"
+        }
     }
 
-    $escapedTarget = [regex]::Escape($TargetName)
-    $definesLink = $raw -match "target_link_libraries\s*\(\s*[^\)]*${escapedTarget}[^\)]*(\`$\{CPP_SHARED_LIB\}|c\+\+_shared)"
-    if (-not $definesLink) {
-        $raw += "`n`ntarget_link_libraries(${TargetName} `${CPP_SHARED_LIB})`n"
+    $targetLinkMatches = [regex]::Matches($raw, "target_link_libraries\s*\(\s*$escapedTargetName\b(?<body>[\s\S]*?)\)")
+    $usesKeywordSignature = $false
+    foreach ($targetLinkMatch in $targetLinkMatches) {
+        if ($targetLinkMatch.Groups['body'].Value -match '\b(PRIVATE|PUBLIC|INTERFACE)\b') {
+            $usesKeywordSignature = $true
+            break
+        }
     }
+
+    if ($usesKeywordSignature) {
+        $plainCppSharedLinkPattern = "target_link_libraries\s*\(\s*$escapedTargetName\s+(\$\{CPP_SHARED_LIB\}|c\+\+_shared)\s*\)"
+        $raw = [regex]::Replace($raw, $plainCppSharedLinkPattern, { "target_link_libraries($TargetName PRIVATE `${CPP_SHARED_LIB})" })
+    }
+
+    $definesLink = $raw -match "target_link_libraries\s*\(\s*[^\)]*$escapedTargetName[^\)]*(\$\{CPP_SHARED_LIB\}|c\+\+_shared)"
+    if (-not $definesLink) {
+        if ($usesKeywordSignature) {
+            $raw += "`n`ntarget_link_libraries(${TargetName} PRIVATE `$`{CPP_SHARED_LIB})`n"
+        } else {
+            $raw += "`n`ntarget_link_libraries(${TargetName} `$`{CPP_SHARED_LIB})`n"
+        }
+    }
+
     Set-Content -Path $Path -Value $raw
 }
 
@@ -915,6 +947,28 @@ function Invoke-ReleaseSigningFix {
 }
 Invoke-ReleaseSigningFix -ProjectRoot $PROJECT_ROOT
 
+function Invoke-FirebaseMessagingManifestFix {
+    param([string]$ProjectRoot)
+
+    $manifestPath = Join-Path $ProjectRoot "android\app\src\main\AndroidManifest.xml"
+    if (-not (Test-Path $manifestPath)) { return }
+
+    $raw = Get-Content -Path $manifestPath -Raw
+    if ($raw -notmatch 'xmlns:tools=') {
+        $raw = $raw -replace '<manifest xmlns:android="http://schemas.android.com/apk/res/android"', '<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"'
+    }
+
+    $raw = [regex]::Replace(
+        $raw,
+        '(<meta-data\s+android:name="com\.google\.firebase\.messaging\.default_notification_channel_id"\s+android:value="spay-system-v2")(?![^>]*tools:replace=)(\s*/?>)',
+        '$1 tools:replace="android:value"$2'
+    )
+
+    Set-Content -Path $manifestPath -Value $raw
+    Write-Host "[OK] Applied Firebase Messaging manifest override for default channel" -ForegroundColor Green
+}
+Invoke-FirebaseMessagingManifestFix -ProjectRoot $PROJECT_ROOT
+
 # Apply existing patches for RN background actions 
 $bgActionsTask = Join-Path $PROJECT_ROOT "node_modules\react-native-background-actions\android\src\main\java\com\asterinet\react\bgactions\RNBackgroundActionsTask.java"
 if (Test-Path $bgActionsTask) {
@@ -954,6 +1008,8 @@ $allChecksPass = $true
 $allChecksPass = (Test-FileContains -Path $gradleProps -Pattern 'android\.cmake\.arguments=.*ANDROID_STL=c\+\+_shared') -and $allChecksPass
 $allChecksPass = (Test-FileContains -Path $rootBuildGradle -Pattern 'BEGIN libcxx-shared-fix') -and $allChecksPass
 $allChecksPass = (Test-FileContains -Path $appBuildGradle -Pattern 'signingConfig signingConfigs\.release') -and $allChecksPass
+$androidManifestPath = Join-Path $ANDROID_DIR "app\src\main\AndroidManifest.xml"
+$allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'com\.google\.firebase\.messaging\.default_notification_channel_id.*tools:replace="android:value"') -and $allChecksPass
 
 $screensCmakeCheck = Join-Path $PROJECT_ROOT "node_modules\react-native-screens\android\CMakeLists.txt"
 $allChecksPass = (Test-FileContains -Path $screensCmakeCheck -Pattern 'c\+\+_shared') -and $allChecksPass
