@@ -193,8 +193,8 @@ function Set-ProductionBuildMetadata {
         }
         $nextVersionCode = [Math]::Max(1, $currentVersionCode + 1)
         $versionName = if ($config.expo.version) { [string]$config.expo.version } else { "1.0.0" }
-        $apkUrl = "https://github.com/$($script:GitHubRepo)/releases/download/latest/$([uri]::EscapeDataString($script:GitHubApkFileName))"
-        $manifestUrl = "https://github.com/$($script:GitHubRepo)/releases/download/latest/$($script:GitHubManifestFileName)"
+        $apkUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$([uri]::EscapeDataString($script:GitHubApkFileName))"
+        $manifestUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$($script:GitHubManifestFileName)"
 
         if ($null -eq $config.expo.android.versionCode) {
             $config.expo.android | Add-Member -NotePropertyName versionCode -NotePropertyValue $nextVersionCode
@@ -1187,15 +1187,17 @@ if ($overallExit -eq 0) {
                     $fileNameUrl = [uri]::EscapeDataString($apkFileName)
                     Invoke-RestMethod -Uri "https://uploads.github.com/repos/$repo/releases/$releaseId/assets?name=$fileNameUrl" -Method Post -Headers @{ "Authorization" = "Bearer $token"; "Content-Type" = "application/vnd.android.package-archive" } -InFile $apkToUpload
 
-                    $downloadUrl = "https://github.com/$repo/releases/download/latest/$fileNameUrl"
-                    [ordered]@{
+                    $downloadUrl = "https://github.com/$repo/releases/latest/download/$fileNameUrl"
+                    $manifestJson = [ordered]@{
                         versionCode = $script:ProductionVersionCode
                         versionName = $script:ProductionVersionName
                         apkUrl      = $downloadUrl
                         fileName    = $apkFileName
                         channel     = $OTA_CHANNEL
                         publishedAt = (Get-Date).ToUniversalTime().ToString("o")
-                    } | ConvertTo-Json -Depth 4 | Set-Content -Path $manifestToUpload -Encoding UTF8
+                    } | ConvertTo-Json -Depth 4
+                    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                    [System.IO.File]::WriteAllText($manifestToUpload, $manifestJson, $utf8NoBom)
 
                     $existingManifest = $assets | Where-Object { $_.name -eq $manifestFileName }
                     if ($existingManifest) {

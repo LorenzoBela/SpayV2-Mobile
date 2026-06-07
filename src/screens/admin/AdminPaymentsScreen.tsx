@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  Alert,
   Image,
   Platform,
   StatusBar,
@@ -65,6 +64,7 @@ import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
+import { PremiumAlert } from '../../services/PremiumAlertService';
 
 type PaymentSubTab = 'ledger' | 'breakdown' | 'logs' | 'receipts';
 
@@ -434,7 +434,7 @@ export default function AdminPaymentsScreen() {
         if (response.success) {
           setReceiptPreviewHtml(response.html);
         } else {
-          Alert.alert('Error', response.error || 'Failed to fetch receipt email preview.');
+          PremiumAlert.alert('Error', response.error || 'Failed to fetch receipt email preview.');
         }
       } catch (err) {
         console.warn('Failed to load receipt email preview:', err);
@@ -937,7 +937,7 @@ export default function AdminPaymentsScreen() {
   const handleBulkClear = async () => {
     if (selectedIds.length === 0) return;
 
-    Alert.alert(
+    PremiumAlert.alert(
       'Bulk Mark Paid',
       `Clear installment dues for all ${selectedIds.length} selected items?`,
       [
@@ -949,15 +949,15 @@ export default function AdminPaymentsScreen() {
             try {
               const response = await callAdminApi('bulk-mark-paid', { ids: selectedIds });
               if (response.success) {
-                Alert.alert('Success', `Successfully cleared ${response.count} payments.`);
+                PremiumAlert.alert('Success', `Successfully cleared ${response.count} payments.`);
                 setSelectedIds([]);
                 setBulkMode(false);
                 queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
               } else {
-                Alert.alert('Error', response.error || 'Failed bulk marks.');
+                PremiumAlert.alert('Error', response.error || 'Failed bulk marks.');
               }
             } catch (e: any) {
-              Alert.alert('Network Error', e?.message || 'Server did not respond.');
+              PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
             } finally {
               setActionLoading(false);
             }
@@ -972,14 +972,14 @@ export default function AdminPaymentsScreen() {
     try {
       const response = await callAdminApi('mark-payment-paid', { id: paymentId });
       if (response.success) {
-        Alert.alert('Success', 'Payment marked as cleared.');
+        PremiumAlert.alert('Success', 'Payment marked as cleared.');
         setIsDetailsOpen(false);
         queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
-        Alert.alert('Error', response.error || 'Failed to mark payment as paid.');
+        PremiumAlert.alert('Error', response.error || 'Failed to mark payment as paid.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server did not respond.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
     }
@@ -990,14 +990,14 @@ export default function AdminPaymentsScreen() {
     try {
       const response = await callAdminApi('approve-payment-proof', { id: paymentId });
       if (response.success) {
-        Alert.alert('Success', 'Payment proof approved and verified.');
+        PremiumAlert.alert('Success', 'Payment proof approved and verified.');
         setIsDetailsOpen(false);
         queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
-        Alert.alert('Error', response.error || 'Failed to verify payment proof.');
+        PremiumAlert.alert('Error', response.error || 'Failed to verify payment proof.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server did not respond.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
     }
@@ -1012,16 +1012,16 @@ export default function AdminPaymentsScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Rejected', 'Payment proof rejected. Client notified.');
+        PremiumAlert.alert('Rejected', 'Payment proof rejected. Client notified.');
         setIsRejectOpen(false);
         setIsDetailsOpen(false);
         setRejectReason('');
         queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
-        Alert.alert('Error', response.error || 'Failed to reject payment proof.');
+        PremiumAlert.alert('Error', response.error || 'Failed to reject payment proof.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server did not respond.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
     }
@@ -1038,12 +1038,12 @@ export default function AdminPaymentsScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', 'Monthly payment receipt resent to client email.');
+        PremiumAlert.alert('Success', 'Monthly payment receipt resent to client email.');
       } else {
-        Alert.alert('Error', response.error || 'Failed to resend receipt.');
+        PremiumAlert.alert('Error', response.error || 'Failed to resend receipt.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }

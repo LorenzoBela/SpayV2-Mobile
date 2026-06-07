@@ -7,6 +7,8 @@ export interface PremiumAlertOptions {
   options?: AlertOptions;
   icon?: string;
   iconColor?: string;
+  isDownloading?: boolean;
+  progress?: number; // 0 to 1
 }
 
 /**
@@ -35,6 +37,20 @@ class PremiumAlertServiceClass {
       icon,
       iconColor,
     } as PremiumAlertOptions);
+  }
+
+  /**
+   * Triggers a rich, dynamic alert with extended options (such as download progress)
+   */
+  show(options: PremiumAlertOptions) {
+    DeviceEventEmitter.emit(this.SHOW_EVENT, options);
+  }
+
+  /**
+   * Programmatically closes the active alert modal
+   */
+  dismiss() {
+    DeviceEventEmitter.emit(this.SHOW_EVENT, null);
   }
 }
 

@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  Alert,
   Platform,
   StatusBar,
   KeyboardAvoidingView,
@@ -52,6 +51,7 @@ import { FlashList } from '@shopify/flash-list';
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
+import { PremiumAlert } from '../../services/PremiumAlertService';
 
 
 const formatCurrency = (val: number | string) => {
@@ -257,18 +257,18 @@ export default function AdminOrdersScreen() {
   const handleAssignSubmit = async () => {
     if (isBulkMode) {
       if (bulkOrders.length === 0) {
-        Alert.alert('Empty Form', 'Please add at least one order.');
+        PremiumAlert.alert('Empty Form', 'Please add at least one order.');
         return;
       }
       for (let i = 0; i < bulkOrders.length; i++) {
         const o = bulkOrders[i];
         if (!o.clientId || !o.itemName || !o.amount) {
-          Alert.alert('Incomplete Form', `Please complete all fields for Order #${i + 1}.`);
+          PremiumAlert.alert('Incomplete Form', `Please complete all fields for Order #${i + 1}.`);
           return;
         }
         const parsedAmt = parseFloat(o.amount);
         if (isNaN(parsedAmt) || parsedAmt <= 0) {
-          Alert.alert('Invalid Amount', `Please enter a valid purchase amount for Order #${i + 1}.`);
+          PremiumAlert.alert('Invalid Amount', `Please enter a valid purchase amount for Order #${i + 1}.`);
           return;
         }
       }
@@ -290,22 +290,22 @@ export default function AdminOrdersScreen() {
         const response = await callAdminApi('schedule-order', payload);
 
         if (response.success) {
-          Alert.alert('Success', `Successfully scheduled ${bulkOrders.length} orders!`);
+          PremiumAlert.alert('Success', `Successfully scheduled ${bulkOrders.length} orders!`);
           setIsAssignOpen(false);
           clearAssignForm();
           queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
           queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
         } else {
-          Alert.alert('Error', response.error || 'Failed to schedule bulk orders.');
+          PremiumAlert.alert('Error', response.error || 'Failed to schedule bulk orders.');
         }
       } catch (e: any) {
-        Alert.alert('Network Error', e?.message || 'Server connection failed.');
+        PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
       } finally {
         setActionLoading(false);
       }
     } else {
       if (!selectedClientId || !itemName || !amount) {
-        Alert.alert('Incomplete Form', 'Please provide a client, item name, and purchase amount.');
+        PremiumAlert.alert('Incomplete Form', 'Please provide a client, item name, and purchase amount.');
         return;
       }
 
@@ -322,16 +322,16 @@ export default function AdminOrdersScreen() {
         });
 
         if (response.success) {
-          Alert.alert('Success', `Installment scheduled for ${itemName}!`);
+          PremiumAlert.alert('Success', `Installment scheduled for ${itemName}!`);
           setIsAssignOpen(false);
           clearAssignForm();
           queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
           queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
         } else {
-          Alert.alert('Error', response.error || 'Failed to schedule installment plan.');
+          PremiumAlert.alert('Error', response.error || 'Failed to schedule installment plan.');
         }
       } catch (e: any) {
-        Alert.alert('Network Error', e?.message || 'Server connection failed.');
+        PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
       } finally {
         setActionLoading(false);
       }
@@ -355,7 +355,7 @@ export default function AdminOrdersScreen() {
 
   const handleEditSubmit = async () => {
     if (!editItemName || !editAmount) {
-      Alert.alert('Incomplete Form', 'Please provide item name and purchase amount.');
+      PremiumAlert.alert('Incomplete Form', 'Please provide item name and purchase amount.');
       return;
     }
 
@@ -365,7 +365,7 @@ export default function AdminOrdersScreen() {
     const clientChanged = editClientId !== selectedOrder.user_id;
 
     if (hasPaidPayments && (amountChanged || termsChanged || clientChanged)) {
-      Alert.alert(
+      PremiumAlert.alert(
         'Locked Fields',
         'Cannot modify client, terms, or purchase amount because payment collections have already started for this order.'
       );
@@ -386,23 +386,23 @@ export default function AdminOrdersScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', `Order details updated!`);
+        PremiumAlert.alert('Success', `Order details updated!`);
         setIsEditOpen(false);
         setIsDetailsOpen(false);
         queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
         queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
       } else {
-        Alert.alert('Error', response.error || 'Failed to update order details.');
+        PremiumAlert.alert('Error', response.error || 'Failed to update order details.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDeleteSubmit = (orderId: string, itemName: string) => {
-    Alert.alert(
+    PremiumAlert.alert(
       'Delete Order Ledger',
       `Are you sure you want to permanently delete order "${itemName}" and all associated payments? This will restore client credit capacity.`,
       [
@@ -415,15 +415,15 @@ export default function AdminOrdersScreen() {
             try {
               const response = await callAdminApi('delete-order', { id: orderId });
               if (response.success) {
-                Alert.alert('Deleted', 'Order successfully removed.');
+                PremiumAlert.alert('Deleted', 'Order successfully removed.');
                 setIsDetailsOpen(false);
                 queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
                 queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
               } else {
-                Alert.alert('Error', response.error || 'Failed to delete order.');
+                PremiumAlert.alert('Error', response.error || 'Failed to delete order.');
               }
             } catch (e: any) {
-              Alert.alert('Network Error', e?.message || 'Server connection failed.');
+              PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
             } finally {
               setActionLoading(false);
             }

@@ -18,7 +18,7 @@
                          },
                  "android":  {
                                  "package":  "com.cerberuzz91141.mobile",
-                                 "versionCode":  8,
+                                 "versionCode":  9,
                                  "googleServicesFile":  "./google-services.json",
                                  "adaptiveIcon":  {
                                                       "foregroundImage":  "./assets/android-icon-foreground.png",
@@ -77,8 +77,8 @@
                                  ]
                              ],
                  "extra":  {
-                               "androidApkUrl":  "https://github.com/LorenzoBela/SpayV2-Mobile/releases/download/latest/SPay.V2.apk",
-                               "androidApkManifestUrl":  "https://github.com/LorenzoBela/SpayV2-Mobile/releases/download/latest/spay-latest.json",
+                               "androidApkUrl":  "https://github.com/LorenzoBela/SpayV2-Mobile/releases/latest/download/SPay.V2.apk",
+                               "androidApkManifestUrl":  "https://github.com/LorenzoBela/SpayV2-Mobile/releases/latest/download/spay-latest.json",
                                "eas":  {
                                            "projectId":  "e0f4bfb6-3c41-4ece-9361-3997de377857"
                                        }

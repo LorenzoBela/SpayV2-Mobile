@@ -1,18 +1,17 @@
 import { PremiumAlertOptions, PremiumAlert } from '../services/PremiumAlertService';
-import React, { useEffect, useState, useRef, useContext } from 'react';
+import React, { useEffect, useState, useCallback, useContext } from 'react';
 import {
   StyleSheet,
   View,
-  TouchableOpacity,
-  Dimensions,
+  Pressable,
+  Modal,
   DeviceEventEmitter,
   Platform,
+  Text,
 } from 'react-native';
-import { Modal, Portal, Text } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeContext } from '../navigation/navigationTypes';
 import { AlertCircle, CheckCircle2, AlertTriangle, HelpCircle, LogOut } from 'lucide-react-native';
-import SwipeDismissModal from './SwipeDismissModal';
 
 type StatusBarStyle = 'dark-content' | 'light-content';
 type ColorPalette = {
@@ -72,12 +71,16 @@ export default function GlobalPremiumAlert() {
 
   const { isDarkMode } = useContext(ThemeContext);
   const c = isDarkMode ? darkC : lightC;
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(
       PremiumAlert.SHOW_EVENT,
-      (config: PremiumAlertOptions) => {
+      (config: PremiumAlertOptions | null) => {
+        if (!config) {
+          setVisible(false);
+          return;
+        }
+
         setAlertConfig(config);
         setVisible(true);
       }
@@ -86,29 +89,39 @@ export default function GlobalPremiumAlert() {
     return () => subscription.remove();
   }, []);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     if (alertConfig?.options?.cancelable === false) {
       return;
     }
 
     const onDismissCallback = alertConfig?.options?.onDismiss;
     if (onDismissCallback) {
-      onDismissCallback();
+      try {
+        onDismissCallback();
+      } catch (err) {
+        console.warn('Error in PremiumAlert onDismiss:', err);
+      }
     }
 
     setVisible(false);
-  };
+  }, [alertConfig]);
 
-  const handleButtonPress = (onPress?: () => void) => {
+  const handleButtonPress = useCallback((onPress?: () => void) => {
     setVisible(false);
     if (onPress) {
-      setTimeout(onPress, 100);
+      // Tiny delay so the modal starts closing before the callback runs
+      setTimeout(() => {
+        try {
+          onPress();
+        } catch (err) {
+          console.warn('Error in PremiumAlert button onPress:', err);
+        }
+      }, 50);
     }
-  };
+  }, []);
 
   if (!alertConfig) return null;
 
-  // Fallback OK button if none provided
   const buttons =
     alertConfig.buttons && alertConfig.buttons.length > 0
       ? alertConfig.buttons
@@ -159,161 +172,162 @@ export default function GlobalPremiumAlert() {
       }
     }
 
-    // Auto-detect based on text content
     const t = title.toLowerCase();
     const m = message.toLowerCase();
     const isSuccess =
-      t.includes('success') ||
-      t.includes('saved') ||
-      t.includes('updated') ||
-      t.includes('enabled') ||
-      m.includes('success') ||
-      m.includes('saved') ||
-      m.includes('updated') ||
-      m.includes('successfully');
+      t.includes('success') || t.includes('saved') || t.includes('updated') ||
+      t.includes('enabled') || m.includes('success') || m.includes('saved') ||
+      m.includes('updated') || m.includes('successfully');
     const isError =
-      t.includes('failed') ||
-      t.includes('error') ||
-      t.includes('invalid') ||
-      t.includes('mismatch') ||
-      t.includes('required') ||
-      t.includes('unsupported') ||
-      m.includes('failed') ||
-      m.includes('error') ||
-      m.includes('invalid') ||
-      m.includes('mismatch') ||
-      m.includes('required');
+      t.includes('failed') || t.includes('error') || t.includes('invalid') ||
+      t.includes('mismatch') || t.includes('required') || t.includes('unsupported') ||
+      m.includes('failed') || m.includes('error') || m.includes('invalid') ||
+      m.includes('mismatch') || m.includes('required');
     const isExit =
-      t.includes('sign out') ||
-      t.includes('log out') ||
-      t.includes('exit') ||
-      m.includes('sign out') ||
-      m.includes('log out') ||
-      m.includes('exit');
+      t.includes('sign out') || t.includes('log out') || t.includes('exit') ||
+      m.includes('sign out') || m.includes('log out') || m.includes('exit');
     const isQuestion =
-      t.includes('confirm') ||
-      t.includes('sure') ||
-      t.includes('delete') ||
-      t.includes('remove') ||
-      m.includes('sure you want to') ||
-      m.includes('confirm');
+      t.includes('confirm') || t.includes('sure') || t.includes('delete') ||
+      t.includes('remove') || m.includes('sure you want to') || m.includes('confirm');
 
     const size = 32;
-    if (isSuccess) {
-      return { element: <CheckCircle2 size={size} color={c.green} />, color: c.green };
-    }
-    if (isError) {
-      return { element: <AlertTriangle size={size} color={c.red} />, color: c.red };
-    }
-    if (isExit) {
-      return { element: <LogOut size={size} color={c.red} />, color: c.red };
-    }
-    if (isQuestion) {
-      return { element: <HelpCircle size={size} color={c.blue} />, color: c.blue };
-    }
+    if (isSuccess) return { element: <CheckCircle2 size={size} color={c.green} />, color: c.green };
+    if (isError) return { element: <AlertTriangle size={size} color={c.red} />, color: c.red };
+    if (isExit) return { element: <LogOut size={size} color={c.red} />, color: c.red };
+    if (isQuestion) return { element: <HelpCircle size={size} color={c.blue} />, color: c.blue };
     return { element: <AlertCircle size={size} color={c.accent} />, color: c.accent };
   })();
 
   return (
-    <Portal>
-      <Modal
-        visible={visible}
-        onDismiss={handleDismiss}
-        dismissable={alertConfig.options?.cancelable !== false}
-        contentContainerStyle={[
-          styles.modalContainer,
-          {
-            backgroundColor: c.card,
-            borderColor: c.border,
-            paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16,
-          },
-        ]}
-        style={styles.modalOverlay}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={handleDismiss}
+    >
+      <SafeAreaProvider>
+      {/* Backdrop — tap to dismiss */}
+      <Pressable
+        style={[styles.backdrop, { backgroundColor: c.modalBg }]}
+        onPress={handleDismiss}
       >
-        <SwipeDismissModal onDismiss={handleDismiss}>
-          <View>
+        {/* Content sheet — stop propagation so tapping inside doesn't dismiss */}
+        <Pressable
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: c.card,
+              borderColor: c.border,
+            },
+          ]}
+          onPress={() => {}}
+        >
+          <SafeAreaView edges={['bottom']} style={styles.safeAreaSheet}>
             <View style={styles.dragIndicator} />
 
             <View style={styles.content}>
-              {resolved.element && (
-                <View style={[styles.iconContainer, { backgroundColor: resolved.color + '15' }]}>
-                  {resolved.element}
-                </View>
-              )}
-
-              <Text style={[styles.title, { color: c.textPrimary }]}>
-                {alertConfig.title}
-              </Text>
-
-              {alertConfig.message ? (
-                <Text style={[styles.description, { color: c.textSecondary }]}>
-                  {alertConfig.message}
-                </Text>
-              ) : null}
-
-              <View
-                style={[
-                  styles.buttonContainer,
-                  buttons.length > 2 && { flexDirection: 'column' },
-                ]}
-              >
-                {buttons.map((btn, index) => {
-                  const isDanger = isDestructive(btn.style);
-                  const isSecondary =
-                    isCancel(btn.style) || (!isDanger && index < buttons.length - 1);
-
-                  let bgColor = c.accent;
-                  let textColor = '#FFFFFF';
-
-                  if (isDanger) {
-                    bgColor = c.red;
-                    textColor = '#FFFFFF';
-                  } else if (isSecondary) {
-                    bgColor = c.pillBg;
-                    textColor = c.textPrimary;
-                  }
-
-                  return (
-                    <TouchableOpacity
-                      key={`btn-${index}`}
-                      style={[
-                        styles.button,
-                        { backgroundColor: bgColor },
-                        isSecondary && { borderWidth: 1, borderColor: c.border },
-                      ]}
-                      onPress={() => handleButtonPress(btn.onPress)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        style={[styles.buttonText, { color: textColor }]}
-                      >
-                        {btn.text}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+            {resolved.element && (
+              <View style={[styles.iconContainer, { backgroundColor: resolved.color + '15' }]}>
+                {resolved.element}
               </View>
+            )}
+
+            <Text style={[styles.title, { color: c.textPrimary }]}>
+              {alertConfig.title}
+            </Text>
+
+            {alertConfig.message ? (
+              <Text style={[styles.description, { color: c.textSecondary }]}>
+                {alertConfig.message}
+              </Text>
+            ) : null}
+
+            {alertConfig.isDownloading && (
+              <View style={styles.progressContainer}>
+                <View style={[styles.progressTrack, { backgroundColor: c.pillBg }]}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      {
+                        backgroundColor: c.accent,
+                        width: `${Math.round((alertConfig.progress || 0) * 100)}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.progressText, { color: c.textPrimary }]}>
+                  {Math.round((alertConfig.progress || 0) * 100)}%
+                </Text>
+              </View>
+            )}
+
+            <View
+              style={[
+                styles.buttonContainer,
+                buttons.length > 2 && { flexDirection: 'column' as const },
+              ]}
+            >
+              {buttons.map((btn, index) => {
+                const isDanger = isDestructive(btn.style);
+                const isSecondary =
+                  isCancel(btn.style) || (!isDanger && index < buttons.length - 1);
+
+                let bgColor = c.accent;
+                let textColor = '#FFFFFF';
+
+                if (isDanger) {
+                  bgColor = c.red;
+                  textColor = '#FFFFFF';
+                } else if (isSecondary) {
+                  bgColor = c.pillBg;
+                  textColor = c.textPrimary;
+                }
+
+                return (
+                  <Pressable
+                    key={`btn-${index}`}
+                    style={({ pressed }) => [
+                      styles.button,
+                      { backgroundColor: bgColor, opacity: pressed ? 0.7 : 1 },
+                      isSecondary && { borderWidth: 1, borderColor: c.border },
+                    ]}
+                    onPress={() => handleButtonPress(btn.onPress)}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={[styles.buttonText, { color: textColor }]}
+                    >
+                      {btn.text}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
-        </SwipeDismissModal>
-      </Modal>
-    </Portal>
+          </SafeAreaView>
+        </Pressable>
+      </Pressable>
+      </SafeAreaProvider>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  backdrop: {
+    flex: 1,
     justifyContent: 'flex-end',
-    margin: 0,
   },
-  modalContainer: {
+  sheet: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
     borderBottomWidth: 0,
-    marginHorizontal: 0,
+  },
+  safeAreaSheet: {
+    width: '100%',
+    paddingBottom: 16,
   },
   dragIndicator: {
     width: 40,
@@ -367,6 +381,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   buttonText: {
+    fontSize: 15,
+    fontFamily: 'Outfit-Bold',
+  },
+  progressContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: -8,
+    marginBottom: 24,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  progressText: {
     fontSize: 15,
     fontFamily: 'Outfit-Bold',
   },

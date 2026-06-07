@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  Alert,
   Platform,
   StatusBar,
   Image,
@@ -43,6 +42,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import AdminHeader from '../../components/AdminHeader';
 import PremiumLoader from '../../components/PremiumLoader';
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import { fetchAdminClients, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -217,7 +217,7 @@ export default function AdminClientsScreen() {
 
   const handleEditProfileSubmit = async () => {
     if (!editName || !editEmail) {
-      Alert.alert('Invalid Input', 'Name and Email are required.');
+      PremiumAlert.alert('Invalid Input', 'Name and Email are required.');
       return;
     }
 
@@ -231,7 +231,7 @@ export default function AdminClientsScreen() {
       });
 
       if (response.success) {
-        Alert.alert('Success', `Client profile updated successfully!`);
+        PremiumAlert.alert('Success', `Client profile updated successfully!`);
         setIsEditProfileOpen(false);
         // Update local modal data
         setSelectedClient((prev: any) => ({
@@ -242,17 +242,17 @@ export default function AdminClientsScreen() {
         }));
         queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
       } else {
-        Alert.alert('Error', response.error || 'Failed to update client profile.');
+        PremiumAlert.alert('Error', response.error || 'Failed to update client profile.');
       }
     } catch (e: any) {
-      Alert.alert('Network Error', e?.message || 'Server connection failed.');
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDeleteClientSubmit = () => {
-    Alert.alert(
+    PremiumAlert.alert(
       'Confirm Deletion',
       `Are you sure you want to permanently delete client profile ${selectedClient.name}? This will remove all their orders, limits, and records.`,
       [
@@ -265,14 +265,14 @@ export default function AdminClientsScreen() {
             try {
               const response = await callAdminApi('delete-client', { id: selectedClient.id });
               if (response.success) {
-                Alert.alert('Deleted', 'Client profile successfully deleted.');
+                PremiumAlert.alert('Deleted', 'Client profile successfully deleted.');
                 setIsDetailsOpen(false);
                 queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
               } else {
-                Alert.alert('Error', response.error || 'Failed to delete client.');
+                PremiumAlert.alert('Error', response.error || 'Failed to delete client.');
               }
             } catch (e: any) {
-              Alert.alert('Network Error', e?.message || 'Server connection failed.');
+              PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
             } finally {
               setActionLoading(false);
             }

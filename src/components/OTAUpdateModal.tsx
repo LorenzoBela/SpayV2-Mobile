@@ -1,7 +1,12 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Modal, Portal } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  StyleSheet,
+  Text,
+  Pressable,
+  View,
+  Modal,
+} from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Download } from 'lucide-react-native';
 
 interface OTAUpdateModalProps {
@@ -15,63 +20,72 @@ export default function OTAUpdateModal({
   onRestart,
   runtimeVersion,
 }: OTAUpdateModalProps) {
-  const insets = useSafeAreaInsets();
 
   return (
-    <Portal>
-      <Modal
-        visible={visible}
-        dismissable={false}
-        onDismiss={() => {}}
-        style={styles.overlay}
-        contentContainerStyle={[
-          styles.container,
-          { paddingBottom: Math.max(insets.bottom + 20, 24) },
-        ]}
-      >
-        <View style={styles.dragIndicator} />
-        <View style={styles.iconFrame}>
-          <Download size={30} color="#ee4d2d" />
-        </View>
-        <Text style={styles.title}>Update Ready</Text>
-        <Text style={styles.description}>
-          A newer version has been downloaded. The app will now close so you can reopen on the latest version.
-        </Text>
-        {runtimeVersion ? (
-          <View style={styles.versionPill}>
-            <Text style={styles.versionText}>v{runtimeVersion}</Text>
-          </View>
-        ) : null}
-        <TouchableOpacity
-          style={styles.button}
-          onPress={onRestart}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="Close app and apply update"
-        >
-          <Text style={styles.buttonText} numberOfLines={1} adjustsFontSizeToFit>
-            Close and Reopen
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={() => {}}
+    >
+      <SafeAreaProvider>
+      <View style={[styles.backdrop, { backgroundColor: 'rgba(11, 15, 25, 0.7)' }]}>
+        <View style={styles.sheet}>
+          <SafeAreaView edges={['bottom']} style={styles.safeAreaSheet}>
+            <View style={styles.dragIndicator} />
+            <View style={styles.iconFrame}>
+              <Download size={30} color="#ee4d2d" />
+            </View>
+          <Text style={styles.title}>Update Ready</Text>
+          <Text style={styles.description}>
+            A newer version has been downloaded. The app will now close so you can reopen on the latest version.
           </Text>
-        </TouchableOpacity>
-      </Modal>
-    </Portal>
+          {runtimeVersion ? (
+            <View style={styles.versionPill}>
+              <Text style={styles.versionText}>v{runtimeVersion}</Text>
+            </View>
+          ) : null}
+          <Pressable
+            style={({ pressed }) => [
+              styles.button,
+              { opacity: pressed ? 0.75 : 1 },
+            ]}
+            onPress={onRestart}
+            accessibilityRole="button"
+            accessibilityLabel="Close app and apply update"
+          >
+            <Text style={styles.buttonText} numberOfLines={1} adjustsFontSizeToFit>
+              Close and Reopen
+            </Text>
+          </Pressable>
+          </SafeAreaView>
+        </View>
+      </View>
+      </SafeAreaProvider>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  backdrop: {
+    flex: 1,
     justifyContent: 'flex-end',
-    margin: 0,
   },
-  container: {
+  sheet: {
     backgroundColor: '#161c2a',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: '#222d42',
+    width: '100%',
+  },
+  safeAreaSheet: {
+    width: '100%',
     paddingHorizontal: 24,
     paddingTop: 12,
+    paddingBottom: 24,
     alignItems: 'center',
   },
   dragIndicator: {

@@ -1,10 +1,15 @@
 import React, { useContext } from 'react';
-import { StyleSheet, View, TouchableOpacity, Dimensions, Platform } from 'react-native';
-import { Modal, Portal, Text } from 'react-native-paper';
+import {
+  StyleSheet,
+  View,
+  Pressable,
+  Modal,
+  Platform,
+  Text,
+} from 'react-native';
 import { LogOut } from 'lucide-react-native';
 import { ThemeContext } from '../navigation/navigationTypes';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import SwipeDismissModal from './SwipeDismissModal';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 type StatusBarStyle = 'dark-content' | 'light-content';
 type ColorPalette = {
@@ -22,7 +27,6 @@ type ColorPalette = {
   statusBar: StatusBarStyle;
 };
 
-// Colors matching the SpayV2 styling
 const lightC: ColorPalette = {
   bg: '#FFFFFF',
   card: '#FFFFFF',
@@ -66,25 +70,28 @@ export default function ExitConfirmationModal({
 }: ExitConfirmationModalProps) {
   const { isDarkMode } = useContext(ThemeContext);
   const c = isDarkMode ? darkC : lightC;
-  const insets = useSafeAreaInsets();
 
   return (
-    <Portal>
-      <Modal
-        visible={visible}
-        onDismiss={onDismiss}
-        contentContainerStyle={[
-          styles.modalContainer,
-          {
-            backgroundColor: c.card,
-            borderColor: c.border,
-            paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16,
-          },
-        ]}
-        style={styles.modalOverlay}
-      >
-        <SwipeDismissModal onDismiss={onDismiss}>
-          <View>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onDismiss}
+    >
+      <SafeAreaProvider>
+      <Pressable style={[styles.backdrop, { backgroundColor: c.modalBg }]} onPress={onDismiss}>
+        <Pressable
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: c.card,
+              borderColor: c.border,
+            },
+          ]}
+          onPress={() => {}}
+        >
+          <SafeAreaView edges={['bottom']} style={styles.safeAreaSheet}>
             <View style={styles.dragIndicator} />
 
             <View style={styles.content}>
@@ -101,45 +108,51 @@ export default function ExitConfirmationModal({
               </Text>
 
               <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                  style={[
+                <Pressable
+                  style={({ pressed }) => [
                     styles.button,
                     styles.cancelButton,
-                    { backgroundColor: c.pillBg, borderColor: c.border },
+                    { backgroundColor: c.pillBg, borderColor: c.border, opacity: pressed ? 0.7 : 1 },
                   ]}
                   onPress={onDismiss}
-                  activeOpacity={0.7}
                 >
                   <Text style={[styles.buttonText, { color: c.textPrimary }]}>Cancel</Text>
-                </TouchableOpacity>
+                </Pressable>
 
-                <TouchableOpacity
-                  style={[styles.button, styles.confirmButton, { backgroundColor: c.accent }]}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.confirmButton,
+                    { backgroundColor: c.accent, opacity: pressed ? 0.7 : 1 },
+                  ]}
                   onPress={onConfirm}
-                  activeOpacity={0.7}
                 >
                   <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>Exit App</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
             </View>
-          </View>
-        </SwipeDismissModal>
-      </Modal>
-    </Portal>
+          </SafeAreaView>
+        </Pressable>
+      </Pressable>
+      </SafeAreaProvider>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  backdrop: {
+    flex: 1,
     justifyContent: 'flex-end',
-    margin: 0,
   },
-  modalContainer: {
+  sheet: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
     borderBottomWidth: 0,
-    marginHorizontal: 0,
+  },
+  safeAreaSheet: {
+    width: '100%',
+    paddingBottom: 16,
   },
   dragIndicator: {
     width: 40,
@@ -194,9 +207,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     borderWidth: 1,
   },
-  confirmButton: {
-    // Accent color button
-  },
+  confirmButton: {},
   buttonText: {
     fontSize: 16,
     fontFamily: 'Outfit-Bold',

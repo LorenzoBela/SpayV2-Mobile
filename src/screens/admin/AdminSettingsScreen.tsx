@@ -51,6 +51,8 @@ import {
   downloadAndInstallConfiguredApkAsync,
   getAppUpdateRuntimeInfo,
   type AppUpdateRuntimeInfo,
+  getDownloadedApkVersionCode,
+  checkForConfiguredApkUpdateAsync,
 } from '../../services/appUpdateService';
 
 const BIOMETRIC_EMAIL_KEY = 'biometric_email';
@@ -101,6 +103,17 @@ export default function AdminSettingsScreen() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [installingApk, setInstallingApk] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateRuntimeInfo>(() => getAppUpdateRuntimeInfo());
+  const [isApkDownloaded, setIsApkDownloaded] = useState(false);
+
+  const checkDownloadedApkState = async () => {
+    try {
+      const downloadedVersion = await getDownloadedApkVersionCode();
+      const update = await checkForConfiguredApkUpdateAsync();
+      setIsApkDownloaded(!!downloadedVersion && downloadedVersion === update.latestVersionCode);
+    } catch {
+      setIsApkDownloaded(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -169,6 +182,8 @@ export default function AdminSettingsScreen() {
 
       const savedEmail = await SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY);
       setBiometricsEnabled(!!savedEmail);
+
+      await checkDownloadedApkState();
     } catch (e) {
       console.warn('Failed to load settings:', e);
     } finally {
@@ -362,6 +377,7 @@ export default function AdminSettingsScreen() {
     try {
       await checkForUpdatesAndPromptAsync(true);
       setUpdateInfo(getAppUpdateRuntimeInfo());
+      await checkDownloadedApkState();
     } finally {
       setCheckingUpdates(false);
     }
@@ -371,8 +387,9 @@ export default function AdminSettingsScreen() {
     setInstallingApk(true);
     try {
       await downloadAndInstallConfiguredApkAsync();
+      await checkDownloadedApkState();
     } catch (error: any) {
-      PremiumAlert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
+      console.warn('APK download failed:', error);
     } finally {
       setInstallingApk(false);
     }
@@ -878,7 +895,9 @@ export default function AdminSettingsScreen() {
               ) : (
                 <>
                   <Download size={15} color={t.accent} />
-                  <Text style={[styles.updateSecondaryBtnText, { color: t.accent }]}>Download Latest APK</Text>
+                  <Text style={[styles.updateSecondaryBtnText, { color: t.accent }]}>
+                    {isApkDownloaded ? 'Install Latest APK' : 'Download Latest APK'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>

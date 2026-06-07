@@ -104,7 +104,16 @@ export const checkForConfiguredApkUpdateAsync = async (): Promise<NativeApkUpdat
     throw new Error(`APK manifest request failed (${response.status})`);
   }
 
-  const manifest = (await response.json()) as AndroidApkManifest;
+  const text = await response.text();
+  const cleanText = text.startsWith('\uFEFF') ? text.slice(1) : text;
+
+  let manifest: AndroidApkManifest;
+  try {
+    manifest = JSON.parse(cleanText) as AndroidApkManifest;
+  } catch (parseError) {
+    throw new Error('APK manifest was not valid JSON metadata.');
+  }
+
   const latestVersionCode = parseVersionCode(manifest.versionCode);
   const apkUrl = typeof manifest.apkUrl === 'string' && manifest.apkUrl.trim()
     ? manifest.apkUrl.trim()
@@ -195,10 +204,47 @@ export const closeAppForDownloadedUpdate = async () => {
         BackHandler.exitApp();
       }
     }
+    console.warn('[appUpdateService] reloadAsync failed, falling back to exitApp:', error);
+    if (Platform.OS === 'android') {
+      try {
+        RNExitApp.exitApp();
+      } catch (exitError) {
+        BackHandler.exitApp();
+      }
+    }
   }
 };
 
-export const downloadAndInstallConfiguredApkAsync = async (apkUrlOverride?: string | null) => {
+const getLocalApkUri = () => `${FileSystem.cacheDirectory}spay-latest.apk`;
+const getLocalMetadataUri = () => `${FileSystem.cacheDirectory}spay-latest-metadata.json`;
+
+export const getDownloadedApkVersionCode = async (): Promise<number | null> => {
+  try {
+    const apkUri = getLocalApkUri();
+    const metadataUri = getLocalMetadataUri();
+
+    const apkInfo = await FileSystem.getInfoAsync(apkUri);
+    if (!apkInfo.exists || (typeof apkInfo.size === 'number' && apkInfo.size < MIN_APK_BYTES)) {
+      return null;
+    }
+
+    const metadataInfo = await FileSystem.getInfoAsync(metadataUri);
+    if (!metadataInfo.exists) {
+      return null;
+    }
+
+    const metadataText = await FileSystem.readAsStringAsync(metadataUri);
+    const metadata = JSON.parse(metadataText);
+    return typeof metadata.versionCode === 'number' ? metadata.versionCode : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+export const downloadAndInstallConfiguredApkAsync = async (
+  apkUrlOverride?: string | null,
+  latestVersionCode?: number | null
+) => {
   const apkUrl = apkUrlOverride || getAppUpdateRuntimeInfo().apkUrl;
   if (Platform.OS !== 'android') {
     throw new Error('APK installation is only available on Android.');
@@ -207,9 +253,74 @@ export const downloadAndInstallConfiguredApkAsync = async (apkUrlOverride?: stri
     throw new Error('No Android APK URL is configured.');
   }
 
+  const targetUri = getLocalApkUri();
+  const metadataUri = getLocalMetadataUri();
+
+  let targetVersionCode = latestVersionCode;
+  if (!targetVersionCode) {
+    try {
+      const update = await checkForConfiguredApkUpdateAsync();
+      targetVersionCode = update.latestVersionCode;
+    } catch {
+      // Ignore and proceed to download
+    }
+  }
+
+  if (targetVersionCode) {
+    const downloadedVersion = await getDownloadedApkVersionCode();
+    if (downloadedVersion === targetVersionCode) {
+      // Already fully downloaded! Just open the installer and return.
+      const contentUri = await FileSystem.getContentUriAsync(targetUri);
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        type: APK_MIME_TYPE,
+        flags: FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK,
+      });
+      return;
+    }
+  }
+
+  // Show progress modal at 0%
+  PremiumAlert.show({
+    title: 'Downloading APK...',
+    message: 'Please wait while the update is downloaded. This may take a moment depending on your connection.',
+    buttons: [],
+    options: { cancelable: false },
+    isDownloading: true,
+    progress: 0,
+  });
+
   try {
-    const targetUri = `${FileSystem.cacheDirectory}spay-latest.apk`;
-    const downloaded = await FileSystem.downloadAsync(apkUrl, targetUri);
+    // Clean up any existing file before downloading to prevent conflicts
+    const fileInfoBefore = await FileSystem.getInfoAsync(targetUri);
+    if (fileInfoBefore.exists) {
+      await FileSystem.deleteAsync(targetUri, { idempotent: true });
+    }
+
+    const downloadResumable = FileSystem.createDownloadResumable(
+      apkUrl,
+      targetUri,
+      {},
+      (downloadProgress) => {
+        const total = downloadProgress.totalBytesExpectedToWrite || 57000000; // Fallback to 57MB estimation if header missing
+        const progress = Math.min(1, Math.max(0, downloadProgress.totalBytesWritten / total));
+        
+        PremiumAlert.show({
+          title: 'Downloading APK...',
+          message: 'Please wait while the update is downloaded. This may take a moment depending on your connection.',
+          buttons: [],
+          options: { cancelable: false },
+          isDownloading: true,
+          progress: progress,
+        });
+      }
+    );
+
+    const downloaded = await downloadResumable.downloadAsync();
+    if (!downloaded) {
+      throw new Error('Download was cancelled or failed.');
+    }
+
     const status = typeof downloaded.status === 'number' ? downloaded.status : 200;
     const contentType = Object.entries(downloaded.headers ?? {}).find(
       ([key]) => key.toLowerCase() === 'content-type',
@@ -231,6 +342,17 @@ export const downloadAndInstallConfiguredApkAsync = async (apkUrlOverride?: stri
       throw new Error('APK download was incomplete.');
     }
 
+    // Write version metadata on successful download
+    if (targetVersionCode) {
+      await FileSystem.writeAsStringAsync(
+        metadataUri,
+        JSON.stringify({ versionCode: targetVersionCode })
+      ).catch(() => undefined);
+    }
+
+    // Dismiss download dialog and open installer
+    PremiumAlert.dismiss();
+
     const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
 
     await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
@@ -238,37 +360,63 @@ export const downloadAndInstallConfiguredApkAsync = async (apkUrlOverride?: stri
       type: APK_MIME_TYPE,
       flags: FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK,
     });
-  } catch (error) {
-    await Linking.openURL(apkUrl);
+  } catch (error: any) {
+    PremiumAlert.show({
+      title: 'Download Failed',
+      message: error?.message || 'Could not complete the APK download.',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => PremiumAlert.dismiss() },
+        {
+          text: 'Open in Browser',
+          onPress: async () => {
+            await Linking.openURL(apkUrl);
+            PremiumAlert.dismiss();
+          }
+        }
+      ],
+      icon: 'error'
+    });
     throw error;
   }
 };
 
-const showApkFallbackPrompt = (message: string, apkUrlOverride?: string | null) => {
+const showApkFallbackPrompt = (
+  message: string,
+  apkUrlOverride?: string | null,
+  latestVersionCode?: number | null,
+  isAlreadyDownloaded = false
+) => {
   if (promptVisible) return;
   promptVisible = true;
 
-  PremiumAlert.alert('Download latest app', message, [
-    {
-      text: 'Later',
-      style: 'cancel',
-      onPress: () => {
-        promptVisible = false;
-      },
-    },
-    {
-      text: 'Download APK',
-      onPress: async () => {
-        try {
-          await downloadAndInstallConfiguredApkAsync(apkUrlOverride);
-        } catch (error: any) {
-          PremiumAlert.alert('APK installer opened', error?.message || 'Use the browser download if Android blocks direct install.');
-        } finally {
+  PremiumAlert.alert(
+    isAlreadyDownloaded ? 'Install latest app' : 'Download latest app',
+    message,
+    [
+      {
+        text: 'Later',
+        style: 'cancel',
+        onPress: () => {
           promptVisible = false;
-        }
+        },
       },
-    },
-  ]);
+      {
+        text: isAlreadyDownloaded ? 'Install Now' : 'Download APK',
+        onPress: async () => {
+          try {
+            await downloadAndInstallConfiguredApkAsync(apkUrlOverride, latestVersionCode);
+          } catch (error: any) {
+            PremiumAlert.alert(
+              isAlreadyDownloaded ? 'APK installation failed' : 'APK installer opened',
+              error?.message || 'Use the browser download if Android blocks direct install.'
+            );
+          } finally {
+            promptVisible = false;
+          }
+        },
+      },
+    ]
+  );
 };
 
 export const checkForConfiguredApkUpdateAndPromptAsync = async (manual = false) => {
@@ -278,9 +426,18 @@ export const checkForConfiguredApkUpdateAndPromptAsync = async (manual = false) 
       const versionLabel = update.versionName
         ? `Version ${update.versionName}`
         : `Build ${update.latestVersionCode}`;
+
+      // Verify if the latest version is already fully downloaded
+      const downloadedVersion = await getDownloadedApkVersionCode();
+      const isAlreadyDownloaded = !!downloadedVersion && downloadedVersion === update.latestVersionCode;
+
       showApkFallbackPrompt(
-        `${versionLabel} is available from GitHub. Download the latest Android build and confirm installation when Android opens the installer.`,
+        isAlreadyDownloaded
+          ? `${versionLabel} update has already been downloaded. Install it now to apply the updates.`
+          : `${versionLabel} is available from GitHub. Download the latest Android build and confirm installation when Android opens the installer.`,
         update.apkUrl,
+        update.latestVersionCode,
+        isAlreadyDownloaded
       );
     } else if (manual && Platform.OS === 'android' && getAppUpdateRuntimeInfo().apkUrl) {
       PremiumAlert.alert(
@@ -347,7 +504,9 @@ export const checkForUpdatesAndPromptAsync = async (manual = false): Promise<App
     await checkForConfiguredApkUpdateAndPromptAsync(true).catch(() => undefined);
   } else if ((result.status === 'disabled' || result.status === 'error') && result.canInstallApk) {
     await checkForConfiguredApkUpdateAndPromptAsync(manual).catch(() => {
-      showApkFallbackPrompt(`${result.message} Download the latest Android build instead.`);
+      if (!manual) {
+        showApkFallbackPrompt(`${result.message} Download the latest Android build instead.`);
+      }
     });
   } else if (manual) {
     PremiumAlert.alert(
