@@ -814,6 +814,9 @@ export default function AdminDashboardScreen() {
               <Text style={styles.statCardDesc} numberOfLines={1}>
                 Out: {formatCurrency(stats.outstandingBalance)} ({activeExposurePercent}% Utilized)
               </Text>
+              <Text style={styles.statCardDesc} numberOfLines={1}>
+                Rem: {formatCurrency(Math.max(0, stats.activeLimitExposure - stats.outstandingBalance))} ({Math.max(0, 100 - activeExposurePercent)}% Free)
+              </Text>
               <View style={styles.statProgressTrack}>
                 <View style={[styles.statProgressBar, { width: `${activeExposurePercent}%`, backgroundColor: '#ee4d2d' }]} />
               </View>

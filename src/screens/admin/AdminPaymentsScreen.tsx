@@ -1492,7 +1492,6 @@ export default function AdminPaymentsScreen() {
                   { key: 'pending', label: 'Pending' },
                   { key: 'paid', label: 'Cleared' },
                   { key: 'overdue', label: 'Overdue' },
-                  { key: 'proof', label: 'Requires Review' },
                 ].map((tab) => (
                   <TouchableOpacity
                     key={tab.key}

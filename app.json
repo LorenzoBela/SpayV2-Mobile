@@ -18,7 +18,7 @@
                          },
                  "android":  {
                                  "package":  "com.cerberuzz91141.mobile",
-                                 "versionCode":  9,
+                                 "versionCode":  11,
                                  "googleServicesFile":  "./google-services.json",
                                  "adaptiveIcon":  {
                                                       "foregroundImage":  "./assets/android-icon-foreground.png",
@@ -71,6 +71,7 @@
                                      "expo-splash-screen",
                                      {
                                          "image":  "./assets/splash-screen.png",
+                                         "imageWidth":  220,
                                          "resizeMode":  "contain",
                                          "backgroundColor":  "#0b0f19"
                                      }

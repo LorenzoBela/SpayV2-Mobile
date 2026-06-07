@@ -28,11 +28,11 @@ import {
   ShieldCheck,
   Headset,
   PlusCircle,
-  FileText,
   LogOut,
   X,
   Send,
   CreditCard,
+  ShoppingBag,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -896,19 +896,7 @@ export default function DashboardScreen() {
     fetchDashboardData();
   };
 
-  // Quick Action Triggers
-  const handleUploadProof = () => {
-    PremiumAlert.alert(
-      'Upload Proof of Payment',
-      'Select active payment to attach proof of ledger transfer.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Attach Proof Photo', onPress: () => {
-          PremiumAlert.alert('Success', 'Proof successfully uploaded. Verification is being processed by administration.');
-        }}
-      ]
-    );
-  };
+
 
   // SVGs Calculations
   const globalCreditPercentage = globalCreditLimit > 0 ? (globalAvailableCredit / globalCreditLimit) * 100 : 0;
@@ -1372,14 +1360,14 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.gridItem, { width: quickActionWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-            onPress={handleUploadProof}
+            onPress={() => navigation.navigate('Orders')}
             activeOpacity={0.85}
           >
             <View style={styles.gridIconFrame}>
-              <FileText size={20} color="#ee4d2d" />
+              <ShoppingBag size={20} color="#ee4d2d" />
             </View>
-            <Text style={[styles.gridItemTitle, { color: t.textPrimary }]}>Upload Proof</Text>
-            <Text style={[styles.gridItemDesc, { color: t.textSecondary }]}>Attach ledger receipts</Text>
+            <Text style={[styles.gridItemTitle, { color: t.textPrimary }]}>My Purchases</Text>
+            <Text style={[styles.gridItemDesc, { color: t.textSecondary }]}>Track active orders</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
