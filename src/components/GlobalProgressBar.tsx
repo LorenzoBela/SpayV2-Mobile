@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Dimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   interpolate,
@@ -18,6 +19,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
  */
 export const GlobalProgressBar: React.FC = () => {
   const { progress, opacity } = useProgressBar();
+  const insets = useSafeAreaInsets();
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -27,7 +29,7 @@ export const GlobalProgressBar: React.FC = () => {
   });
 
   return (
-    <View style={styles.container} pointerEvents="none">
+    <View style={[styles.container, { top: insets.top }]} pointerEvents="none">
       <Animated.View style={[styles.bar, animatedStyle]} />
     </View>
   );
