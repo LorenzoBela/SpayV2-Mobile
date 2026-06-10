@@ -1,3 +1,4 @@
+import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../utils/supabase';
 import {
   fetchNotifications,
@@ -18,20 +19,58 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
     const token = session?.access_token;
     const apiUrl = getApiUrl();
 
-    const response = await fetch(`${apiUrl}/api/admin/actions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        action,
-        ...bodyData,
-      }),
-    });
+    DeviceEventEmitter.emit('progress-start', action);
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/actions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action,
+          ...bodyData,
+        }),
+      });
 
-    const result = await response.json();
-    return result;
+      if (!response.body) {
+        const result = await response.json();
+        return result;
+      }
+
+      const reader = response.body.getReader();
+      const contentLength = response.headers.get('Content-Length');
+      const total = contentLength ? parseInt(contentLength, 10) : 0;
+      let loaded = 0;
+      const chunks: Uint8Array[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value);
+        loaded += value.length;
+
+        if (total > 0) {
+          const percent = loaded / total;
+          DeviceEventEmitter.emit('progress-update', { percent, action });
+        }
+      }
+
+      const allChunks = new Uint8Array(loaded);
+      let position = 0;
+      for (const chunk of chunks) {
+        allChunks.set(chunk, position);
+        position += chunk.length;
+      }
+
+      const decoder = new TextDecoder();
+      const text = decoder.decode(allChunks);
+      const result = JSON.parse(text);
+      return result;
+    } finally {
+      DeviceEventEmitter.emit('progress-finish', action);
+    }
   } catch (error: any) {
     console.error(`[adminService] Error running action ${action}:`, error);
     return { success: false, error: error?.message || 'Network error executing request.' };

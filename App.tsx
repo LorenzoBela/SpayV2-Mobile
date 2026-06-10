@@ -4,10 +4,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ProgressProvider } from './src/context/ProgressContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import PremiumLoader from './src/components/PremiumLoader';
 import AppUpdateGate from './src/components/AppUpdateGate';
 import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
+import GlobalProgressBar from './src/components/GlobalProgressBar';
 
 // Import Google Fonts loaders
 import {
@@ -73,11 +75,14 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <PaperProvider theme={darkTheme}>
-          <SafeAreaProvider>
-            <AppUpdateGate />
-            <AppNavigator />
-            <GlobalPremiumAlert />
-          </SafeAreaProvider>
+          <ProgressProvider>
+            <SafeAreaProvider>
+              <AppUpdateGate />
+              <AppNavigator />
+              <GlobalPremiumAlert />
+              <GlobalProgressBar />
+            </SafeAreaProvider>
+          </ProgressProvider>
         </PaperProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
