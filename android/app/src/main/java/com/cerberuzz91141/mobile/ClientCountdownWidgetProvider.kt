@@ -10,6 +10,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.view.View
 import android.widget.RemoteViews
@@ -22,6 +24,51 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_NEXT_MONTH = "com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"
         const val ACTION_PREV_MONTH = "com.cerberuzz91141.mobile.ACTION_PREV_MONTH"
+
+        private val handler = Handler(Looper.getMainLooper())
+        private var tickingRunnable: Runnable? = null
+        private var isTicking = false
+
+        fun startTicking(context: Context) {
+            if (isTicking) return
+            val appContext = context.applicationContext
+
+            tickingRunnable = object : Runnable {
+                override fun run() {
+                    val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+                    val isInteractive = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
+                        powerManager.isInteractive
+                    } else {
+                        @Suppress("DEPRECATION")
+                        powerManager.isScreenOn
+                    }
+
+                    if (!isInteractive) {
+                        stopTicking()
+                        return
+                    }
+
+                    val appWidgetManager = AppWidgetManager.getInstance(appContext)
+                    val componentName = ComponentName(appContext.packageName, ClientCountdownWidgetProvider::class.java.name)
+                    val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
+
+                    if (appWidgetIds.isNotEmpty()) {
+                        val provider = ClientCountdownWidgetProvider()
+                        provider.updateWidget(appContext, appWidgetManager, appWidgetIds)
+                        handler.postDelayed(this, 1000)
+                    } else {
+                        stopTicking()
+                    }
+                }
+            }
+            isTicking = true
+            handler.post(tickingRunnable!!)
+        }
+
+        fun stopTicking() {
+            tickingRunnable?.let { handler.removeCallbacks(it) }
+            isTicking = false
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -70,6 +117,22 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        updateWidget(context, appWidgetManager, appWidgetIds)
+        startTicking(context)
+        scheduleNextUpdate(context)
+    }
+
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        startTicking(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        stopTicking()
+    }
+
+    fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val prefs: SharedPreferences = context.getSharedPreferences("spay_widget_prefs", Context.MODE_PRIVATE)
         val dataStr = prefs.getString("spay_widget_data", "") ?: ""
         val selectedMonthIndex = prefs.getInt("client_selected_month_index", 0)
@@ -229,9 +292,6 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
-
-        // Schedule next update
-        scheduleNextUpdate(context)
     }
 
     private fun scheduleNextUpdate(context: Context) {
