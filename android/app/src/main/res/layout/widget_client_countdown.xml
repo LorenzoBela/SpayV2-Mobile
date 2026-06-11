@@ -26,8 +26,7 @@
                 android:layout_height="28dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_media_previous"
-                android:contentDescription="Previous Month"
-                android:tint="#FFFFFF" />
+                android:contentDescription="Previous Month" />
 
             <TextView
                 android:id="@+id/txt_billing_cycle"
@@ -46,17 +45,15 @@
                 android:layout_height="28dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_media_next"
-                android:contentDescription="Next Month"
-                android:tint="#FFFFFF" />
+                android:contentDescription="Next Month" />
         </LinearLayout>
 
         <!-- Offline Warning Dot -->
-        <View
+        <TextView
             android:id="@+id/offline_dot"
             android:layout_width="8dp"
             android:layout_height="8dp"
-            android:background="@android:drawable/presence_offline"
-            android:backgroundTint="#ff3b30"
+            android:background="@drawable/offline_dot_red"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:visibility="gone" />
@@ -297,7 +294,7 @@
     </LinearLayout>
 
     <!-- Vertical Spacer to push footer to the bottom -->
-    <View
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />

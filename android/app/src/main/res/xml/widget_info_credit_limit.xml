@@ -5,6 +5,6 @@
     android:minResizeWidth="250dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_credit_limit"
+    android:previewLayout="@layout/widget_credit_limit"
     android:resizeMode="horizontal"
-    android:widgetCategory="home_screen"
-    android:previewLayout="@layout/widget_credit_limit" />
+    android:widgetCategory="home_screen" />

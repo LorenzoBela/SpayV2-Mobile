@@ -23,12 +23,11 @@
             android:letterSpacing="0.1"
             android:layout_alignParentStart="true" />
 
-        <View
+        <TextView
             android:id="@+id/offline_dot"
             android:layout_width="6dp"
             android:layout_height="6dp"
-            android:background="@android:drawable/presence_offline"
-            android:backgroundTint="#ff3b30"
+            android:background="@drawable/offline_dot_red"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:visibility="gone" />
@@ -41,12 +40,11 @@
         android:layout_marginBottom="12dp">
 
         <!-- Mock Chip -->
-        <View
+        <TextView
             android:id="@+id/card_chip"
             android:layout_width="28dp"
             android:layout_height="20dp"
-            android:background="@drawable/digit_card_background"
-            android:backgroundTint="#d4af37"
+            android:background="@drawable/chip_gold_background"
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true" />
 

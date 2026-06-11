@@ -6,6 +6,6 @@
     android:minResizeHeight="110dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_client_countdown"
+    android:previewLayout="@layout/widget_client_countdown"
     android:resizeMode="horizontal|vertical"
-    android:widgetCategory="home_screen"
-    android:previewLayout="@layout/widget_client_countdown" />
+    android:widgetCategory="home_screen" />

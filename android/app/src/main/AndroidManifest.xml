@@ -39,7 +39,7 @@
         <data android:scheme="exp+mobile"/>
       </intent-filter>
     </activity>
-    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="false">
+    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"/>
@@ -47,43 +47,43 @@
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_countdown"/>
     </receiver>
-    <receiver android:name=".CreditLimitWidgetProvider" android:exported="false">
+    <receiver android:name=".CreditLimitWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_credit_limit"/>
     </receiver>
-    <receiver android:name=".NootAiWidgetProvider" android:exported="false">
+    <receiver android:name=".NootAiWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_noot_ai"/>
     </receiver>
-    <receiver android:name=".ClientTransactionsWidgetProvider" android:exported="false">
+    <receiver android:name=".ClientTransactionsWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_transactions"/>
     </receiver>
-    <receiver android:name=".ClientHealthWidgetProvider" android:exported="false">
+    <receiver android:name=".ClientHealthWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_health"/>
     </receiver>
-    <receiver android:name=".ClientUpcomingWidgetProvider" android:exported="false">
+    <receiver android:name=".ClientUpcomingWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_upcoming"/>
     </receiver>
-    <receiver android:name=".ClientInboxWidgetProvider" android:exported="false">
+    <receiver android:name=".ClientInboxWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_inbox"/>
     </receiver>
-    <receiver android:name=".AdminCountdownWidgetProvider" android:exported="false">
+    <receiver android:name=".AdminCountdownWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_NEXT_MONTH"/>
@@ -91,25 +91,25 @@
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_countdown"/>
     </receiver>
-    <receiver android:name=".AdminExposureWidgetProvider" android:exported="false">
+    <receiver android:name=".AdminExposureWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_exposure"/>
     </receiver>
-    <receiver android:name=".AdminRemindersWidgetProvider" android:exported="false">
+    <receiver android:name=".AdminRemindersWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_reminders"/>
     </receiver>
-    <receiver android:name=".AdminStatsWidgetProvider" android:exported="false">
+    <receiver android:name=".AdminStatsWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_stats"/>
     </receiver>
-    <receiver android:name=".AdminAuditWidgetProvider" android:exported="false">
+    <receiver android:name=".AdminAuditWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
       </intent-filter>

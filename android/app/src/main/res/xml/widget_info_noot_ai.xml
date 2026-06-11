@@ -4,5 +4,5 @@
     android:minHeight="110dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_noot_ai"
-    android:widgetCategory="home_screen"
-    android:previewLayout="@layout/widget_noot_ai" />
+    android:previewLayout="@layout/widget_noot_ai"
+    android:widgetCategory="home_screen" />

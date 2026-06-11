@@ -6,6 +6,6 @@
     android:minResizeHeight="110dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_admin_audit"
+    android:previewLayout="@layout/widget_admin_audit"
     android:resizeMode="horizontal|vertical"
-    android:widgetCategory="home_screen"
-    android:previewLayout="@layout/widget_admin_audit" />
+    android:widgetCategory="home_screen" />

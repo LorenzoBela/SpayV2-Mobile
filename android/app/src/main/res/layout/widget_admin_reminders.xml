@@ -22,12 +22,11 @@
             android:letterSpacing="0.1"
             android:layout_alignParentStart="true" />
 
-        <View
+        <TextView
             android:id="@+id/offline_dot"
             android:layout_width="6dp"
             android:layout_height="6dp"
-            android:background="@android:drawable/presence_offline"
-            android:backgroundTint="#ff3b30"
+            android:background="@drawable/offline_dot_red"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:visibility="gone" />
@@ -62,12 +61,11 @@
             android:layout_height="wrap_content"
             android:paddingVertical="8dp">
 
-            <View
+            <TextView
                 android:id="@+id/indicator_row_1"
                 android:layout_width="4dp"
                 android:layout_height="24dp"
-                android:background="@drawable/digit_card_background"
-                android:backgroundTint="#ff3b30"
+                android:background="@drawable/offline_dot_red"
                 android:layout_alignParentStart="true"
                 android:layout_centerVertical="true" />
 
@@ -109,12 +107,11 @@
             android:layout_height="wrap_content"
             android:paddingVertical="8dp">
 
-            <View
+            <TextView
                 android:id="@+id/indicator_row_2"
                 android:layout_width="4dp"
                 android:layout_height="24dp"
-                android:background="@drawable/digit_card_background"
-                android:backgroundTint="#ff9500"
+                android:background="@drawable/priority_dot_amber"
                 android:layout_alignParentStart="true"
                 android:layout_centerVertical="true" />
 
@@ -156,12 +153,11 @@
             android:layout_height="wrap_content"
             android:paddingVertical="8dp">
 
-            <View
+            <TextView
                 android:id="@+id/indicator_row_3"
                 android:layout_width="4dp"
                 android:layout_height="24dp"
-                android:background="@drawable/digit_card_background"
-                android:backgroundTint="#34c759"
+                android:background="@drawable/priority_dot_green"
                 android:layout_alignParentStart="true"
                 android:layout_centerVertical="true" />
 

@@ -969,6 +969,106 @@ function Invoke-FirebaseMessagingManifestFix {
 }
 Invoke-FirebaseMessagingManifestFix -ProjectRoot $PROJECT_ROOT
 
+function Invoke-WidgetManifestInjection {
+    param([string]$ProjectRoot)
+
+    $manifestPath = Join-Path $ProjectRoot "android\app\src\main\AndroidManifest.xml"
+    if (-not (Test-Path $manifestPath)) { return }
+
+    $raw = Get-Content -Path $manifestPath -Raw
+
+    # Skip if widget receivers are already present
+    if ($raw -match 'ClientCountdownWidgetProvider') {
+        Write-Host "[OK] Widget receivers already present in AndroidManifest.xml" -ForegroundColor Green
+        return
+    }
+
+    $widgetReceivers = @'
+    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_PREV_MONTH"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_countdown"/>
+    </receiver>
+    <receiver android:name=".CreditLimitWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_credit_limit"/>
+    </receiver>
+    <receiver android:name=".NootAiWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_noot_ai"/>
+    </receiver>
+    <receiver android:name=".ClientTransactionsWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_transactions"/>
+    </receiver>
+    <receiver android:name=".ClientHealthWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_health"/>
+    </receiver>
+    <receiver android:name=".ClientUpcomingWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_upcoming"/>
+    </receiver>
+    <receiver android:name=".ClientInboxWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_inbox"/>
+    </receiver>
+    <receiver android:name=".AdminCountdownWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_NEXT_MONTH"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_PREV_MONTH"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_countdown"/>
+    </receiver>
+    <receiver android:name=".AdminExposureWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_exposure"/>
+    </receiver>
+    <receiver android:name=".AdminRemindersWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_reminders"/>
+    </receiver>
+    <receiver android:name=".AdminStatsWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_stats"/>
+    </receiver>
+    <receiver android:name=".AdminAuditWidgetProvider" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_audit"/>
+    </receiver>
+'@
+
+    # Inject before </application>
+    $raw = $raw -replace '</application>', "$widgetReceivers`n  </application>"
+    Set-Content -Path $manifestPath -Value $raw
+    Write-Host "[OK] Injected 12 widget receivers into AndroidManifest.xml" -ForegroundColor Green
+}
+Invoke-WidgetManifestInjection -ProjectRoot $PROJECT_ROOT
+
 # Apply existing patches for RN background actions 
 $bgActionsTask = Join-Path $PROJECT_ROOT "node_modules\react-native-background-actions\android\src\main\java\com\asterinet\react\bgactions\RNBackgroundActionsTask.java"
 if (Test-Path $bgActionsTask) {
@@ -1017,6 +1117,8 @@ $allChecksPass = (Test-FileContains -Path $screensCmakeCheck -Pattern 'c\+\+_sha
 $androidManifestPath = Join-Path $ANDROID_DIR "app\src\main\AndroidManifest.xml"
 $allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'expo\.modules\.updates\.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY') -and $allChecksPass
 $allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern "expo-channel-name.*$([regex]::Escape($OTA_CHANNEL))") -and $allChecksPass
+$allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'ClientCountdownWidgetProvider') -and $allChecksPass
+$allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'CreditLimitWidgetProvider') -and $allChecksPass
 
 if (-not $allChecksPass) {
     Write-Host "`n[ERROR] Critical build patches are missing. Build will likely fail." -ForegroundColor Red

@@ -34,8 +34,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
-                android:background="@drawable/digit_card_background"
-                android:backgroundTint="#ee4d2d"
+                android:background="@drawable/unread_dot_orange"
                 android:paddingHorizontal="6dp"
                 android:paddingVertical="1dp"
                 android:text="0 NEW"
@@ -45,12 +44,11 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <View
+        <TextView
             android:id="@+id/offline_dot"
             android:layout_width="6dp"
             android:layout_height="6dp"
-            android:background="@android:drawable/presence_offline"
-            android:backgroundTint="#ff3b30"
+            android:background="@drawable/offline_dot_red"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:visibility="gone" />
