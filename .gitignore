@@ -58,3 +58,9 @@ apk_backup/
 # Editor & AI settings
 .claude/
 
+# Allow tracking native widget files
+!/android/app/src/main/java/com/cerberuzz91141/mobile/*WidgetProvider.kt
+!/android/app/src/main/java/com/cerberuzz91141/mobile/SpayWidgetModule.kt
+!/android/app/src/main/java/com/cerberuzz91141/mobile/SpayWidgetPackage.kt
+!/android/app/src/main/res/layout/widget_*.xml
+!/android/app/src/main/res/xml/widget_info_*.xml

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
+import { syncWidgetData } from '../utils/widgetSync';
 
 /**
  * Custom hook that subscribes to realtime changes in specified Supabase tables.
@@ -26,6 +27,7 @@ export function useRealtimeSync(
       if (state.isConnected && state.isInternetReachable !== false) {
         console.log('[useRealtimeSync] Network status is ONLINE. Invalidating all active queries to ensure data consistency.');
         queryClient.invalidateQueries();
+        void syncWidgetData();
       }
     });
 
@@ -55,6 +57,9 @@ export function useRealtimeSync(
         if (onSyncRef.current) {
           onSyncRef.current();
         }
+
+        // Sync home screen widgets with updated data
+        void syncWidgetData();
       }, 300);
     };
 
