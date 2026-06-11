@@ -5,4 +5,6 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_noot_ai"
     android:previewLayout="@layout/widget_noot_ai"
+    android:previewImage="@drawable/widget_preview_noot_ai"
+    android:description="@string/widget_noot_ai_description"
     android:widgetCategory="home_screen" />

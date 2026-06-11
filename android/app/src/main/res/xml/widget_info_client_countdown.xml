@@ -7,5 +7,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_client_countdown"
     android:previewLayout="@layout/widget_client_countdown"
+    android:previewImage="@drawable/widget_preview_client_countdown"
+    android:description="@string/widget_client_countdown_description"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

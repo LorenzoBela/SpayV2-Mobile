@@ -59,6 +59,218 @@ export async function syncWidgetData() {
       baselineLimit: globalLimit,
     };
 
+    // Client specific queries (run for everyone, including admins)
+    try {
+      const { data: dbOrders } = await supabase
+        .from('orders')
+        .select('id, item_name, amount, installment_months, order_date, is_paid')
+        .eq('user_id', profileId);
+
+      let billingCycles: any[] = [];
+      let upcomingInstallments: any[] = [];
+      let recentTransactions: any[] = [];
+      let repaymentStreak = 0;
+      let creditHealthScore = 85;
+      let healthTier = 'Bronze';
+      let hasOverdue = false;
+      let nextDueDate: string | null = null;
+
+      if (dbOrders && dbOrders.length > 0) {
+        const orderIds = dbOrders.map(o => o.id);
+        const { data: dbPayments } = await supabase
+          .from('payments')
+          .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
+          .in('order_id', orderIds)
+          .order('due_date', { ascending: true });
+
+        if (dbPayments && dbPayments.length > 0) {
+          const ordersMap = new Map();
+          dbOrders.forEach(o => ordersMap.set(o.id, o));
+
+          // Group unpaid payments by billing month
+          const unpaidGroups = new Map<string, any>();
+          
+          dbPayments.forEach(p => {
+            if (!p.is_paid) {
+              const date = new Date(p.due_date);
+              const monthKey = dayjs(date).format('MMMM YYYY');
+              const order = ordersMap.get(p.order_id);
+              
+              if (!unpaidGroups.has(monthKey)) {
+                unpaidGroups.set(monthKey, {
+                  monthName: monthKey,
+                  amountDue: 0.0,
+                  isOverdue: date.getTime() < Date.now(),
+                  dueDate: p.due_date,
+                  items: []
+                });
+              }
+
+              const group = unpaidGroups.get(monthKey);
+              group.amountDue += parseFloat(p.amount_due);
+              if (date.getTime() < Date.now()) {
+                group.isOverdue = true;
+                hasOverdue = true;
+              }
+              if (group.items.length < 3) {
+                group.items.push({
+                  desc: order?.item_name || 'Installment Payment',
+                  amount: parseFloat(p.amount_due)
+                });
+              }
+            }
+          });
+
+          const sortedGroups = Array.from(unpaidGroups.values()).sort((a, b) => {
+            return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          });
+
+          billingCycles = sortedGroups.map(g => {
+            const now = new Date();
+            const target = new Date(g.dueDate);
+            const diffMs = target.getTime() - now.getTime();
+            
+            let days = 0;
+            let hours = 0;
+            let minutes = 0;
+            let seconds = 0;
+
+            if (diffMs > 0) {
+              days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+              hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+              minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+              seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+            }
+
+            if (!nextDueDate) {
+              nextDueDate = g.monthName;
+            }
+
+            return {
+              monthName: g.monthName,
+              amountDue: g.amountDue,
+              isOverdue: g.isOverdue,
+              targetTimestamp: target.getTime(),
+              days,
+              hours,
+              minutes,
+              seconds,
+              items: g.items
+            };
+          });
+
+          // Map Upcoming Installments (first 3 unpaid installments)
+          const unpaidList = dbPayments.filter(p => !p.is_paid).slice(0, 3);
+          upcomingInstallments = unpaidList.map(inst => {
+            const order = ordersMap.get(inst.order_id);
+            const dueDate = new Date(inst.due_date);
+            const now = new Date();
+            const isOverdue = dueDate.getTime() < now.getTime();
+            const diffMs = Math.abs(dueDate.getTime() - now.getTime());
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+            const dueInfo = isOverdue 
+              ? `Overdue by ${diffDays} day${diffDays > 1 ? 's' : ''}` 
+              : `Due in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
+            
+            return {
+              desc: order?.item_name || 'Installment Payment',
+              dueInfo,
+              amount: parseFloat(inst.amount_due),
+              isOverdue
+            };
+          });
+
+          // Map Recent Transactions (last 3 paid payments)
+          const paidList = dbPayments
+            .filter(p => p.is_paid)
+            .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime())
+            .slice(0, 3);
+
+          recentTransactions = paidList.map(tx => {
+            const order = ordersMap.get(tx.order_id);
+            const dateText = tx.payment_date 
+              ? dayjs(tx.payment_date).format('MMM DD') 
+              : dayjs(tx.due_date).format('MMM DD');
+            return {
+              date: dateText,
+              desc: order?.item_name || 'Repayment',
+              amount: parseFloat(tx.amount_due),
+              status: 'Verified'
+            };
+          });
+
+          // Compute Streak & On-Time Rate
+          const allPaidPayments = dbPayments
+            .filter(p => p.is_paid)
+            .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime());
+
+          for (const p of allPaidPayments) {
+            if (p.payment_date && new Date(p.payment_date) <= new Date(p.due_date)) {
+              repaymentStreak++;
+            } else {
+              break;
+            }
+          }
+
+          const completedCount = allPaidPayments.length;
+          const onTimeCount = allPaidPayments.filter(
+            p => p.payment_date && new Date(p.payment_date) <= new Date(p.due_date)
+          ).length;
+          const onTimeRate = completedCount > 0 ? (onTimeCount / completedCount) * 100 : 100;
+          
+          creditHealthScore = Math.min(100, Math.round(50 + (onTimeRate * 0.4) + Math.min(repaymentStreak, 10)));
+          
+          if (creditHealthScore >= 95) healthTier = 'Diamond';
+          else if (creditHealthScore >= 88) healthTier = 'Platinum';
+          else if (creditHealthScore >= 75) healthTier = 'Gold';
+          else if (creditHealthScore >= 60) healthTier = 'Silver';
+          else healthTier = 'Bronze';
+        }
+      }
+
+      // Fetch unread notifications for the client
+      const { data: dbNotifications } = await supabase
+        .from('notifications')
+        .select('title, body, created_at, read_at')
+        .eq('user_id', profileId)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      const unreadCount = (dbNotifications || []).filter(n => !n.read_at).length;
+      const notifications = (dbNotifications || []).map(n => ({
+        title: n.title || 'Notification',
+        body: n.body || '',
+        time: dayjs(n.created_at).fromNow()
+      }));
+
+      // Mascot dynamic prompt recommendations
+      let nootPrompt = 'All accounts caught up. Have an amazing day!';
+      if (isOffline) {
+        nootPrompt = 'Offline: Showing cached balances. Check internet connection.';
+      } else if (hasOverdue) {
+        nootPrompt = 'Overdue Alert! Settle your outstanding bills to avoid score drops.';
+      } else if (globalAvailable < globalLimit * 0.15) {
+        nootPrompt = 'Limit Alert: Available credit is low. Manage budgets to stay safe!';
+      } else if (billingCycles.length > 0 && nextDueDate) {
+        nootPrompt = `Reminder: Next bill is due in ${nextDueDate}. Tap here to pay now!`;
+      }
+
+      payload = {
+        ...payload,
+        nootPrompt,
+        billingCycles,
+        recentTransactions,
+        creditHealthScore,
+        repaymentStreak,
+        healthTier,
+        upcomingInstallments,
+        unreadCount,
+        notifications
+      };
+    } catch (err) {
+      console.error('[widgetSync] Error fetching client database details:', err);
+    }
+
     if (role === 'admin') {
       try {
         // Fetch Admin Dashboard & Reminders via Next.js backend API
@@ -113,6 +325,7 @@ export async function syncWidgetData() {
             monthName: g.monthName,
             amountDue: parseFloat(g.totalDue),
             isOverdue: target.getTime() < now.getTime(),
+            targetTimestamp: target.getTime(),
             days,
             hours,
             minutes,
@@ -173,217 +386,6 @@ export async function syncWidgetData() {
         };
       } catch (err) {
         console.error('[widgetSync] Error fetching admin dashboard details:', err);
-      }
-    } else {
-      // Client specific queries
-      try {
-        const { data: dbOrders } = await supabase
-          .from('orders')
-          .select('id, item_name, amount, installment_months, order_date, is_paid')
-          .eq('user_id', profileId);
-
-        let billingCycles: any[] = [];
-        let upcomingInstallments: any[] = [];
-        let recentTransactions: any[] = [];
-        let repaymentStreak = 0;
-        let creditHealthScore = 85;
-        let healthTier = 'Bronze';
-        let hasOverdue = false;
-        let nextDueDate: string | null = null;
-
-        if (dbOrders && dbOrders.length > 0) {
-          const orderIds = dbOrders.map(o => o.id);
-          const { data: dbPayments } = await supabase
-            .from('payments')
-            .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
-            .in('order_id', orderIds)
-            .order('due_date', { ascending: true });
-
-          if (dbPayments && dbPayments.length > 0) {
-            const ordersMap = new Map();
-            dbOrders.forEach(o => ordersMap.set(o.id, o));
-
-            // Group unpaid payments by billing month
-            const unpaidGroups = new Map<string, any>();
-            
-            dbPayments.forEach(p => {
-              if (!p.is_paid) {
-                const date = new Date(p.due_date);
-                const monthKey = dayjs(date).format('MMMM YYYY');
-                const order = ordersMap.get(p.order_id);
-                
-                if (!unpaidGroups.has(monthKey)) {
-                  unpaidGroups.set(monthKey, {
-                    monthName: monthKey,
-                    amountDue: 0.0,
-                    isOverdue: date.getTime() < Date.now(),
-                    dueDate: p.due_date,
-                    items: []
-                  });
-                }
-
-                const group = unpaidGroups.get(monthKey);
-                group.amountDue += parseFloat(p.amount_due);
-                if (date.getTime() < Date.now()) {
-                  group.isOverdue = true;
-                  hasOverdue = true;
-                }
-                if (group.items.length < 3) {
-                  group.items.push({
-                    desc: order?.item_name || 'Installment Payment',
-                    amount: parseFloat(p.amount_due)
-                  });
-                }
-              }
-            });
-
-            const sortedGroups = Array.from(unpaidGroups.values()).sort((a, b) => {
-              return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-            });
-
-            billingCycles = sortedGroups.map(g => {
-              const now = new Date();
-              const target = new Date(g.dueDate);
-              const diffMs = target.getTime() - now.getTime();
-              
-              let days = 0;
-              let hours = 0;
-              let minutes = 0;
-              let seconds = 0;
-
-              if (diffMs > 0) {
-                days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-              }
-
-              if (!nextDueDate) {
-                nextDueDate = g.monthName;
-              }
-
-              return {
-                monthName: g.monthName,
-                amountDue: g.amountDue,
-                isOverdue: g.isOverdue,
-                days,
-                hours,
-                minutes,
-                seconds,
-                items: g.items
-              };
-            });
-
-            // Map Upcoming Installments (first 3 unpaid installments)
-            const unpaidList = dbPayments.filter(p => !p.is_paid).slice(0, 3);
-            upcomingInstallments = unpaidList.map(inst => {
-              const order = ordersMap.get(inst.order_id);
-              const dueDate = new Date(inst.due_date);
-              const now = new Date();
-              const isOverdue = dueDate.getTime() < now.getTime();
-              const diffMs = Math.abs(dueDate.getTime() - now.getTime());
-              const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-              const dueInfo = isOverdue 
-                ? `Overdue by ${diffDays} day${diffDays > 1 ? 's' : ''}` 
-                : `Due in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
-              
-              return {
-                desc: order?.item_name || 'Installment Payment',
-                dueInfo,
-                amount: parseFloat(inst.amount_due),
-                isOverdue
-              };
-            });
-
-            // Map Recent Transactions (last 3 paid payments)
-            const paidList = dbPayments
-              .filter(p => p.is_paid)
-              .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime())
-              .slice(0, 3);
-
-            recentTransactions = paidList.map(tx => {
-              const order = ordersMap.get(tx.order_id);
-              const dateText = tx.payment_date 
-                ? dayjs(tx.payment_date).format('MMM DD') 
-                : dayjs(tx.due_date).format('MMM DD');
-              return {
-                date: dateText,
-                desc: order?.item_name || 'Repayment',
-                amount: parseFloat(tx.amount_due),
-                status: 'Verified'
-              };
-            });
-
-            // Compute Streak & On-Time Rate
-            const allPaidPayments = dbPayments
-              .filter(p => p.is_paid)
-              .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime());
-
-            for (const p of allPaidPayments) {
-              if (p.payment_date && new Date(p.payment_date) <= new Date(p.due_date)) {
-                repaymentStreak++;
-              } else {
-                break;
-              }
-            }
-
-            const completedCount = allPaidPayments.length;
-            const onTimeCount = allPaidPayments.filter(
-              p => p.payment_date && new Date(p.payment_date) <= new Date(p.due_date)
-            ).length;
-            const onTimeRate = completedCount > 0 ? (onTimeCount / completedCount) * 100 : 100;
-            
-            creditHealthScore = Math.min(100, Math.round(50 + (onTimeRate * 0.4) + Math.min(repaymentStreak, 10)));
-            
-            if (creditHealthScore >= 95) healthTier = 'Diamond';
-            else if (creditHealthScore >= 88) healthTier = 'Platinum';
-            else if (creditHealthScore >= 75) healthTier = 'Gold';
-            else if (creditHealthScore >= 60) healthTier = 'Silver';
-            else healthTier = 'Bronze';
-          }
-        }
-
-        // Fetch unread notifications for the client
-        const { data: dbNotifications } = await supabase
-          .from('notifications')
-          .select('title, body, created_at, read_at')
-          .eq('user_id', profileId)
-          .order('created_at', { ascending: false })
-          .limit(3);
-
-        const unreadCount = (dbNotifications || []).filter(n => !n.read_at).length;
-        const notifications = (dbNotifications || []).map(n => ({
-          title: n.title || 'Notification',
-          body: n.body || '',
-          time: dayjs(n.created_at).fromNow()
-        }));
-
-        // Mascot dynamic prompt recommendations
-        let nootPrompt = 'All accounts caught up. Have an amazing day!';
-        if (isOffline) {
-          nootPrompt = 'Offline: Showing cached balances. Check internet connection.';
-        } else if (hasOverdue) {
-          nootPrompt = 'Overdue Alert! Settle your outstanding bills to avoid score drops.';
-        } else if (globalAvailable < globalLimit * 0.15) {
-          nootPrompt = 'Limit Alert: Available credit is low. Manage budgets to stay safe!';
-        } else if (billingCycles.length > 0 && nextDueDate) {
-          nootPrompt = `Reminder: Next bill is due in ${nextDueDate}. Tap here to pay now!`;
-        }
-
-        payload = {
-          ...payload,
-          nootPrompt,
-          billingCycles,
-          recentTransactions,
-          creditHealthScore,
-          repaymentStreak,
-          healthTier,
-          upcomingInstallments,
-          unreadCount,
-          notifications
-        };
-      } catch (err) {
-        console.error('[widgetSync] Error fetching client database details:', err);
       }
     }
 

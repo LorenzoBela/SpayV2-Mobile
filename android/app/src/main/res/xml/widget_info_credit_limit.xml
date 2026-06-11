@@ -6,5 +6,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_credit_limit"
     android:previewLayout="@layout/widget_credit_limit"
+    android:previewImage="@drawable/widget_preview_credit_limit"
+    android:description="@string/widget_credit_limit_description"
     android:resizeMode="horizontal"
     android:widgetCategory="home_screen" />

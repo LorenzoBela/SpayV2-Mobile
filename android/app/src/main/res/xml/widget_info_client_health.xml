@@ -7,5 +7,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_client_health"
     android:previewLayout="@layout/widget_client_health"
+    android:previewImage="@drawable/widget_preview_client_health"
+    android:description="@string/widget_client_health_description"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

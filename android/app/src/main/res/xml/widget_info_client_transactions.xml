@@ -7,5 +7,7 @@
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_client_transactions"
     android:previewLayout="@layout/widget_client_transactions"
+    android:previewImage="@drawable/widget_preview_client_transactions"
+    android:description="@string/widget_client_transactions_description"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />

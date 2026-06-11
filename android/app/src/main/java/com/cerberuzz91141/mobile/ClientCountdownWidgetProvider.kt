@@ -1,5 +1,6 @@
 package com.cerberuzz91141.mobile
 
+import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -9,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.PowerManager
 import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
@@ -55,6 +57,11 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
             prefs.edit().putInt("client_selected_month_index", currentIndex).apply()
 
             // Update widget view
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val thisAppWidgetComponentName = ComponentName(context.packageName, javaClass.name)
+            val appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidgetComponentName)
+            onUpdate(context, appWidgetManager, appWidgetIds)
+        } else if (action == Intent.ACTION_USER_PRESENT) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val thisAppWidgetComponentName = ComponentName(context.packageName, javaClass.name)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidgetComponentName)
@@ -130,11 +137,33 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
 
                             val monthName = cycle.optString("monthName", "Billing Cycle")
                             val amountDue = cycle.optDouble("amountDue", 0.0)
-                            val isOverdue = cycle.optBoolean("isOverdue", false)
-                            val days = cycle.optInt("days", 0)
-                            val hours = cycle.optInt("hours", 0)
-                            val minutes = cycle.optInt("minutes", 0)
-                            val seconds = cycle.optInt("seconds", 0)
+                            val targetTimestamp = cycle.optLong("targetTimestamp", 0L)
+
+                            var days = 0
+                            var hours = 0
+                            var minutes = 0
+                            var seconds = 0
+                            var isOverdue = cycle.optBoolean("isOverdue", false)
+
+                            if (targetTimestamp > 0L) {
+                                val now = System.currentTimeMillis()
+                                val diffMs = targetTimestamp - now
+                                if (diffMs > 0) {
+                                    days = (diffMs / (1000 * 60 * 60 * 24)).toInt()
+                                    hours = ((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)).toInt()
+                                    minutes = ((diffMs % (1000 * 60 * 60)) / (1000 * 60)).toInt()
+                                    seconds = ((diffMs % (1000 * 60)) / 1000).toInt()
+                                    isOverdue = false
+                                } else {
+                                    isOverdue = true
+                                }
+                            } else {
+                                days = cycle.optInt("days", 0)
+                                hours = cycle.optInt("hours", 0)
+                                minutes = cycle.optInt("minutes", 0)
+                                seconds = cycle.optInt("seconds", 0)
+                            }
+
                             val items = cycle.optJSONArray("items")
 
                             views.setTextViewText(R.id.txt_billing_cycle, monthName)
@@ -199,6 +228,51 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+
+        // Schedule next update
+        scheduleNextUpdate(context)
+    }
+
+    private fun scheduleNextUpdate(context: Context) {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val isScreenOn = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
+            powerManager.isInteractive
+        } else {
+            @Suppress("DEPRECATION")
+            powerManager.isScreenOn
+        }
+
+        if (!isScreenOn) {
+            return
+        }
+
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, ClientCountdownWidgetProvider::class.java).apply {
+            action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+        }
+
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val thisAppWidgetComponentName = ComponentName(context.packageName, javaClass.name)
+        val appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidgetComponentName)
+        if (appWidgetIds.isEmpty()) return
+
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds)
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, 999, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val now = System.currentTimeMillis()
+        val delayMs = 60000 - (now % 60000)
+        val finalDelay = if (delayMs < 5000) delayMs + 60000 else delayMs
+        val triggerAt = now + finalDelay
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pendingIntent)
+        } else {
+            alarmManager.set(AlarmManager.RTC, triggerAt, pendingIntent)
         }
     }
 
