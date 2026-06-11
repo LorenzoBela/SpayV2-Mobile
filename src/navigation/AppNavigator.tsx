@@ -19,6 +19,8 @@ import {
 } from 'lucide-react-native';
 import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
+import { useQueryClient } from '@tanstack/react-query';
+import { storage } from '../utils/queryPersister';
 
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForUser } from '../utils/authProfile';
@@ -347,6 +349,7 @@ const AdminNavigator = () => {
 };
 
 export default function AppNavigator() {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -368,9 +371,18 @@ export default function AppNavigator() {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setLoading(false);
+      if (event === 'SIGNED_OUT') {
+        try {
+          queryClient.clear();
+          storage.clearAll();
+          console.log('[AppNavigator] Wiped query cache and MMKV storage on sign out.');
+        } catch (e) {
+          console.warn('[AppNavigator] Failed to clear storage on sign out:', e);
+        }
+      }
     });
 
     return () => {

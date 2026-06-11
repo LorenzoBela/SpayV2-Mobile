@@ -130,11 +130,13 @@ export default function AdminReportsScreen() {
   const { data: reportsData, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['admin-reports', { allTime, startMonth, startYear, endMonth, endYear }],
     queryFn: () => fetchAdminReports({ allTime, startMonth, startYear, endMonth, endYear }),
+    staleTime: 30000,
   });
 
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
     queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+    staleTime: 30000,
   });
 
   const allProfiles = clientsSelectionData?.clients || [];
@@ -155,9 +157,8 @@ export default function AdminReportsScreen() {
 
   useRealtimeSync(
     ['orders', 'payments', 'profiles'],
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-reports'] });
-    }
+    undefined,
+    [['admin-reports']]
   );
 
   // Determine available years statically to avoid loading massive history

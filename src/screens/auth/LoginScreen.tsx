@@ -9,10 +9,10 @@ import {
   Platform,
   Animated,
   Pressable,
-  Image,
   Modal,
   TextInput,
 } from 'react-native';
+import { Image } from "expo-image";
 import { Wallet, ShieldCheck, ChevronRight, Fingerprint } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';

@@ -3,7 +3,9 @@ import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { clientPersister } from './src/utils/queryPersister';
 import { ProgressProvider } from './src/context/ProgressContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import PremiumLoader from './src/components/PremiumLoader';
@@ -31,8 +33,15 @@ import {
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 
-// Configure TanStack Query client for fetching states
-const queryClient = new QueryClient();
+// Configure TanStack Query client for fetching states with custom cache/gc lifetime
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60 * 24 * 30, // 30 days cache retention
+      staleTime: 1000 * 60 * 5, // 5 minutes stale time
+    },
+  },
+});
 
 // Clean themed styles overlay for react-native-paper if required
 const darkTheme = {
@@ -73,7 +82,16 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: clientPersister,
+          maxAge: 1000 * 60 * 60 * 24 * 30, // Match 30 days cache retention
+          dehydrateOptions: {
+            shouldDehydrateQuery: () => true, // Persist all queries
+          },
+        }}
+      >
         <PaperProvider theme={darkTheme}>
           <ProgressProvider>
             <SafeAreaProvider>
@@ -84,7 +102,7 @@ export default function App() {
             </SafeAreaProvider>
           </ProgressProvider>
         </PaperProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </GestureHandlerRootView>
   );
 }

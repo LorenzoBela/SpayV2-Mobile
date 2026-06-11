@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Modal,
-  Image,
   Platform,
   StatusBar,
   KeyboardAvoidingView,
@@ -18,6 +17,7 @@ import {
   Share,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from "expo-image";
 import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -291,6 +291,7 @@ export default function AdminPaymentsScreen() {
       searchQuery,
       ledgerFilter
     }),
+    staleTime: 30000,
   });
 
   const error = queryError ? (queryError as Error).message : (paymentsData && !paymentsData.success ? paymentsData.error : null);
@@ -396,9 +397,8 @@ export default function AdminPaymentsScreen() {
 
   useRealtimeSync(
     ['orders', 'payments', 'profiles'],
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
-    }
+    undefined,
+    [['admin-payments']]
   );
 
   useEffect(() => {

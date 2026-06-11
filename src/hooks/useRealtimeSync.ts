@@ -1,14 +1,36 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '../utils/supabase';
+import { useQueryClient } from '@tanstack/react-query';
+import NetInfo from '@react-native-community/netinfo';
 
 /**
  * Custom hook that subscribes to realtime changes in specified Supabase tables.
- * When changes occur (INSERT, UPDATE, DELETE), the callback is triggered.
+ * When changes occur (INSERT, UPDATE, DELETE), the callback is triggered or specific query keys are invalidated.
  * Changes are debounced by 300ms to group rapid succession events (e.g. bulk inserts).
+ * Automatically invalidates all active queries when transitioning from offline to online.
  */
-export function useRealtimeSync(tables: string[], onSync: () => void) {
+export function useRealtimeSync(
+  tables: string[], 
+  onSync?: () => void,
+  queryKeysToInvalidate?: any[][]
+) {
   const onSyncRef = useRef(onSync);
   onSyncRef.current = onSync;
+  const queryClient = useQueryClient();
+
+  // Handle offline -> online transition
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      // Invalidate all active queries when transitioning from offline back to online
+      // We check if it's connected and internet is reachable (if known)
+      if (state.isConnected && state.isInternetReachable !== false) {
+        console.log('[useRealtimeSync] Network status is ONLINE. Invalidating all active queries to ensure data consistency.');
+        queryClient.invalidateQueries();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [queryClient]);
 
   useEffect(() => {
     if (tables.length === 0) return;
@@ -21,7 +43,18 @@ export function useRealtimeSync(tables: string[], onSync: () => void) {
     const triggerSync = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        onSyncRef.current();
+        // Targeted invalidation if query keys are provided
+        if (queryKeysToInvalidate && queryKeysToInvalidate.length > 0) {
+          queryKeysToInvalidate.forEach((key) => {
+            console.log(`[useRealtimeSync] Targeted invalidation for query key: ${JSON.stringify(key)}`);
+            queryClient.invalidateQueries({ queryKey: key });
+          });
+        }
+        
+        // Execute legacy/custom callback if provided
+        if (onSyncRef.current) {
+          onSyncRef.current();
+        }
       }, 300);
     };
 
@@ -58,5 +91,5 @@ export function useRealtimeSync(tables: string[], onSync: () => void) {
       console.log(`[useRealtimeSync] Cleaning up subscription for channel: ${channelName}`);
       void supabase.removeChannel(channel);
     };
-  }, [tables.join(',')]); // Re-subscribe if the table list changes
+  }, [tables.join(','), JSON.stringify(queryKeysToInvalidate), queryClient]); // Re-subscribe if the table list or keys change
 }

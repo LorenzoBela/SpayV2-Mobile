@@ -14,10 +14,10 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
-  Image,
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from "expo-image";
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Bell,
@@ -47,6 +47,10 @@ import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { WebView } from 'react-native-webview';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
+
+import { FlashList } from '@shopify/flash-list';
+
+const AnyFlashList = FlashList as any;
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -118,11 +122,13 @@ export default function AdminRemindersScreen() {
   const { data: remindersData, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['admin-reminders'],
     queryFn: () => fetchAdminReminders(),
+    staleTime: 30000,
   });
 
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
     queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+    staleTime: 30000,
   });
 
   const error = queryError ? (queryError as Error).message : null;
@@ -135,10 +141,9 @@ export default function AdminRemindersScreen() {
   };
 
   useRealtimeSync(
-    ['orders', 'payments', 'reminder_logs'],
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-reminders'] });
-    }
+    ['orders', 'payments', 'profiles'],
+    undefined,
+    [['admin-reminders']]
   );
 
   const onRefresh = async () => {
@@ -583,27 +588,33 @@ export default function AdminRemindersScreen() {
             {paginatedLogs.length > 0 ? (
               <>
                 <View style={[styles.logsContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                  {paginatedLogs.map((log: any, idx: number) => {
-                    if (!log) return null;
-                    return (
-                      <View key={log.id} style={[styles.logItemRow, idx < paginatedLogs.length - 1 ? { borderBottomColor: t.border } : null]}>
-                        <View style={styles.logItemLeft}>
-                          <View style={styles.logStatusIndicator}>
-                            <Check size={12} color="#10b981" />
+                  <AnyFlashList
+                    data={paginatedLogs}
+                    estimatedItemSize={70}
+                    scrollEnabled={false}
+                    renderItem={({ item, index }: { item: any, index: number }) => {
+                      const log = item;
+                      if (!log) return null;
+                      return (
+                        <View key={log.id} style={[styles.logItemRow, index < paginatedLogs.length - 1 ? { borderBottomColor: t.border } : null]}>
+                          <View style={styles.logItemLeft}>
+                            <View style={styles.logStatusIndicator}>
+                              <Check size={12} color="#10b981" />
+                            </View>
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <Text style={[styles.logDescription, { color: t.textPrimary }]} numberOfLines={1}>
+                                Reminder Sent for {log.itemName} ({formatCurrency(log.amountDue)})
+                              </Text>
+                              <Text style={styles.logMetadata}>
+                                Client: {log.clientName} • By: {log.sentBy}
+                              </Text>
+                            </View>
                           </View>
-                          <View style={{ flex: 1, marginRight: 8 }}>
-                            <Text style={[styles.logDescription, { color: t.textPrimary }]} numberOfLines={1}>
-                              Reminder Sent for {log.itemName} ({formatCurrency(log.amountDue)})
-                            </Text>
-                            <Text style={styles.logMetadata}>
-                              Client: {log.clientName} • By: {log.sentBy}
-                            </Text>
-                          </View>
+                          <Text style={[styles.logTimeText, { color: t.textSecondary }]}>{formatLogTime(log.sentAt)}</Text>
                         </View>
-                        <Text style={[styles.logTimeText, { color: t.textSecondary }]}>{formatLogTime(log.sentAt)}</Text>
-                      </View>
-                    );
-                  })}
+                      );
+                    }}
+                  />
                 </View>
 
                 {/* Pagination Controls for Logs */}

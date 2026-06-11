@@ -12,8 +12,8 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
-  Image,
 } from 'react-native';
+import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -48,6 +48,7 @@ import { fetchAdminOrders, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
+const AnyFlashList = FlashList as any;
 import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
@@ -172,8 +173,9 @@ export default function AdminOrdersScreen() {
       pageSize: PAGE_SIZE,
       searchQuery,
       status: activeTab,
-      filterMonthKey: filterMonthKey || undefined
+      filterMonthKey: filterMonthKey || undefined,
     }),
+    staleTime: 30000,
   });
 
   const error = queryError ? (queryError as Error).message : (ordersData && !ordersData.success ? ordersData.error : null);
@@ -189,9 +191,8 @@ export default function AdminOrdersScreen() {
 
   useRealtimeSync(
     ['orders', 'payments', 'account_limits', 'profiles'],
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
-    }
+    undefined,
+    [['admin-orders']]
   );
 
   const orders = useMemo(() => {
@@ -624,94 +625,100 @@ export default function AdminOrdersScreen() {
         {/* Orders list */}
         <View style={viewMode === 'grid' ? styles.orderGridContainer : styles.ordersList}>
           {paginatedOrders.length > 0 ? (
-            paginatedOrders.map((order: any) => {
-              if (viewMode === 'grid') {
+            <AnyFlashList
+              data={paginatedOrders}
+              estimatedItemSize={viewMode === 'grid' ? 180 : 120}
+              scrollEnabled={false}
+              renderItem={({ item }: { item: any }) => {
+                const order = item;
+                if (viewMode === 'grid') {
+                  return (
+                    <TouchableOpacity
+                      key={order.id}
+                      style={[styles.orderGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                      onPress={() => {
+                        setSelectedOrder(order);
+                        setIsDetailsOpen(true);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.orderGridAvatarCircle}>
+                        <ShoppingBag size={20} color="#fff" />
+                      </View>
+                      <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>{order.item_name}</Text>
+                      <View style={[styles.clientRow, { justifyContent: 'center' }]}>
+                        <User size={10} color={t.textSecondary} />
+                        <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
+                      </View>
+
+                      <View style={[styles.statusBadge, { marginTop: 4, backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+                        <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d', fontSize: 8 }]}>
+                          {order.status}
+                        </Text>
+                      </View>
+                      
+                      <View style={[styles.clientGridDivider, { backgroundColor: t.border, marginVertical: 8 }]} />
+
+                      <View style={styles.clientGridDetails}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailCardLabel}>Value</Text>
+                          <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(order.amount)}</Text>
+                        </View>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text style={styles.detailCardLabel}>Progress</Text>
+                          <Text style={[styles.detailCardVal, { color: '#10b981', fontSize: 11 }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+
+                // List Mode View
                 return (
                   <TouchableOpacity
                     key={order.id}
-                    style={[styles.orderGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                    style={[styles.orderCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
                     onPress={() => {
                       setSelectedOrder(order);
                       setIsDetailsOpen(true);
                     }}
                     activeOpacity={0.8}
                   >
-                    <View style={styles.orderGridAvatarCircle}>
-                      <ShoppingBag size={20} color="#fff" />
-                    </View>
-                    <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>{order.item_name}</Text>
-                    <View style={[styles.clientRow, { justifyContent: 'center' }]}>
-                      <User size={10} color={t.textSecondary} />
-                      <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
-                    </View>
-
-                    <View style={[styles.statusBadge, { marginTop: 4, backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                      <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d', fontSize: 8 }]}>
-                        {order.status}
-                      </Text>
-                    </View>
-                    
-                    <View style={[styles.clientGridDivider, { backgroundColor: t.border, marginVertical: 8 }]} />
-
-                    <View style={styles.clientGridDetails}>
+                    <View style={styles.orderCardHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.detailCardLabel}>Value</Text>
-                        <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(order.amount)}</Text>
+                        <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.item_name}</Text>
+                        <View style={styles.clientRow}>
+                          <User size={12} color={t.textSecondary} />
+                          <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                        <Text style={styles.detailCardLabel}>Progress</Text>
-                        <Text style={[styles.detailCardVal, { color: '#10b981', fontSize: 11 }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+                        <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
+                          {order.status}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={[styles.orderCardDivider, { backgroundColor: t.border }]} />
+
+                    <View style={styles.orderCardBottom}>
+                      <View>
+                        <Text style={styles.bottomLabel}>Principal Value</Text>
+                        <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.bottomLabel}>Amortization Terms</Text>
+                        <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{order.installment_months} Months</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.bottomLabel}>Settle Progress</Text>
+                        <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
                 );
-              }
-
-              // List Mode View
-              return (
-                <TouchableOpacity
-                  key={order.id}
-                  style={[styles.orderCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-                  onPress={() => {
-                    setSelectedOrder(order);
-                    setIsDetailsOpen(true);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.orderCardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.item_name}</Text>
-                      <View style={styles.clientRow}>
-                        <User size={12} color={t.textSecondary} />
-                        <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                      <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
-                        {order.status}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={[styles.orderCardDivider, { backgroundColor: t.border }]} />
-
-                  <View style={styles.orderCardBottom}>
-                    <View>
-                      <Text style={styles.bottomLabel}>Principal Value</Text>
-                      <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
-                    </View>
-                    <View>
-                      <Text style={styles.bottomLabel}>Amortization Terms</Text>
-                      <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{order.installment_months} Months</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.bottomLabel}>Settle Progress</Text>
-                      <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+              }}
+            />
           ) : (
             <Text style={styles.emptyText}>No orders match filters.</Text>
           )}

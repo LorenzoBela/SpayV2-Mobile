@@ -48,7 +48,11 @@ import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { PaymentsSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+import NetInfo from '@react-native-community/netinfo';
+import { useClientPaymentsQuery } from '../../hooks/useClientQueries';
 import { getBillingMonthKey, getCalendarMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
+import { FlashList } from '@shopify/flash-list';
+const AnyFlashList = FlashList as any;
 
 // --- DATABASE INTERFACES ---
 interface PaymentReschedule {
@@ -388,107 +392,41 @@ export default function PaymentsScreen() {
 
   const [selectedMonthGroup, setSelectedMonthGroup] = useState<MonthlyGroup | null>(null);
   const [isMonthDetailModalOpen, setIsMonthDetailModalOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
-  // Fetch Payments from Supabase
-  const fetchPayments = async () => {
-    try {
-      const { user, profileId } = await getLinkedProfileForCurrentUser();
-      if (!user) return;
+  const { data: queryPayments, isLoading: queryLoading, refetch, isRefetching } = useClientPaymentsQuery();
 
-      // 1. Fetch user orders first to filter payments
-      const { data: userOrders, error: ordersErr } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('user_id', profileId);
-
-      if (ordersErr) throw ordersErr;
-
-      if (!userOrders || userOrders.length === 0) {
-        setPayments([]);
-        calculateAdvancedAnalytics([]);
-        return;
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const offline = state.isConnected === false;
+      setIsOffline(offline);
+      if (!offline) {
+        refetch();
       }
+    });
+    return () => unsubscribe();
+  }, []);
 
-      const orderIds = userOrders.map(o => o.id);
+  useEffect(() => {
+    if (queryPayments) {
+      setPayments(queryPayments);
+      calculateAdvancedAnalytics(queryPayments);
+    }
+  }, [queryPayments]);
 
-      // 2. Fetch payments belonging only to those orders
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          id,
-          due_date,
-          amount_due,
-          month_number,
-          is_paid,
-          payment_date,
-          proof_of_payment,
-          order:orders (
-            id,
-            item_name,
-            installment_months
-          ),
-          payment_reschedule_history (
-            id,
-            old_due_date,
-            new_due_date,
-            reason,
-            admin_approved,
-            created_at
-          )
-        `)
-        .in('order_id', orderIds)
-        .order('due_date', { ascending: true });
+  useEffect(() => {
+    setLoading(queryLoading);
+  }, [queryLoading]);
 
-      if (error) throw error;
-
-      if (data) {
-        const nowMs = Date.now();
-
-        const formatted: PaymentItem[] = data.map((p: any) => {
-          const rescheduleArr: PaymentReschedule[] = (p.payment_reschedule_history || []).map((r: any) => ({
-            id: r.id,
-            old_due_date: r.old_due_date,
-            new_due_date: r.new_due_date,
-            reason: r.reason,
-            admin_approved: r.admin_approved,
-            created_at: r.created_at,
-          }));
-
-          const rawDueDate = p.due_date;
-          const isPaid = p.is_paid;
-          const isOverdue = !isPaid && parseUtcDate(rawDueDate).getTime() < nowMs;
-
-          return {
-            id: p.id,
-            orderId: p.order?.id || '',
-            itemName: p.order?.item_name || 'Installment Order',
-            amountDue: parseFloat(p.amount_due),
-            monthNumber: p.month_number,
-            installmentMonths: p.order?.installment_months || 12,
-            dueDate: parseUtcDate(rawDueDate).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-              timeZone: 'Asia/Manila',
-            }),
-            rawDueDate,
-            isPaid,
-            paymentDate: p.payment_date,
-            proofOfPayment: p.proof_of_payment,
-            status: isPaid ? 'paid' : isOverdue ? 'overdue' : 'pending',
-            rescheduleHistory: rescheduleArr,
-          };
-        });
-
-        setPayments(formatted);
-        calculateAdvancedAnalytics(formatted);
-      }
-    } catch (error) {
-      console.warn('Error fetching payments:', error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!isRefetching) {
       setRefreshing(false);
     }
+  }, [isRefetching]);
+
+  // Fetch Payments from Supabase via react-query refetch
+  const fetchPayments = async () => {
+    refetch();
   };
 
   const calculateAdvancedAnalytics = (allPayments: PaymentItem[]) => {
@@ -671,7 +609,7 @@ export default function PaymentsScreen() {
     fetchPayments();
   }, []);
 
-  useRealtimeSync(['orders', 'payments'], fetchPayments);
+  useRealtimeSync(['orders', 'payments'], undefined, [['client-payments']]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -814,6 +752,31 @@ export default function PaymentsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Offline Mode Glassmorphic Banner */}
+      {isOffline && (
+        <View style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+          paddingVertical: 10,
+          paddingHorizontal: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: 'rgba(239, 68, 68, 0.25)',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}>
+          <AlertTriangle size={14} color="#ef4444" />
+          <Text style={{
+            color: '#ef4444',
+            fontSize: 12,
+            fontFamily: 'Jakarta-Bold',
+            textAlign: 'center'
+          }}>
+            Offline Mode: Read-only access to cached ledger.
+          </Text>
+        </View>
+      )}
+
       {loading ? (
         <PaymentsSkeleton />
       ) : (
@@ -883,9 +846,10 @@ export default function PaymentsScreen() {
                         itemName: 'Combined Month Amortizations',
                         amountDue: nextPaymentCountdown.totalAmount
                       })}
-                      style={styles.payNowBtnCountdown}
+                      style={[styles.payNowBtnCountdown, isOffline && { opacity: 0.5, backgroundColor: '#4b5563' }]}
+                      disabled={isOffline}
                     >
-                      <Text style={styles.payNowBtnCountdownText}>Pay Now</Text>
+                      <Text style={styles.payNowBtnCountdownText}>{isOffline ? 'Offline' : 'Pay Now'}</Text>
                       <ArrowRight size={12} color="#ffffff" style={{ marginLeft: 4 }} />
                     </TouchableOpacity>
                   ) : (
@@ -1065,10 +1029,13 @@ export default function PaymentsScreen() {
               {/* Payments List */}
               <View style={styles.listContainer}>
                 {paginatedPayments.length > 0 ? (
-                  paginatedPayments.map(item => {
+                  <AnyFlashList
+                    data={paginatedPayments}
+                    estimatedItemSize={viewMode === 'card' ? 150 : 60}
+                    scrollEnabled={false}
+                    renderItem={({ item }: { item: any }) => {
                     const isSelected = selectedPaymentIds.includes(item.id);
-                    const isExpanded = false; // Expanded detailed schedules can open a modal or inline reschedule
-                    const reschedulePending = item.rescheduleHistory.some(r => !r.admin_approved);
+                    const reschedulePending = item.rescheduleHistory.some((r: any) => !r.admin_approved);
 
                     let statusLabel = 'Unpaid';
                     let labelColor = t.textSecondary;
@@ -1104,7 +1071,8 @@ export default function PaymentsScreen() {
                               {!item.isPaid && (
                                 <TouchableOpacity
                                   onPress={() => handleToggleSelect(item.id)}
-                                  style={[styles.checkboxFrame, { borderColor: t.cardBorder }, isSelected && { backgroundColor: t.accent, borderColor: t.accent }]}
+                                  style={[styles.checkboxFrame, { borderColor: t.cardBorder }, isSelected && { backgroundColor: t.accent, borderColor: t.accent }, isOffline && { opacity: 0.3 }]}
+                                  disabled={isOffline}
                                 >
                                   {isSelected && <CheckCircle2 size={10} color="#ffffff" />}
                                 </TouchableOpacity>
@@ -1141,17 +1109,23 @@ export default function PaymentsScreen() {
                                   ? `Paid: ${new Date(item.paymentDate || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
                                   : `Due: ${item.dueDate}`}
                               </Text>
+                              {isOffline && !item.isPaid && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 8, color: t.textSecondary, fontWeight: '700' }}>CACHED</Text>
+                                </View>
+                              )}
                             </View>
 
                             <View style={styles.footerActionRow}>
                               {!item.isPaid && (
                                 <TouchableOpacity
                                   onPress={() => handleOpenSinglePayModal(item)}
-                                  style={styles.smallFillBtn}
+                                  style={[styles.smallFillBtn, isOffline && { backgroundColor: '#4b5563', opacity: 0.5 }]}
+                                  disabled={isOffline}
                                 >
                                   <Banknote size={12} color="#ffffff" />
                                   <Text style={styles.smallFillBtnText}>
-                                    Settle
+                                    {isOffline ? 'Offline' : 'Settle'}
                                   </Text>
                                 </TouchableOpacity>
                               )}
@@ -1175,7 +1149,8 @@ export default function PaymentsScreen() {
                               {!item.isPaid && (
                                 <TouchableOpacity
                                   onPress={() => handleToggleSelect(item.id)}
-                                  style={[styles.checkboxFrame, { borderColor: t.cardBorder }, isSelected && { backgroundColor: t.accent, borderColor: t.accent }]}
+                                  style={[styles.checkboxFrame, { borderColor: t.cardBorder }, isSelected && { backgroundColor: t.accent, borderColor: t.accent }, isOffline && { opacity: 0.3 }]}
+                                  disabled={isOffline}
                                 >
                                   {isSelected && <CheckCircle2 size={10} color="#ffffff" />}
                                 </TouchableOpacity>
@@ -1186,6 +1161,7 @@ export default function PaymentsScreen() {
                                 </Text>
                                 <Text style={[styles.listRowSub, { color: t.textSecondary }]}>
                                   Month {item.monthNumber}/{item.installmentMonths} • Due {item.dueDate}
+                                  {isOffline && !item.isPaid && " • CACHED"}
                                 </Text>
                               </View>
                             </View>
@@ -1199,9 +1175,10 @@ export default function PaymentsScreen() {
                               {!item.isPaid && (
                                 <TouchableOpacity
                                   onPress={() => handleOpenSinglePayModal(item)}
-                                  style={[styles.iconActionCircle, { backgroundColor: t.divider }]}
+                                  style={[styles.iconActionCircle, { backgroundColor: isOffline ? 'transparent' : t.divider }]}
+                                  disabled={isOffline}
                                 >
-                                  <Banknote size={14} color={t.accent} />
+                                  <Banknote size={14} color={isOffline ? '#4b5563' : t.accent} />
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -1209,7 +1186,8 @@ export default function PaymentsScreen() {
                         </View>
                       );
                     }
-                  })
+                  }}
+                />
                 ) : (
                   <View style={styles.emptyContainer}>
                     <Info size={40} color={t.textSecondary} style={{ marginBottom: 12 }} />
@@ -1420,7 +1398,7 @@ export default function PaymentsScreen() {
       )}
 
       {/* Sticky Bottom Actions Bar for Bulk Payments Selection */}
-      {selectedPaymentIds.length > 0 && (
+      {selectedPaymentIds.length > 0 && !isOffline && (
         <View style={[styles.stickyBottomBar, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           <View>
             <Text style={[styles.stickySelectedCount, { color: t.textSecondary }]}>

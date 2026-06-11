@@ -38,13 +38,9 @@ import {
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
-import {
-  getNotifications,
-  markNotificationsRead,
-  clearNotifications,
-  sendAdminAnnouncement,
-} from '../../services/adminService';
+import { getNotifications, markNotificationsRead, clearNotifications, sendAdminAnnouncement } from '../../services/adminService';
 import { useNotifications } from '../../hooks/useNotifications';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 type NotificationCategory = 'ALL' | 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -119,11 +115,8 @@ export default function AdminNotificationsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const { refreshUnreadCount } = useNotifications();
   const layout = useResponsiveLayout();
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [items, setItems] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [activeCategory, setActiveCategory] = useState<NotificationCategory>('ALL');
 
   // Pagination states
@@ -141,42 +134,27 @@ export default function AdminNotificationsScreen() {
   // Detail Modal states
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
 
-  const loadNotifications = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    try {
-      const data = await getNotifications(100);
-      if (data.notifications) {
-        setItems(data.notifications);
-        setUnreadCount(Number(data.unreadCount || 0));
-        void refreshUnreadCount();
-      } else {
-        setItems([]);
-      }
-    } catch (e) {
-      console.warn('Failed to load system log notifications:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const { data: notificationsData, isLoading: loading, refetch } = useQuery({
+    queryKey: ['admin-notifications'],
+    queryFn: () => getNotifications(100),
+    staleTime: 30000,
+  });
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
+  const items = useMemo(() => (notificationsData as any)?.notifications || [], [notificationsData]);
+  const unreadCount = useMemo(() => (notificationsData as any)?.unreadCount || 0, [notificationsData]);
 
   const handleMarkAllRead = async () => {
     try {
-      setRefreshing(true);
       const res = await markNotificationsRead(undefined, true);
       if (res.success !== false) {
         PremiumAlert.alert('Success', 'All alerts marked as read.');
-        await loadNotifications(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+        void refreshUnreadCount();
       } else {
         throw new Error(res.error);
       }
     } catch (e: any) {
       PremiumAlert.alert('Error', e.message || 'Action failed.');
-      setRefreshing(false);
     }
   };
 
@@ -185,8 +163,7 @@ export default function AdminNotificationsScreen() {
     try {
       const res = await markNotificationsRead(item.id, false);
       if (res.success !== false) {
-        setItems(prev => prev.map(x => x.id === item.id ? { ...x, read: true } : x));
-        setUnreadCount(prev => Math.max(0, prev - 1));
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
         void refreshUnreadCount();
       }
     } catch (e) {
@@ -202,17 +179,16 @@ export default function AdminNotificationsScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            setRefreshing(true);
             const res = await clearNotifications(undefined, true);
             if (res.success !== false) {
               PremiumAlert.alert('Cleared', 'All system log history cleared.');
-              await loadNotifications(false);
+              queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
+              void refreshUnreadCount();
             } else {
               throw new Error(res.error);
             }
           } catch (e: any) {
             PremiumAlert.alert('Error', e.message || 'Action failed.');
-            setRefreshing(false);
           }
         },
       },
@@ -223,8 +199,8 @@ export default function AdminNotificationsScreen() {
     try {
       const res = await clearNotifications(id, false);
       if (res.success !== false) {
-        setItems(prev => prev.filter(x => x.id !== id));
         PremiumAlert.alert('Deleted', 'System log item removed.');
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
         void refreshUnreadCount();
       } else {
         throw new Error(res.error);
@@ -261,7 +237,7 @@ export default function AdminNotificationsScreen() {
         );
         setAnnTitle('');
         setAnnBody('');
-        await loadNotifications(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
       } else {
         throw new Error(res.error || 'Failed to dispatch broadcast.');
       }
@@ -275,7 +251,7 @@ export default function AdminNotificationsScreen() {
   // Filter logs based on category
   const filteredItems = useMemo(() => {
     if (activeCategory === 'ALL') return items;
-    return items.filter(x => x.category === activeCategory);
+    return items.filter((x: NotificationItem) => x.category === activeCategory);
   }, [items, activeCategory]);
 
   const totalItems = filteredItems.length;
@@ -325,7 +301,7 @@ export default function AdminNotificationsScreen() {
         </View>
         <TouchableOpacity
           style={[styles.headerActionBtn, { borderColor: t.headerBorder }]}
-          onPress={() => loadNotifications(true)}
+          onPress={() => refetch()}
           activeOpacity={0.7}
         >
           <RefreshCw size={16} color={t.textSecondary} />
@@ -522,7 +498,7 @@ export default function AdminNotificationsScreen() {
             </View>
           ) : (
             <View>
-              {paginatedItems.map((item, idx) => {
+              {paginatedItems.map((item: NotificationItem, idx: number) => {
                 const Icon = iconFor(item.type, item.category);
                 return (
                   <View key={item.id}>

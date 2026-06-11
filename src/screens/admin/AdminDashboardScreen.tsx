@@ -16,8 +16,8 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -276,6 +276,7 @@ export default function AdminDashboardScreen() {
   const { data: dashboardData, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: fetchAdminDashboardData,
+    staleTime: 30000,
   });
 
   const error = queryError ? (queryError as Error).message : (dashboardData && !dashboardData.success ? dashboardData.error : null);
@@ -400,9 +401,8 @@ export default function AdminDashboardScreen() {
 
   useRealtimeSync(
     ['orders', 'payments', 'account_limits', 'profiles'],
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
-    }
+    undefined,
+    [['admin-dashboard']]
   );
 
   const [refreshing, setRefreshing] = useState(false);

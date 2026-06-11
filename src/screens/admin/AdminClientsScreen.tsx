@@ -11,9 +11,9 @@ import {
   Modal,
   Platform,
   StatusBar,
-  Image,
   KeyboardAvoidingView,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -118,8 +118,9 @@ export default function AdminClientsScreen() {
       page: currentPage,
       pageSize: PAGE_SIZE,
       searchQuery,
-      status: activeTab,
+      status: activeTab
     }),
+    staleTime: 30000,
   });
 
   const error = queryError ? (queryError as Error).message : (clientsData && !clientsData.success ? clientsData.error : null);
@@ -135,9 +136,8 @@ export default function AdminClientsScreen() {
 
   useRealtimeSync(
     ['orders', 'payments', 'account_limits', 'profiles'],
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
-    }
+    undefined,
+    [['admin-clients']]
   );
 
   const getMonthlyBreakdown = (clientOrders: any[]) => {

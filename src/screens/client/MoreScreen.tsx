@@ -8,8 +8,8 @@ import {
   ScrollView,
   Alert,
   StatusBar,
-  Image,
 } from 'react-native';
+import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {

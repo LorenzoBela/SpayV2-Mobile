@@ -31,6 +31,7 @@ import {
   Moon,
   LayoutGrid,
   List,
+  CloudUpload,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -40,6 +41,10 @@ import { OrdersSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { parseUtcDate } from '../../utils/date';
+import NetInfo from '@react-native-community/netinfo';
+import { useClientOrdersQuery } from '../../hooks/useClientQueries';
+import { FlashList } from '@shopify/flash-list';
+const AnyFlashList = FlashList as any;
 
 interface PaymentItem {
   id: string;
@@ -79,6 +84,40 @@ export default function OrdersScreen() {
     paymentStreak: 0,
     onTimeRate: 100,
   });
+  const [isOffline, setIsOffline] = useState(false);
+
+  const { data: queryOrders, isLoading: queryLoading, refetch, isRefetching } = useClientOrdersQuery();
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const offline = state.isConnected === false;
+      setIsOffline(offline);
+      if (!offline) {
+        refetch();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (queryOrders) {
+      setOrders(queryOrders.orders);
+      setAnalytics(queryOrders.analytics);
+      if (queryOrders.orders.length > 0 && !expandedOrderId) {
+        setExpandedOrderId(queryOrders.orders[0].id);
+      }
+    }
+  }, [queryOrders]);
+
+  useEffect(() => {
+    setLoading(queryLoading);
+  }, [queryLoading]);
+
+  useEffect(() => {
+    if (!isRefetching) {
+      setRefreshing(false);
+    }
+  }, [isRefetching]);
 
   // UI States
   const [searchTerm, setSearchTerm] = useState('');
@@ -98,120 +137,18 @@ export default function OrdersScreen() {
   }, [searchTerm, statusFilter]);
 
   const fetchOrdersAndAnalytics = async () => {
-    try {
-      const { user, profileId } = await getLinkedProfileForCurrentUser();
-      if (!user) return;
-
-      // 1. Fetch Orders
-      const { data: dbOrders, error: ordersErr } = await supabase
-        .from('orders')
-        .select('id, item_name, amount, installment_months, order_date, remarks, is_paid')
-        .eq('user_id', profileId)
-        .order('order_date', { ascending: false });
-
-      if (ordersErr) throw ordersErr;
-
-      if (!dbOrders || dbOrders.length === 0) {
-        setOrders([]);
-        setAnalytics({ totalOrders: 0, totalSpent: 0, paymentStreak: 0, onTimeRate: 100 });
-        return;
-      }
-
-      // 2. Fetch payments for those orders
-      const orderIds = dbOrders.map(o => o.id);
-      let paymentsData: any[] = [];
-      const { data } = await supabase
-        .from('payments')
-        .select('id, order_id, month_number, amount_due, due_date, is_paid, payment_date')
-        .in('order_id', orderIds)
-        .order('month_number', { ascending: true });
-      if (data) paymentsData = data;
-
-      // Map payments to orders
-      const orderPaymentsMap = new Map<string, any[]>();
-      paymentsData.forEach(p => {
-        const list = orderPaymentsMap.get(p.order_id) || [];
-        list.push(p);
-        orderPaymentsMap.set(p.order_id, list);
-      });
-
-      // Calculate Streak & On-Time Rate
-      const allPaidPayments = paymentsData
-        .filter(p => p.is_paid)
-        .sort((a, b) => parseUtcDate(b.payment_date || b.due_date).getTime() - parseUtcDate(a.payment_date || a.due_date).getTime());
-
-      let paymentStreak = 0;
-      for (const p of allPaidPayments) {
-        if (p.payment_date && parseUtcDate(p.payment_date) <= parseUtcDate(p.due_date)) {
-          paymentStreak++;
-        } else {
-          break;
-        }
-      }
-
-      const completedCount = allPaidPayments.length;
-      const onTimeCount = allPaidPayments.filter(
-        p => p.payment_date && parseUtcDate(p.payment_date) <= parseUtcDate(p.due_date)
-      ).length;
-      const onTimeRate = completedCount > 0 ? Math.round((onTimeCount / completedCount) * 100) : 100;
-
-      const totalSpent = dbOrders.reduce((sum, o) => sum + parseFloat(o.amount), 0);
-
-      const formattedOrders: OrderItem[] = dbOrders.map(o => {
-        const orderPayments = orderPaymentsMap.get(o.id) || [];
-        const paidCount = orderPayments.filter(p => p.is_paid).length;
-        const progressPercent = o.installment_months > 0 ? (paidCount / o.installment_months) * 100 : 0;
-
-        return {
-          id: o.id,
-          itemName: o.item_name,
-          amount: parseFloat(o.amount),
-          installmentMonths: parseInt(o.installment_months, 10),
-          orderDate: o.order_date,
-          remarks: o.remarks,
-          isPaid: o.is_paid,
-          paidInstallments: paidCount,
-          progressPercent,
-          payments: orderPayments.map(p => ({
-            id: p.id,
-            monthNumber: p.month_number,
-            amountDue: parseFloat(p.amount_due),
-            dueDate: p.due_date,
-            isPaid: p.is_paid,
-            paymentDate: p.payment_date,
-          })),
-        };
-      });
-
-      setOrders(formattedOrders);
-      setAnalytics({
-        totalOrders: dbOrders.length,
-        totalSpent,
-        paymentStreak,
-        onTimeRate,
-      });
-
-      // Default expand the first order if any
-      if (formattedOrders.length > 0 && !expandedOrderId) {
-        setExpandedOrderId(formattedOrders[0].id);
-      }
-    } catch (e) {
-      console.warn('Failed to load orders schedule:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    refetch();
   };
 
   useEffect(() => {
     fetchOrdersAndAnalytics();
   }, []);
 
-  useRealtimeSync(['orders', 'payments'], fetchOrdersAndAnalytics);
+  useRealtimeSync(['orders', 'payments'], undefined, [['client-orders']]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchOrdersAndAnalytics();
+    refetch();
   };
 
   const handleOpenPayModal = (orderId: string) => {
@@ -281,6 +218,31 @@ export default function OrdersScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Offline Mode Glassmorphic Banner */}
+      {isOffline && (
+        <View style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+          paddingVertical: 10,
+          paddingHorizontal: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: 'rgba(239, 68, 68, 0.25)',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}>
+          <AlertTriangle size={14} color="#ef4444" />
+          <Text style={{
+            color: '#ef4444',
+            fontSize: 12,
+            fontFamily: 'Jakarta-Bold',
+            textAlign: 'center'
+          }}>
+            Offline Mode: Read-only access to cached purchases.
+          </Text>
+        </View>
+      )}
 
       {loading ? (
         <OrdersSkeleton />
@@ -397,11 +359,16 @@ export default function OrdersScreen() {
           {/* Orders list */}
           <View style={styles.ordersListContainer}>
             {paginatedOrders.length > 0 ? (
-              paginatedOrders.map(order => {
+              <AnyFlashList
+                data={paginatedOrders}
+                estimatedItemSize={viewMode === 'card' ? 120 : 60}
+                scrollEnabled={false}
+                renderItem={({ item }: { item: any }) => {
+                const order = item;
                 const isExpanded = expandedOrderId === order.id;
                 const progress = order.progressPercent;
                 const hasOverdue = order.payments.some(
-                  p => !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now()
+                  (p: any) => !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now()
                 );
 
                 if (viewMode === 'card') {
@@ -448,6 +415,19 @@ export default function OrdersScreen() {
                                 <Text style={styles.alertBadgeText}>Due</Text>
                               </View>
                             )}
+                            {isOffline && !order.isPaid && (
+                              <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 6,
+                              }}>
+                                <CloudUpload size={10} color="#3b82f6" style={{ marginRight: 2 }} />
+                                <Text style={{ color: '#3b82f6', fontSize: 8, fontWeight: '800' }}>CACHED</Text>
+                              </View>
+                            )}
                           </View>
                           <ChevronDown
                             size={16}
@@ -490,7 +470,7 @@ export default function OrdersScreen() {
                           </Text>
 
                           <View style={styles.scheduleList}>
-                            {order.payments.map(p => {
+                            {order.payments.map((p: any) => {
                               const isPaymentOverdue = !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now();
                               let labelColor = t.textSecondary;
                               let statusText = 'Pending';
@@ -539,10 +519,13 @@ export default function OrdersScreen() {
                           {!order.isPaid && (
                             <TouchableOpacity
                               onPress={() => handleOpenPayModal(order.id)}
-                              style={styles.payNowBtn}
+                              disabled={isOffline}
+                              style={[styles.payNowBtn, isOffline && { opacity: 0.5, backgroundColor: t.divider }]}
                             >
-                              <Banknote size={16} color="#ffffff" style={{ marginRight: 6 }} />
-                              <Text style={styles.payNowBtnText}>Pay Installment</Text>
+                              <Banknote size={16} color={isOffline ? t.textSecondary : "#ffffff"} style={{ marginRight: 6 }} />
+                              <Text style={[styles.payNowBtnText, isOffline && { color: t.textSecondary }]}>
+                                {isOffline ? 'Offline - Read Only' : 'Pay Installment'}
+                              </Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -610,6 +593,19 @@ export default function OrdersScreen() {
                                 <Text style={[styles.alertBadgeText, { fontSize: 7 }]}>Due</Text>
                               </View>
                             )}
+                            {isOffline && !order.isPaid && (
+                              <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+                                paddingHorizontal: 6,
+                                paddingVertical: 2,
+                                borderRadius: 6,
+                              }}>
+                                <CloudUpload size={8} color="#3b82f6" style={{ marginRight: 2 }} />
+                                <Text style={{ color: '#3b82f6', fontSize: 7, fontWeight: '800' }}>CACHED</Text>
+                              </View>
+                            )}
                           </View>
 
                           <ChevronDown
@@ -632,7 +628,7 @@ export default function OrdersScreen() {
                           </Text>
 
                           <View style={styles.scheduleList}>
-                            {order.payments.map(p => {
+                            {order.payments.map((p: any) => {
                               const isPaymentOverdue = !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now();
                               let labelColor = t.textSecondary;
                               let statusText = 'Pending';
@@ -681,10 +677,13 @@ export default function OrdersScreen() {
                           {!order.isPaid && (
                             <TouchableOpacity
                               onPress={() => handleOpenPayModal(order.id)}
-                              style={styles.payNowBtn}
+                              disabled={isOffline}
+                              style={[styles.payNowBtn, isOffline && { opacity: 0.5, backgroundColor: t.divider }]}
                             >
-                              <Banknote size={16} color="#ffffff" style={{ marginRight: 6 }} />
-                              <Text style={styles.payNowBtnText}>Pay Installment</Text>
+                              <Banknote size={16} color={isOffline ? t.textSecondary : "#ffffff"} style={{ marginRight: 6 }} />
+                              <Text style={[styles.payNowBtnText, isOffline && { color: t.textSecondary }]}>
+                                {isOffline ? 'Offline - Read Only' : 'Pay Installment'}
+                              </Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -692,7 +691,8 @@ export default function OrdersScreen() {
                     </View>
                   );
                 }
-              })
+              }}
+            />
             ) : (
               <View style={styles.emptyContainer}>
                 <ShoppingBag size={44} color={t.textSecondary} style={{ marginBottom: 12 }} />

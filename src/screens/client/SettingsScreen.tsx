@@ -11,13 +11,13 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Image,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
   useColorScheme,
   Modal,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {

@@ -13,12 +13,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Send, Sparkles, Brain, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Send, Sparkles, Brain, Trash2, AlertTriangle } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import NetInfo from '@react-native-community/netinfo';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -229,7 +230,15 @@ export default function NootAiScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(state.isConnected === false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const fetchNootAiMetrics = async () => {
     setLoading(true);
@@ -363,6 +372,7 @@ export default function NootAiScreen() {
   };
 
   const handleSendMessage = async (textToSend?: string) => {
+    if (isOffline) return;
     const text = (textToSend || userInput).trim();
     if (!text || isAiTyping) return;
 
@@ -583,7 +593,7 @@ export default function NootAiScreen() {
         </ScrollView>
 
         {/* Quick Helper Prompts */}
-        {messages.length === 1 && (
+        {messages.length === 1 && !isOffline && (
           <View style={styles.suggestionsContainer}>
             {[
               'Check my available credit',
@@ -603,20 +613,32 @@ export default function NootAiScreen() {
           </View>
         )}
 
+        {/* Offline Warning Banner */}
+        {isOffline && (
+          <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', padding: 12, borderTopWidth: 1, borderTopColor: 'rgba(239, 68, 68, 0.2)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <AlertTriangle size={14} color="#ef4444" />
+            <Text style={{ color: '#ef4444', fontSize: 12, fontFamily: 'Jakarta-Bold', textAlign: 'center' }}>
+              NootAI requires internet connectivity to answer queries.
+            </Text>
+          </View>
+        )}
+
         {/* Input area */}
-        <View style={[styles.inputContainer, { backgroundColor: t.headerBg, borderTopColor: t.headerBorder }]}>
+        <View style={[styles.inputContainer, { backgroundColor: t.headerBg, borderTopColor: t.headerBorder, opacity: isOffline ? 0.6 : 1 }]}>
           <TextInput
-            style={[styles.textInput, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
-            placeholder="Ask me anything about your installments..."
+            style={[styles.textInput, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: isOffline ? t.textSecondary : t.textPrimary }]}
+            placeholder={isOffline ? "NootAI is disabled offline" : "Ask me anything about your installments..."}
             placeholderTextColor={isDarkMode ? 'rgba(148, 163, 184, 0.4)' : '#94a3b8'}
             value={userInput}
             onChangeText={setUserInput}
             onSubmitEditing={() => handleSendMessage()}
+            editable={!isOffline}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: t.accent }]}
+            style={[styles.sendBtn, { backgroundColor: isOffline ? '#4b5563' : t.accent }]}
             onPress={() => handleSendMessage()}
             activeOpacity={0.85}
+            disabled={isOffline}
           >
             <Send size={16} color="#ffffff" />
           </TouchableOpacity>
