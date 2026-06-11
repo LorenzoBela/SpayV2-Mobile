@@ -18,7 +18,7 @@
                          },
                  "android":  {
                                  "package":  "com.cerberuzz91141.mobile",
-                                 "versionCode":  12,
+                                 "versionCode":  13,
                                  "googleServicesFile":  "./google-services.json",
                                  "adaptiveIcon":  {
                                                       "foregroundImage":  "./assets/android-icon-foreground.png",
