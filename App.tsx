@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -12,6 +12,11 @@ import PremiumLoader from './src/components/PremiumLoader';
 import AppUpdateGate from './src/components/AppUpdateGate';
 import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
 import GlobalProgressBar from './src/components/GlobalProgressBar';
+import * as SplashScreen from 'expo-splash-screen';
+import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
+
+// Keep the native splash screen visible until the custom animated splash mounts
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Import Google Fonts loaders
 import {
@@ -55,6 +60,8 @@ const darkTheme = {
 };
 
 export default function App() {
+  const [isSplashAnimationComplete, setIsSplashAnimationComplete] = useState(false);
+
   const [fontsLoaded] = useFonts({
     'Outfit-Light': Outfit_300Light,
     'Outfit-Regular': Outfit_400Regular,
@@ -71,11 +78,13 @@ export default function App() {
   });
 
   if (!fontsLoaded) {
+    return null; // Hold the native splash screen until fonts are loaded
+  }
+
+  if (!isSplashAnimationComplete) {
     return (
-      <PremiumLoader
-        title="Loading System Fonts"
-        subtitle="Downloading Outfit & Plus Jakarta Sans typography..."
-        useSystemFonts={true}
+      <AnimatedSplashScreen
+        onAnimationComplete={() => setIsSplashAnimationComplete(true)}
       />
     );
   }

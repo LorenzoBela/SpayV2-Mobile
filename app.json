@@ -9,7 +9,8 @@
                  "scheme":  "exp+mobile",
                  "newArchEnabled":  true,
                  "splash":  {
-                                "image":  "./assets/splash-screen.png",
+                                "image":  "./assets/splash-icon.png",
+                                "imageWidth":  200,
                                 "resizeMode":  "contain",
                                 "backgroundColor":  "#0b0f19"
                             },
@@ -18,7 +19,7 @@
                          },
                  "android":  {
                                  "package":  "com.cerberuzz91141.mobile",
-                                 "versionCode":  19,
+                                 "versionCode":  23,
                                  "googleServicesFile":  "./google-services.json",
                                  "adaptiveIcon":  {
                                                       "foregroundImage":  "./assets/android-icon-foreground.png",
@@ -70,8 +71,8 @@
                                  [
                                      "expo-splash-screen",
                                      {
-                                         "image":  "./assets/splash-screen.png",
-                                         "imageWidth":  220,
+                                         "image":  "./assets/splash-icon.png",
+                                         "imageWidth":  200,
                                          "resizeMode":  "contain",
                                          "backgroundColor":  "#0b0f19"
                                      }
