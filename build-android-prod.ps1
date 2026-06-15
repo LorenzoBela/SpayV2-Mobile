@@ -969,6 +969,89 @@ function Invoke-FirebaseMessagingManifestFix {
 }
 Invoke-FirebaseMessagingManifestFix -ProjectRoot $PROJECT_ROOT
 
+function Invoke-CopyWidgetFiles {
+    param([string]$ProjectRoot)
+    $widgetsDir = Join-Path $ProjectRoot "widgets"
+    $androidAppDir = Join-Path $ProjectRoot "android\app"
+    
+    if (-not (Test-Path $widgetsDir)) {
+        Write-Host "[WARN] Widgets source directory not found at $widgetsDir" -ForegroundColor Yellow
+        return
+    }
+    
+    $destJavaDir = Join-Path $androidAppDir "src\main\java\com\cerberuzz91141\mobile"
+    $destLayoutDir = Join-Path $androidAppDir "src\main\res\layout"
+    $destXmlDir = Join-Path $androidAppDir "src\main\res\xml"
+    $destDrawableDir = Join-Path $androidAppDir "src\main\res\drawable"
+    
+    # Ensure directories exist
+    if (-not (Test-Path $destJavaDir)) { New-Item -ItemType Directory -Path $destJavaDir -Force | Out-Null }
+    if (-not (Test-Path $destLayoutDir)) { New-Item -ItemType Directory -Path $destLayoutDir -Force | Out-Null }
+    if (-not (Test-Path $destXmlDir)) { New-Item -ItemType Directory -Path $destXmlDir -Force | Out-Null }
+    if (-not (Test-Path $destDrawableDir)) { New-Item -ItemType Directory -Path $destDrawableDir -Force | Out-Null }
+    
+    # Copy Kotlin files
+    Copy-Item -Path (Join-Path $widgetsDir "kotlin\*") -Destination $destJavaDir -Force
+    # Copy Layout files
+    Copy-Item -Path (Join-Path $widgetsDir "layout\*") -Destination $destLayoutDir -Force
+    # Copy XML files
+    Copy-Item -Path (Join-Path $widgetsDir "xml\*") -Destination $destXmlDir -Force
+    # Copy Drawable files (backgrounds, dots, icons referenced by widget layouts)
+    $srcDrawableDir = Join-Path $widgetsDir "drawable"
+    if (Test-Path $srcDrawableDir) {
+        Copy-Item -Path (Join-Path $srcDrawableDir "*") -Destination $destDrawableDir -Force
+        Write-Host "[OK] Copied widget drawable resources to native Android directory" -ForegroundColor Green
+    }
+    
+    Write-Host "[OK] Copied widget source files to native Android directory" -ForegroundColor Green
+}
+
+function Invoke-StringsXmlFix {
+    param([string]$ProjectRoot)
+    $stringsPath = Join-Path $ProjectRoot "android\app\src\main\res\values\strings.xml"
+    if (-not (Test-Path $stringsPath)) { return }
+    $content = Get-Content $stringsPath -Raw
+    
+    $widgetStrings = @'
+  <string name="widget_client_countdown_label">Billing Cycle Countdown</string>
+  <string name="widget_credit_limit_label">Credit Limit Info</string>
+  <string name="widget_noot_ai_label">Noot AI Assistant</string>
+  <string name="widget_client_transactions_label">Recent Transactions</string>
+  <string name="widget_client_health_label">Credit Health Score</string>
+  <string name="widget_client_upcoming_label">Upcoming Payments</string>
+  <string name="widget_client_inbox_label">Inbox Messages</string>
+  <string name="widget_admin_countdown_label">Admin Billing Countdown</string>
+  <string name="widget_admin_exposure_label">Admin Exposure Stats</string>
+  <string name="widget_admin_reminders_label">Admin Payment Reminders</string>
+  <string name="widget_admin_stats_label">Admin Overview Stats</string>
+  <string name="widget_admin_audit_label">Admin Audit Logs</string>
+'@
+    
+    if ($content -notlike "*widget_client_countdown_label*") {
+        $content = $content -replace '</resources>', "$widgetStrings`r`n</resources>"
+        Set-Content -Path $stringsPath -Value $content
+        Write-Host "[OK] Added widget string labels to strings.xml" -ForegroundColor Green
+    }
+}
+
+function Invoke-MainApplicationWidgetFix {
+    param([string]$ProjectRoot)
+    $appPath = Join-Path $ProjectRoot "android\app\src\main\java\com\cerberuzz91141\mobile\MainApplication.kt"
+    if (-not (Test-Path $appPath)) { return }
+    $raw = Get-Content -Path $appPath -Raw
+    if ($raw -notmatch 'SpayWidgetPackage\(\)') {
+        if ($raw -match '// add\(MyReactNativePackage\(\)\)\r\n') {
+            $raw = $raw -replace '// add\(MyReactNativePackage\(\)\)\r\n', "// add(MyReactNativePackage())`r`n          add(SpayWidgetPackage())`r`n"
+        } else {
+            $raw = $raw -replace '// add\(MyReactNativePackage\(\)\)\n', "// add(MyReactNativePackage())\n          add(SpayWidgetPackage())\n"
+        }
+        Set-Content -Path $appPath -Value $raw
+        Write-Host "[OK] Registered SpayWidgetPackage in MainApplication.kt" -ForegroundColor Green
+    } else {
+        Write-Host "[OK] SpayWidgetPackage already registered in MainApplication.kt" -ForegroundColor Green
+    }
+}
+
 function Invoke-WidgetManifestInjection {
     param([string]$ProjectRoot)
 
@@ -984,79 +1067,91 @@ function Invoke-WidgetManifestInjection {
     }
 
     $widgetReceivers = @'
-    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true">
+    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true" android:label="@string/widget_client_countdown_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_PREV_MONTH"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_countdown"/>
     </receiver>
-    <receiver android:name=".CreditLimitWidgetProvider" android:exported="true">
+    <receiver android:name=".CreditLimitWidgetProvider" android:exported="true" android:label="@string/widget_credit_limit_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_credit_limit"/>
     </receiver>
-    <receiver android:name=".NootAiWidgetProvider" android:exported="true">
+    <receiver android:name=".NootAiWidgetProvider" android:exported="true" android:label="@string/widget_noot_ai_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_noot_ai"/>
     </receiver>
-    <receiver android:name=".ClientTransactionsWidgetProvider" android:exported="true">
+    <receiver android:name=".ClientTransactionsWidgetProvider" android:exported="true" android:label="@string/widget_client_transactions_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_transactions"/>
     </receiver>
-    <receiver android:name=".ClientHealthWidgetProvider" android:exported="true">
+    <receiver android:name=".ClientHealthWidgetProvider" android:exported="true" android:label="@string/widget_client_health_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_health"/>
     </receiver>
-    <receiver android:name=".ClientUpcomingWidgetProvider" android:exported="true">
+    <receiver android:name=".ClientUpcomingWidgetProvider" android:exported="true" android:label="@string/widget_client_upcoming_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_upcoming"/>
     </receiver>
-    <receiver android:name=".ClientInboxWidgetProvider" android:exported="true">
+    <receiver android:name=".ClientInboxWidgetProvider" android:exported="true" android:label="@string/widget_client_inbox_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_inbox"/>
     </receiver>
-    <receiver android:name=".AdminCountdownWidgetProvider" android:exported="true">
+    <receiver android:name=".AdminCountdownWidgetProvider" android:exported="true" android:label="@string/widget_admin_countdown_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_NEXT_MONTH"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_PREV_MONTH"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_countdown"/>
     </receiver>
-    <receiver android:name=".AdminExposureWidgetProvider" android:exported="true">
+    <receiver android:name=".AdminExposureWidgetProvider" android:exported="true" android:label="@string/widget_admin_exposure_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_exposure"/>
     </receiver>
-    <receiver android:name=".AdminRemindersWidgetProvider" android:exported="true">
+    <receiver android:name=".AdminRemindersWidgetProvider" android:exported="true" android:label="@string/widget_admin_reminders_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_reminders"/>
     </receiver>
-    <receiver android:name=".AdminStatsWidgetProvider" android:exported="true">
+    <receiver android:name=".AdminStatsWidgetProvider" android:exported="true" android:label="@string/widget_admin_stats_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_stats"/>
     </receiver>
-    <receiver android:name=".AdminAuditWidgetProvider" android:exported="true">
+    <receiver android:name=".AdminAuditWidgetProvider" android:exported="true" android:label="@string/widget_admin_audit_label">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_audit"/>
     </receiver>
@@ -1068,6 +1163,9 @@ function Invoke-WidgetManifestInjection {
     Write-Host "[OK] Injected 12 widget receivers into AndroidManifest.xml" -ForegroundColor Green
 }
 Invoke-WidgetManifestInjection -ProjectRoot $PROJECT_ROOT
+Invoke-CopyWidgetFiles -ProjectRoot $PROJECT_ROOT
+Invoke-StringsXmlFix -ProjectRoot $PROJECT_ROOT
+Invoke-MainApplicationWidgetFix -ProjectRoot $PROJECT_ROOT
 
 # Apply existing patches for RN background actions 
 $bgActionsTask = Join-Path $PROJECT_ROOT "node_modules\react-native-background-actions\android\src\main\java\com\asterinet\react\bgactions\RNBackgroundActionsTask.java"

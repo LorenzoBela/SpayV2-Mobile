@@ -39,7 +39,7 @@
         <data android:scheme="exp+mobile"/>
       </intent-filter>
     </activity>
-      <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true">
+    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"/>
@@ -117,4 +117,3 @@
     </receiver>
   </application>
 </manifest>
-

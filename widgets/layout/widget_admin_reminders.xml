@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ADMIN REMINDERS &amp; ALERTS"
+            android:textColor="#8A99AD"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:layout_alignParentStart="true" />
+
+        <TextView
+            android:id="@+id/offline_dot"
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:background="@drawable/offline_dot_red"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:visibility="gone" />
+    </RelativeLayout>
+
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/txt_empty_state"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="No active system reminders."
+        android:textColor="#34c759"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- List Container -->
+    <LinearLayout
+        android:id="@+id/reminders_list_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:divider="?android:attr/dividerHorizontal"
+        android:showDividers="middle">
+
+        <!-- Row 1 -->
+        <RelativeLayout
+            android:id="@+id/reminder_row_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp">
+
+            <TextView
+                android:id="@+id/indicator_row_1"
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:background="@drawable/offline_dot_red"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_toEndOf="@id/indicator_row_1"
+                android:layout_marginHorizontal="8dp"
+                android:layout_centerVertical="true">
+
+                <TextView
+                    android:id="@+id/txt_row_1_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="System Alert"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+
+                <TextView
+                    android:id="@+id/txt_row_1_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Critical warning description"
+                    android:textColor="#8A99AD"
+                    android:textSize="10sp"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+            </LinearLayout>
+        </RelativeLayout>
+
+        <!-- Row 2 -->
+        <RelativeLayout
+            android:id="@+id/reminder_row_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp">
+
+            <TextView
+                android:id="@+id/indicator_row_2"
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:background="@drawable/priority_dot_amber"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_toEndOf="@id/indicator_row_2"
+                android:layout_marginHorizontal="8dp"
+                android:layout_centerVertical="true">
+
+                <TextView
+                    android:id="@+id/txt_row_2_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="System Alert"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+
+                <TextView
+                    android:id="@+id/txt_row_2_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Warning description details"
+                    android:textColor="#8A99AD"
+                    android:textSize="10sp"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+            </LinearLayout>
+        </RelativeLayout>
+
+        <!-- Row 3 -->
+        <RelativeLayout
+            android:id="@+id/reminder_row_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingVertical="8dp">
+
+            <TextView
+                android:id="@+id/indicator_row_3"
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:background="@drawable/priority_dot_green"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_toEndOf="@id/indicator_row_3"
+                android:layout_marginHorizontal="8dp"
+                android:layout_centerVertical="true">
+
+                <TextView
+                    android:id="@+id/txt_row_3_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="System Alert"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+
+                <TextView
+                    android:id="@+id/txt_row_3_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Info details warning description"
+                    android:textColor="#8A99AD"
+                    android:textSize="10sp"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+            </LinearLayout>
+        </RelativeLayout>
+    </LinearLayout>
+
+    <!-- Footer -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Tap to review system alerts"
+        android:textColor="#8A99AD"
+        android:textSize="9sp"
+        android:gravity="center"
+        android:textStyle="italic" />
+</LinearLayout>

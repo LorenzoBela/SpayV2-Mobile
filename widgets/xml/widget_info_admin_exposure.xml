@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="270dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="250dp"
+    android:minResizeHeight="80dp"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_admin_exposure"
+    android:previewLayout="@layout/widget_admin_exposure"
+    android:previewImage="@drawable/widget_preview_admin_exposure"
+    android:description="@string/widget_admin_exposure_description"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

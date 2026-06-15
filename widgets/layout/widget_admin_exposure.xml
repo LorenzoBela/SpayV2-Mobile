@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="16dp"
+    android:gravity="center_vertical">
+
+    <!-- Header -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PLATFORM RISK &amp; EXPOSURE"
+            android:textColor="#8A99AD"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05"
+            android:layout_alignParentStart="true" />
+
+        <TextView
+            android:id="@+id/offline_dot"
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:background="@drawable/offline_dot_red"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:visibility="gone" />
+    </RelativeLayout>
+
+    <!-- Capital exposure numbers -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ACTIVE OUTSTANDING"
+                android:textColor="#8A99AD"
+                android:textSize="8sp" />
+
+            <TextView
+                android:id="@+id/txt_outstanding_amount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₱0.00"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="end">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="COLLECTION EFFICIENCY"
+                android:textColor="#8A99AD"
+                android:textSize="8sp" />
+
+            <TextView
+                android:id="@+id/txt_efficiency_pct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0.0%"
+                android:textColor="#34c759"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Custom Progress Bar -->
+    <ProgressBar
+        android:id="@+id/exposure_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:progress="0"
+        android:max="100"
+        android:progressDrawable="@drawable/progress_bar_horizontal"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Total platform cap exposure footer -->
+    <TextView
+        android:id="@+id/txt_total_cap_exposure"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Total Capital Baseline Limit: ₱0.00"
+        android:textColor="#8A99AD"
+        android:textSize="9sp" />
+</LinearLayout>
