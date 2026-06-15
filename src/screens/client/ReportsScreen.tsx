@@ -7,8 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  Alert,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +19,6 @@ import {
   Calendar,
   Award,
   AlertCircle,
-  ShoppingBag,
   ShieldAlert,
   DollarSign,
   PieChart as PieIcon,
@@ -30,14 +29,13 @@ import {
   CreditCard,
   Download,
   ListPlus,
-  HelpCircle,
   Lightbulb,
   CheckCircle2,
   ChevronRight,
   Sparkles,
   RefreshCw,
 } from 'lucide-react-native';
-import Svg, { Circle, Rect, Path, Line, Text as SvgText, G } from 'react-native-svg';
+import Svg, { Circle, Rect, Path, Line, Text as SvgText, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
@@ -49,7 +47,6 @@ import { ReportsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { parseUtcDate } from '../../utils/date';
 
-
 export default function ReportsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -59,9 +56,13 @@ export default function ReportsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Filter & tab states
-  const [activeTab, setActiveTab] = useState<'overview' | 'detailed' | 'forecast'>('overview');
+  // Filter & tab states (matching web's 5 tabs)
+  const [activeTab, setActiveTab] = useState<'overview' | 'detailed' | 'forecast' | 'goals' | 'simulator'>('overview');
   const [period, setPeriod] = useState<'all' | 'last_30' | 'last_90' | 'this_year' | 'last_year'>('all');
+
+  // Simulator state (Tab 5)
+  const [simAmount, setSimAmount] = useState<number>(15000);
+  const [simTerm, setSimTerm] = useState<number>(6);
 
   // Modals state
   const [modals, setModals] = useState({
@@ -83,18 +84,18 @@ export default function ReportsScreen() {
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     accent: '#ee4d2d',
     divider: isDarkMode ? '#222d42' : '#e2e8f0',
-    modalOverlay: isDarkMode ? 'rgba(11, 15, 25, 0.85)' : 'rgba(15, 23, 42, 0.65)',
+    modalOverlay: isDarkMode ? 'rgba(1b, 25, 41, 0.85)' : 'rgba(15, 23, 42, 0.65)',
   };
 
   const catColors = [
-    { text: isDarkMode ? '#94a3b8' : '#475569', bar: '#475569' },
-    { text: isDarkMode ? '#94a3b8' : '#64748b', bar: '#64748b' },
-    { text: isDarkMode ? '#a1a1aa' : '#52525b', bar: '#52525b' },
-    { text: isDarkMode ? '#a1a1aa' : '#71717a', bar: '#71717a' },
-    { text: isDarkMode ? '#a3a3a3' : '#525252', bar: '#525252' },
-    { text: isDarkMode ? '#a3a3a3' : '#737373', bar: '#737373' },
-    { text: isDarkMode ? '#cbd5e1' : '#334155', bar: '#334155' },
-    { text: isDarkMode ? '#cbd5e1' : '#3f3f46', bar: '#3f3f46' },
+    { text: isDarkMode ? '#f8fafc' : '#ee4d2d', bar: '#ee4d2d' },
+    { text: isDarkMode ? '#94a3b8' : '#3b82f6', bar: '#3b82f6' },
+    { text: isDarkMode ? '#a1a1aa' : '#10b981', bar: '#10b981' },
+    { text: isDarkMode ? '#a1a1aa' : '#f59e0b', bar: '#f59e0b' },
+    { text: isDarkMode ? '#a3a3a3' : '#8b5cf6', bar: '#8b5cf6' },
+    { text: isDarkMode ? '#a3a3a3' : '#ec4899', bar: '#ec4899' },
+    { text: isDarkMode ? '#cbd5e1' : '#06b6d4', bar: '#06b6d4' },
+    { text: isDarkMode ? '#cbd5e1' : '#6b7280', bar: '#6b7280' },
     { text: isDarkMode ? '#a8a29e' : '#78716c', bar: '#78716c' },
   ];
 
@@ -247,7 +248,7 @@ export default function ReportsScreen() {
       endDate = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
     }
 
-    // Filter orders and payments by Order Date (matching legacy PHP behavior)
+    // Filter orders and payments by Order Date (matching legacy behavior)
     const filteredOrders = rawOrders.filter((o) => {
       if (!startDate || !endDate) return true;
       return o.orderDate >= startDate && o.orderDate <= endDate;
@@ -701,116 +702,215 @@ export default function ReportsScreen() {
     return '₱' + Math.round(val).toLocaleString('en-US');
   };
 
-  // SVGs Chart Builders
-  const renderAreaChart = () => {
-    if (monthlyData.length === 0) return null;
-    const maxVal = Math.max(...monthlyData.map((d) => Math.max(d.totalAmount, d.totalPaid)), 1000);
-    const paddingLeft = 42;
-    const paddingRight = 20;
+  // Sparkline calculations (1:1 with web client formulas)
+  const spendSparklinePath = useMemo(() => {
+    if (!monthlyData || monthlyData.length < 2) return '';
+    const width = 80;
+    const height = 24;
+    const padding = 2;
+    const xStep = (width - padding * 2) / (monthlyData.length - 1);
+    const maxVal = Math.max(...monthlyData.map(d => d.totalAmount), 1);
+    const minVal = Math.min(...monthlyData.map(d => d.totalAmount), 0);
+    const valRange = maxVal - minVal || 1;
+
+    return monthlyData.map((d, index) => {
+      const x = padding + index * xStep;
+      const y = height - padding - ((d.totalAmount - minVal) / valRange) * (height - padding * 2);
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(' ');
+  }, [monthlyData]);
+
+  const complianceSparklinePath = useMemo(() => {
+    if (!monthlyData || monthlyData.length < 2) return '';
+    const width = 80;
+    const height = 24;
+    const padding = 2;
+    const xStep = (width - padding * 2) / (monthlyData.length - 1);
+
+    const rates = monthlyData.map(d => {
+      const total = d.totalAmount;
+      return total > 0 ? d.totalPaid / total : 0;
+    });
+
+    const maxVal = Math.max(...rates, 1);
+    const minVal = Math.min(...rates, 0);
+    const valRange = maxVal - minVal || 1;
+
+    return rates.map((rate, index) => {
+      const x = padding + index * xStep;
+      const y = height - padding - ((rate - minVal) / valRange) * (height - padding * 2);
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(' ');
+  }, [monthlyData]);
+
+  // Tab 4 Goal Payoff Curves
+  const payoffCurveData = useMemo(() => {
+    let runningDebt = metrics.pendingAmount;
+    const curve = [{ month: 'Current', spent: runningDebt, paid: runningDebt }];
+
+    const monthsCount = Math.max(1, metrics.monthsToPayoff);
+    const monthlyPayoff = metrics.pendingAmount / monthsCount;
+
+    for (let i = 1; i <= monthsCount; i++) {
+      runningDebt = Math.max(0, runningDebt - monthlyPayoff);
+      const d = new Date();
+      d.setMonth(d.getMonth() + i);
+      const monthLabel = d.toLocaleDateString('en-US', { month: 'short' });
+      curve.push({
+        month: monthLabel,
+        spent: Math.round(runningDebt),
+        paid: Math.round(runningDebt)
+      });
+    }
+    return curve;
+  }, [metrics]);
+
+  const goalAllocationData = useMemo(() => {
+    const totalIncomeSim = Math.max(metrics.monthlyAvg * 3, 50000);
+    const emergencyFund = totalIncomeSim * 0.2;
+    const personalSavings = totalIncomeSim * 0.15;
+    const debtPayoff = metrics.pendingAmount;
+    return [
+      { name: 'Debt Dues', value: debtPayoff, color: '#ee4d2d' },
+      { name: 'Emergency', value: emergencyFund, color: '#10b981' },
+      { name: 'Savings', value: personalSavings, color: '#3b82f6' }
+    ];
+  }, [metrics]);
+
+  // Tab 5 Prospective Purchase Simulator datasets
+  const simulatedForecastPoints = useMemo(() => {
+    return forecastMonths.map((m, idx) => {
+      const isSimActive = idx < simTerm;
+      const extraRepayment = isSimActive ? (simAmount / simTerm) : 0;
+      return {
+        monthName: m.monthName,
+        projected: m.projected + extraRepayment,
+        count: 1
+      };
+    });
+  }, [forecastMonths, simAmount, simTerm]);
+
+  const simulatedDtiData = useMemo(() => {
+    const estimatedIncome = Math.max(metrics.monthlyAvg * 2.5, 60000);
+    return forecastMonths.map((m, idx) => {
+      const isSimActive = idx < simTerm;
+      const extraRepayment = isSimActive ? (simAmount / simTerm) : 0;
+      const currentRepay = m.projected;
+      const totalRepay = currentRepay + extraRepayment;
+      const dtiRatio = (totalRepay / estimatedIncome) * 100;
+
+      return {
+        monthName: m.monthName,
+        ratio: Math.round(dtiRatio * 10) / 10
+      };
+    });
+  }, [forecastMonths, simAmount, simTerm, metrics]);
+
+  // Mapped datasets for charts
+  const mappedMonthlyData = useMemo(() => {
+    return monthlyData.map(m => ({
+      monthName: m.monthName,
+      spent: m.totalAmount,
+      paid: m.totalPaid,
+    }));
+  }, [monthlyData]);
+
+  const mappedInstallmentBreakdown = useMemo(() => {
+    return installmentBreakdown.map((item, idx) => ({
+      name: `${item.installmentMonths} Mo`,
+      value: item.totalAmount,
+      color: catColors[idx % catColors.length].bar
+    }));
+  }, [installmentBreakdown]);
+
+  const mappedSpendingCategories = useMemo(() => {
+    return spendingCategories.map((item, idx) => ({
+      name: item.category,
+      value: item.totalSpent,
+      color: catColors[idx % catColors.length].bar
+    }));
+  }, [spendingCategories]);
+
+  const delinquentBillsForAging = useMemo(() => {
+    const overdueItems = compliancePayments.filter(p => p.status === 'overdue');
+    return overdueItems.map(p => {
+      const dueDate = new Date(p.dueDate);
+      const longestOverdue = Math.max(0, Math.ceil((new Date().getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+      return {
+        overdueAmount: p.amountDue,
+        longestOverdue
+      };
+    });
+  }, [compliancePayments]);
+
+  const riskPoints = useMemo(() => {
+    const unpaid = compliancePayments.filter(p => p.status === 'overdue' || p.status === 'pending');
+    return unpaid.map((p) => {
+      const dueDate = new Date(p.dueDate);
+      const isOverdue = new Date() > dueDate;
+      const daysDiff = isOverdue
+        ? Math.ceil((new Date().getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+      return {
+        name: p.itemName,
+        overdueAmount: p.amountDue,
+        longestOverdue: daysDiff
+      };
+    });
+  }, [compliancePayments]);
+
+  // SVG Chart Renderers (Math-based, performance optimized for Hermes)
+
+  const renderAreaChart = (data: any[], spentKey: string = 'spent', paidKey: string = 'paid', xKey: string = 'monthName') => {
+    if (data.length === 0) return null;
+    const maxVal = Math.max(...data.map((d) => Math.max(d[spentKey] || 0, d[paidKey] || 0)), 1000);
+    const paddingLeft = 45;
+    const paddingRight = 15;
     const paddingTop = 15;
-    const paddingBottom = 20;
-
-    const chartW = chartCanvasWidth;
-    const chartH = 160;
-
-    const chartWidth = chartW - paddingLeft - paddingRight;
-    const chartHeight = chartH - paddingTop - paddingBottom;
+    const paddingBottom = 25;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = 160 - paddingTop - paddingBottom;
 
     const pointsSpent: string[] = [];
     const pointsPaid: string[] = [];
 
-    monthlyData.forEach((d, i) => {
-      const x = paddingLeft + (i / (monthlyData.length - 1)) * chartWidth;
-      const ySpent = paddingTop + chartHeight - (d.totalAmount / maxVal) * chartHeight;
-      const yPaid = paddingTop + chartHeight - (d.totalPaid / maxVal) * chartHeight;
+    data.forEach((d, i) => {
+      const x = paddingLeft + (i / (data.length - 1)) * innerWidth;
+      const ySpent = paddingTop + innerHeight - ((d[spentKey] || 0) / maxVal) * innerHeight;
+      const yPaid = paddingTop + innerHeight - ((d[paidKey] || 0) / maxVal) * innerHeight;
 
       pointsSpent.push(`${x},${ySpent}`);
       pointsPaid.push(`${x},${yPaid}`);
     });
 
     const dSpentLine = `M ${pointsSpent.join(' L ')}`;
-    const dSpentArea = `${dSpentLine} L ${paddingLeft + chartWidth},${paddingTop + chartHeight} L ${paddingLeft},${paddingTop + chartHeight} Z`;
+    const dSpentArea = `${dSpentLine} L ${paddingLeft + innerWidth},${paddingTop + innerHeight} L ${paddingLeft},${paddingTop + innerHeight} Z`;
     const dPaidLine = `M ${pointsPaid.join(' L ')}`;
 
-    const yTicks = [0, 0.25, 0.5, 0.75, 1];
-
     return (
-      <Svg width={chartW} height={chartH}>
-        {/* Horizontal Ticks */}
-        {yTicks.map((tick, idx) => {
-          const y = paddingTop + chartHeight - tick * chartHeight;
+      <Svg width={chartCanvasWidth} height={160}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
+          const gridVal = tick * maxVal;
           return (
-            <Line
-              key={idx}
-              x1={paddingLeft}
-              y1={y}
-              x2={paddingLeft + chartWidth}
-              y2={y}
-              stroke={t.cardBorder}
-              strokeWidth={1}
-              strokeDasharray="2,2"
-            />
+            <G key={idx}>
+              <Line x1={paddingLeft} y1={y} x2={paddingLeft + innerWidth} y2={y} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />
+              <SvgText x={paddingLeft - 6} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end" fontWeight="bold">
+                {gridVal >= 1000 ? `₱${(gridVal / 1000).toFixed(0)}k` : `₱${gridVal.toFixed(0)}`}
+              </SvgText>
+            </G>
           );
         })}
-
-        {/* Area for spent */}
         <Path d={dSpentArea} fill="rgba(238, 77, 45, 0.05)" />
+        <Path d={dSpentLine} fill="none" stroke="#ee4d2d" strokeWidth={2.2} />
+        <Path d={dPaidLine} fill="none" stroke={t.textSecondary} strokeWidth={1.8} strokeDasharray="3,3" />
 
-        {/* Lines */}
-        <Path d={dSpentLine} fill="none" stroke="#ee4d2d" strokeWidth={2.5} />
-        <Path d={dPaidLine} fill="none" stroke={t.textSecondary} strokeWidth={2} strokeDasharray="3,3" />
-
-        {/* Circles */}
-        {monthlyData.map((d, i) => {
-          const x = paddingLeft + (i / (monthlyData.length - 1)) * chartWidth;
-          const ySpent = paddingTop + chartHeight - (d.totalAmount / maxVal) * chartHeight;
+        {data.map((d, i) => {
+          if (i % 2 !== 0 && i !== data.length - 1) return null;
+          const x = paddingLeft + (i / (data.length - 1)) * innerWidth;
           return (
-            <Circle
-              key={i}
-              cx={x}
-              cy={ySpent}
-              r={3}
-              fill="#ee4d2d"
-              stroke={t.cardBg}
-              strokeWidth={1}
-            />
-          );
-        })}
-
-        {/* X labels */}
-        {monthlyData.map((d, i) => {
-          if (i % 2 !== 0 && i !== monthlyData.length - 1) return null; // alternate to fit mobile screens
-          const x = paddingLeft + (i / (monthlyData.length - 1)) * chartWidth;
-          return (
-            <SvgText
-              key={i}
-              x={x}
-              y={paddingTop + chartHeight + 14}
-              fontSize={8}
-              fill={t.textSecondary}
-              textAnchor="middle"
-              fontWeight="bold"
-            >
-              {d.monthName}
-            </SvgText>
-          );
-        })}
-
-        {/* Y labels */}
-        {yTicks.map((tick, idx) => {
-          const y = paddingTop + chartHeight - tick * chartHeight;
-          const value = Math.round((tick * maxVal) / 1000);
-          return (
-            <SvgText
-              key={idx}
-              x={paddingLeft - 6}
-              y={y + 3}
-              fontSize={8}
-              fill={t.textSecondary}
-              textAnchor="end"
-              fontWeight="bold"
-            >
-              ₱{value}k
+            <SvgText key={i} x={x} y={paddingTop + innerHeight + 14} fontSize={8} fill={t.textSecondary} textAnchor="middle" fontWeight="bold">
+              {d[xKey]}
             </SvgText>
           );
         })}
@@ -818,24 +918,26 @@ export default function ReportsScreen() {
     );
   };
 
-  const renderDonutChart = () => {
-    if (installmentBreakdown.length === 0) return null;
+  const renderDonutChart = (data: any[]) => {
+    if (data.length === 0) return null;
+    const totalVal = data.reduce((sum, d) => sum + d.value, 0);
+    if (totalVal <= 0) return null;
+
     const radius = 30;
     const strokeWidth = 8;
     const circumference = 2 * Math.PI * radius;
     const center = 45;
     const size = 90;
-
     let currentAngle = -90;
-    const colors = ['#ee4d2d', '#3b82f6', '#10b981', '#fbbf24', '#a855f7', '#64748b'];
 
     return (
       <Svg width={size} height={size}>
-        {installmentBreakdown.map((item, idx) => {
-          const strokeDashoffset = circumference - (item.percentage / 100) * circumference;
+        {data.map((item, idx) => {
+          const valPct = (item.value / totalVal) * 100;
+          if (valPct <= 0) return null;
+          const strokeDashoffset = circumference - (valPct / 100) * circumference;
           const rotation = currentAngle;
-          currentAngle += (item.percentage / 100) * 360;
-          const strokeColor = colors[idx % colors.length];
+          currentAngle += (valPct / 100) * 360;
 
           return (
             <G key={idx} transform={`rotate(${rotation} ${center} ${center})`}>
@@ -843,12 +945,12 @@ export default function ReportsScreen() {
                 cx={center}
                 cy={center}
                 r={radius}
-                stroke={strokeColor}
+                stroke={item.color}
                 strokeWidth={strokeWidth}
                 fill="transparent"
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}
-                strokeLinecap={item.percentage > 3 ? 'round' : 'square'}
+                strokeLinecap={valPct > 4 ? 'round' : 'square'}
               />
             </G>
           );
@@ -857,95 +959,127 @@ export default function ReportsScreen() {
     );
   };
 
-  const renderBarChart = (data: any[], dataKey: string, xKey: string, color: string) => {
-    if (data.length === 0) return null;
-    const values = data.map((d) => d[dataKey]);
-    const maxVal = Math.max(...values, 1000);
+  const renderWaterfallChart = (collected: number, pending: number, overdue: number) => {
+    const totalExpected = collected + pending;
+    const pendingPure = pending - overdue;
 
-    const paddingLeft = 42;
-    const paddingRight = 20;
+    const chartH = 170;
+    const paddingLeft = 45;
+    const paddingRight = 15;
     const paddingTop = 15;
-    const paddingBottom = 20;
+    const paddingBottom = 25;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = chartH - paddingTop - paddingBottom;
 
-    const chartW = chartCanvasWidth;
-    const chartH = 150;
+    const maxVal = Math.max(totalExpected, 1000) * 1.15;
+    const scaleY = (val: number) => (val / maxVal) * innerHeight;
 
-    const chartWidth = chartW - paddingLeft - paddingRight;
-    const chartHeight = chartH - paddingTop - paddingBottom;
+    const barWidth = Math.floor(innerWidth / 6);
+    const gap = Math.floor((innerWidth - barWidth * 4) / 5);
 
-    const barCount = data.length;
-    const barWidth = Math.max(8, Math.min(22, (chartWidth / barCount) * 0.45));
-    const spacing = (chartWidth - barCount * barWidth) / (barCount - 1 || 1);
-
-    const yTicks = [0, 0.25, 0.5, 0.75, 1];
+    const bars = [
+      { label: 'Expected', val: totalExpected, yStart: totalExpected, yEnd: 0, color: '#3b82f6' },
+      { label: 'Pending', val: pendingPure, yStart: totalExpected, yEnd: totalExpected - pendingPure, color: '#94a3b8' },
+      { label: 'Overdue', val: overdue, yStart: totalExpected - pendingPure, yEnd: totalExpected - pendingPure - overdue, color: '#ef4444' },
+      { label: 'Collected', val: collected, yStart: collected, yEnd: 0, color: '#ee4d2d' }
+    ];
 
     return (
-      <Svg width={chartW} height={chartH}>
-        {yTicks.map((tick, idx) => {
-          const y = paddingTop + chartHeight - tick * chartHeight;
+      <Svg width={chartCanvasWidth} height={chartH}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
+          const gridVal = tick * maxVal;
           return (
-            <Line
-              key={idx}
-              x1={paddingLeft}
-              y1={y}
-              x2={paddingLeft + chartWidth}
-              y2={y}
-              stroke={t.cardBorder}
-              strokeWidth={1}
-              strokeDasharray="2,2"
-            />
+            <G key={idx}>
+              <Line x1={paddingLeft} y1={y} x2={paddingLeft + innerWidth} y2={y} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />
+              <SvgText x={paddingLeft - 6} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end" fontWeight="bold">
+                {gridVal >= 1000 ? `₱${(gridVal / 1000).toFixed(0)}k` : `₱${gridVal.toFixed(0)}`}
+              </SvgText>
+            </G>
           );
+        })}
+
+        {bars.map((bar, idx) => {
+          const x = paddingLeft + gap + idx * (barWidth + gap);
+          const yTop = paddingTop + innerHeight - scaleY(Math.max(bar.yStart, bar.yEnd));
+          const yBottom = paddingTop + innerHeight - scaleY(Math.min(bar.yStart, bar.yEnd));
+          const height = Math.max(yBottom - yTop, 2);
+
+          const nextX = x + barWidth + gap;
+          const yEndScreen = paddingTop + innerHeight - scaleY(bar.yEnd);
+
+          return (
+            <G key={idx}>
+              <Rect x={x} y={yTop} width={barWidth} height={height} fill={bar.color} rx={3} ry={3} />
+              {idx < 3 && (
+                <Line x1={x + barWidth} y1={yEndScreen} x2={nextX} y2={yEndScreen} stroke={t.textSecondary} strokeWidth={1} strokeDasharray="2,2" />
+              )}
+              <SvgText x={x + barWidth / 2} y={yTop - 5} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle">
+                {bar.val >= 1000 ? `₱${(bar.val / 1000).toFixed(0)}k` : `₱${bar.val.toFixed(0)}`}
+              </SvgText>
+              <SvgText x={x + barWidth / 2} y={paddingTop + innerHeight + 14} fill={t.textSecondary} fontSize={8} textAnchor="middle" fontWeight="bold">
+                {bar.label}
+              </SvgText>
+            </G>
+          );
+        })}
+      </Svg>
+    );
+  };
+
+  const renderBarChart = (data: any[], dataKey: string, xKey: string, color: string, valueType: 'currency' | 'number' = 'currency') => {
+    if (data.length === 0) return null;
+    const values = data.map((d) => d[dataKey] || 0);
+    const maxVal = Math.max(...values, 1);
+
+    const paddingLeft = 45;
+    const paddingRight = 15;
+    const paddingTop = 15;
+    const paddingBottom = 25;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = 150 - paddingTop - paddingBottom;
+
+    const barCount = data.length;
+    const barWidth = Math.max(6, Math.min(22, (innerWidth / barCount) * 0.45));
+    const spacing = (innerWidth - barCount * barWidth) / (barCount - 1 || 1);
+
+    return (
+      <Svg width={chartCanvasWidth} height={150}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
+          return <Line key={idx} x1={paddingLeft} y1={y} x2={paddingLeft + innerWidth} y2={y} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />;
         })}
 
         {data.map((d, i) => {
           const x = paddingLeft + i * (barWidth + spacing) + spacing / 2;
-          const valHeight = (d[dataKey] / maxVal) * chartHeight;
-          const y = paddingTop + chartHeight - valHeight;
+          const valHeight = ((d[dataKey] || 0) / maxVal) * innerHeight;
+          const y = paddingTop + innerHeight - valHeight;
           return (
-            <Rect
-              key={i}
-              x={x}
-              y={y}
-              width={barWidth}
-              height={valHeight}
-              fill={color}
-              rx={2.5}
-              ry={2.5}
-            />
+            <Rect key={i} x={x} y={y} width={barWidth} height={Math.max(valHeight, 2)} fill={color} rx={2} ry={2} />
           );
         })}
 
         {data.map((d, i) => {
+          if (data.length > 8 && i % 2 !== 0) return null;
           const x = paddingLeft + i * (barWidth + spacing) + spacing / 2 + barWidth / 2;
           return (
-            <SvgText
-              key={i}
-              x={x}
-              y={paddingTop + chartHeight + 14}
-              fontSize={8}
-              fill={t.textSecondary}
-              textAnchor="middle"
-              fontWeight="bold"
-            >
+            <SvgText key={i} x={x} y={paddingTop + innerHeight + 14} fontSize={8} fill={t.textSecondary} textAnchor="middle" fontWeight="bold">
               {d[xKey]}
             </SvgText>
           );
         })}
 
-        {yTicks.map((tick, idx) => {
-          const y = paddingTop + chartHeight - tick * chartHeight;
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
           const value = Math.round(tick * maxVal);
-          const label = value >= 1000 ? `₱${(value / 1000).toFixed(0)}k` : `₱${value}`;
+          let label = '';
+          if (valueType === 'currency') {
+            label = value >= 1000 ? `₱${(value / 1000).toFixed(0)}k` : `₱${value}`;
+          } else {
+            label = String(value);
+          }
           return (
-            <SvgText
-              key={idx}
-              x={paddingLeft - 6}
-              y={y + 3}
-              fontSize={8}
-              fill={t.textSecondary}
-              textAnchor="end"
-              fontWeight="bold"
-            >
+            <SvgText key={idx} x={paddingLeft - 6} y={y + 3} fontSize={8} fill={t.textSecondary} textAnchor="end" fontWeight="bold">
               {label}
             </SvgText>
           );
@@ -954,24 +1088,81 @@ export default function ReportsScreen() {
     );
   };
 
-  const renderForecastChart = () => {
-    if (monthlyData.length === 0) return null;
+  const renderGroupedBarChart = (data: any[]) => {
+    if (data.length === 0) return null;
 
-    // Build cumulative data object
+    const paddingLeft = 45;
+    const paddingRight = 15;
+    const paddingTop = 15;
+    const paddingBottom = 25;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = 160 - paddingTop - paddingBottom;
+
+    const maxVal = Math.max(...data.map((d) => Math.max(d.spent, d.paid)), 1000) * 1.1;
+    const groupCount = data.length;
+    const groupWidth = innerWidth / groupCount;
+    const barWidth = Math.max(4, Math.min(10, groupWidth * 0.35));
+    const gapInside = 2;
+
+    return (
+      <Svg width={chartCanvasWidth} height={160}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
+          const gridVal = tick * maxVal;
+          return (
+            <G key={idx}>
+              <Line x1={paddingLeft} y1={y} x2={paddingLeft + innerWidth} y2={y} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />
+              <SvgText x={paddingLeft - 6} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end" fontWeight="bold">
+                {gridVal >= 1000 ? `₱${(gridVal / 1000).toFixed(0)}k` : `₱${gridVal.toFixed(0)}`}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {data.map((d, i) => {
+          const groupX = paddingLeft + i * groupWidth + (groupWidth - (barWidth * 2 + gapInside)) / 2;
+          const xSpent = groupX;
+          const xPaid = groupX + barWidth + gapInside;
+
+          const hSpent = (d.spent / maxVal) * innerHeight;
+          const ySpent = paddingTop + innerHeight - hSpent;
+
+          const hPaid = (d.paid / maxVal) * innerHeight;
+          const yPaid = paddingTop + innerHeight - hPaid;
+
+          return (
+            <G key={i}>
+              <Rect x={xSpent} y={ySpent} width={barWidth} height={Math.max(hSpent, 2)} fill="#475569" rx={1.5} ry={1.5} />
+              <Rect x={xPaid} y={yPaid} width={barWidth} height={Math.max(hPaid, 2)} fill="#10b981" rx={1.5} ry={1.5} />
+              {i % 2 === 0 && (
+                <SvgText x={groupX + barWidth + gapInside / 2} y={paddingTop + innerHeight + 14} fill={t.textSecondary} fontSize={8} textAnchor="middle" fontWeight="bold">
+                  {d.month}
+                </SvgText>
+              )}
+            </G>
+          );
+        })}
+      </Svg>
+    );
+  };
+
+  const renderForecastChart = (historical: any[], forecastSeries: any[]) => {
+    if (historical.length === 0) return null;
+
     const forecastChartData = [
-      ...monthlyData.slice(-6).map((m) => ({
-        monthName: m.monthName,
-        historical: m.totalAmount,
+      ...historical.slice(-6).map((m) => ({
+        monthName: m.monthName || m.month,
+        historical: m.spent || 0,
         forecast: null,
         upperBound: null,
         lowerBound: null,
       })),
-      ...forecastMonths.map((m, idx) => ({
-        monthName: m.monthName,
-        historical: idx === 0 ? monthlyData[monthlyData.length - 1].totalAmount : null,
+      ...forecastSeries.map((m, idx) => ({
+        monthName: m.monthName || m.month,
+        historical: idx === 0 ? (historical[historical.length - 1].spent || 0) : null,
         forecast: m.projected,
-        upperBound: m.upperBound,
-        lowerBound: m.lowerBound,
+        upperBound: m.upperBound || m.projected * 1.15,
+        lowerBound: m.lowerBound || m.projected * 0.85,
       })),
     ];
 
@@ -984,12 +1175,8 @@ export default function ReportsScreen() {
     const paddingRight = 20;
     const paddingTop = 15;
     const paddingBottom = 20;
-
-    const chartW = chartCanvasWidth;
-    const chartH = 160;
-
-    const chartWidth = chartW - paddingLeft - paddingRight;
-    const chartHeight = chartH - paddingTop - paddingBottom;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = 160 - paddingTop - paddingBottom;
 
     const pointsHist: string[] = [];
     const pointsFore: string[] = [];
@@ -997,21 +1184,21 @@ export default function ReportsScreen() {
     const pointsLower: string[] = [];
 
     forecastChartData.forEach((d, i) => {
-      const x = paddingLeft + (i / (forecastChartData.length - 1)) * chartWidth;
+      const x = paddingLeft + (i / (forecastChartData.length - 1)) * innerWidth;
 
       if (d.historical !== null) {
-        const yHist = paddingTop + chartHeight - (d.historical / maxVal) * chartHeight;
+        const yHist = paddingTop + innerHeight - (d.historical / maxVal) * innerHeight;
         pointsHist.push(`${x},${yHist}`);
       }
 
       if (d.forecast !== null) {
-        const yFore = paddingTop + chartHeight - (d.forecast / maxVal) * chartHeight;
+        const yFore = paddingTop + innerHeight - (d.forecast / maxVal) * innerHeight;
         pointsFore.push(`${x},${yFore}`);
 
-        const yUpper = paddingTop + chartHeight - (d.upperBound / maxVal) * chartHeight;
+        const yUpper = paddingTop + innerHeight - (d.upperBound / maxVal) * innerHeight;
         pointsUpper.push(`${x},${yUpper}`);
 
-        const yLower = paddingTop + chartHeight - (d.lowerBound / maxVal) * chartHeight;
+        const yLower = paddingTop + innerHeight - (d.lowerBound / maxVal) * innerHeight;
         pointsLower.push(`${x},${yLower}`);
       }
     });
@@ -1021,87 +1208,185 @@ export default function ReportsScreen() {
     const dUpperLine = pointsUpper.length > 0 ? `M ${pointsUpper.join(' L ')}` : '';
     const dLowerLine = pointsLower.length > 0 ? `M ${pointsLower.join(' L ')}` : '';
 
-    const yTicks = [0, 0.25, 0.5, 0.75, 1];
-
     return (
-      <Svg width={chartW} height={chartH}>
-        {yTicks.map((tick, idx) => {
-          const y = paddingTop + chartHeight - tick * chartHeight;
-          return (
-            <Line
-              key={idx}
-              x1={paddingLeft}
-              y1={y}
-              x2={paddingLeft + chartWidth}
-              y2={y}
-              stroke={t.cardBorder}
-              strokeWidth={1}
-              strokeDasharray="2,2"
-            />
-          );
+      <Svg width={chartCanvasWidth} height={160}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
+          return <Line key={idx} x1={paddingLeft} y1={y} x2={paddingLeft + innerWidth} y2={y} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />;
         })}
 
-        {/* Lines */}
         {dHistLine ? <Path d={dHistLine} fill="none" stroke="#475569" strokeWidth={2.5} /> : null}
         {dForeLine ? <Path d={dForeLine} fill="none" stroke={t.textSecondary} strokeWidth={2} strokeDasharray="4,4" /> : null}
         {dUpperLine ? <Path d={dUpperLine} fill="none" stroke={isDarkMode ? '#334155' : '#cbd5e1'} strokeWidth={1} strokeDasharray="2,2" /> : null}
         {dLowerLine ? <Path d={dLowerLine} fill="none" stroke={isDarkMode ? '#334155' : '#cbd5e1'} strokeWidth={1} strokeDasharray="2,2" /> : null}
 
-        {/* Points */}
         {forecastChartData.map((d, i) => {
-          const x = paddingLeft + (i / (forecastChartData.length - 1)) * chartWidth;
+          const x = paddingLeft + (i / (forecastChartData.length - 1)) * innerWidth;
           const val = d.historical !== null ? d.historical : d.forecast;
           if (val === null) return null;
-          const y = paddingTop + chartHeight - (val / maxVal) * chartHeight;
+          const y = paddingTop + innerHeight - (val / maxVal) * innerHeight;
           return (
-            <Circle
-              key={i}
-              cx={x}
-              cy={y}
-              r={2.5}
-              fill={d.historical !== null ? '#475569' : t.textSecondary}
-              stroke={t.cardBg}
-              strokeWidth={1}
-            />
+            <Circle key={i} cx={x} cy={y} r={2.5} fill={d.historical !== null ? '#475569' : t.textSecondary} stroke={t.cardBg} strokeWidth={1} />
           );
         })}
 
-        {/* X labels */}
         {forecastChartData.map((d, i) => {
           if (i % 2 !== 0 && i !== forecastChartData.length - 1) return null;
-          const x = paddingLeft + (i / (forecastChartData.length - 1)) * chartWidth;
+          const x = paddingLeft + (i / (forecastChartData.length - 1)) * innerWidth;
           return (
-            <SvgText
-              key={i}
-              x={x}
-              y={paddingTop + chartHeight + 14}
-              fontSize={8}
-              fill={t.textSecondary}
-              textAnchor="middle"
-              fontWeight="bold"
-            >
+            <SvgText key={i} x={x} y={paddingTop + innerHeight + 14} fontSize={8} fill={t.textSecondary} textAnchor="middle" fontWeight="bold">
               {d.monthName}
             </SvgText>
           );
         })}
 
-        {/* Y labels */}
-        {yTicks.map((tick, idx) => {
-          const y = paddingTop + chartHeight - tick * chartHeight;
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
           const value = Math.round(tick * maxVal);
           const label = value >= 1000 ? `₱${(value / 1000).toFixed(0)}k` : `₱${value}`;
           return (
-            <SvgText
-              key={idx}
-              x={paddingLeft - 6}
-              y={y + 3}
-              fontSize={8}
-              fill={t.textSecondary}
-              textAnchor="end"
-              fontWeight="bold"
-            >
+            <SvgText key={idx} x={paddingLeft - 6} y={y + 3} fontSize={8} fill={t.textSecondary} textAnchor="end" fontWeight="bold">
               {label}
             </SvgText>
+          );
+        })}
+      </Svg>
+    );
+  };
+
+  const renderAgingChart = (delinquents: any[]) => {
+    let b1 = 0, b2 = 0, b3 = 0, b4 = 0;
+    let c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+
+    delinquents.forEach((d: any) => {
+      const amt = d.overdueAmount || 0;
+      if (d.longestOverdue <= 30) { b1 += amt; c1++; }
+      else if (d.longestOverdue <= 60) { b2 += amt; c2++; }
+      else if (d.longestOverdue <= 90) { b3 += amt; c3++; }
+      else { b4 += amt; c4++; }
+    });
+
+    const agingData = [
+      { bucket: '1-30 Days', value: b1, count: c1, color: '#f59e0b' },
+      { bucket: '31-60 Days', value: b2, count: c2, color: '#f97316' },
+      { bucket: '61-90 Days', value: b3, count: c3, color: '#ea580c' },
+      { bucket: '90+ Days', value: b4, count: c4, color: '#ef4444' }
+    ];
+
+    const paddingLeft = 65;
+    const paddingRight = 15;
+    const paddingTop = 15;
+    const paddingBottom = 25;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = 150 - paddingTop - paddingBottom;
+    const maxVal = Math.max(...agingData.map((d) => d.value), 1000) * 1.15;
+    const yScaleStep = innerHeight / 4;
+
+    return (
+      <Svg width={chartCanvasWidth} height={150}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const x = paddingLeft + tick * innerWidth;
+          const gridVal = tick * maxVal;
+          return (
+            <G key={idx}>
+              <Line x1={x} y1={paddingTop} x2={x} y2={paddingTop + innerHeight} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />
+              <SvgText x={x} y={paddingTop + innerHeight + 14} fill={t.textSecondary} fontSize={8} textAnchor="middle" fontWeight="bold">
+                {gridVal >= 1000 ? `₱${(gridVal / 1000).toFixed(0)}k` : `₱${gridVal.toFixed(0)}`}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {agingData.map((d, idx) => {
+          const barHeight = yScaleStep * 0.6;
+          const y = paddingTop + idx * yScaleStep + (yScaleStep - barHeight) / 2;
+          const barWidth = d.value > 0 ? (d.value / maxVal) * innerWidth : 0;
+
+          return (
+            <G key={idx}>
+              <SvgText x={paddingLeft - 8} y={y + barHeight / 2 + 3} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="end">
+                {d.bucket}
+              </SvgText>
+              <Rect x={paddingLeft} y={y} width={Math.max(barWidth, 2)} height={barHeight} fill={d.color} rx={2} ry={2} />
+              <SvgText x={paddingLeft + barWidth + 6} y={y + barHeight / 2 + 3} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="start">
+                {d.value > 0 ? `₱${Math.round(d.value)}` : '₱0'}
+              </SvgText>
+            </G>
+          );
+        })}
+      </Svg>
+    );
+  };
+
+  const renderRiskScatterPlot = (points: any[]) => {
+    const paddingLeft = 45;
+    const paddingRight = 15;
+    const paddingTop = 15;
+    const paddingBottom = 30;
+    const innerWidth = chartCanvasWidth - paddingLeft - paddingRight;
+    const innerHeight = 160 - paddingTop - paddingBottom;
+
+    if (points.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={{ color: t.textSecondary, fontSize: 10 }}>No unpaid payments found.</Text>
+        </View>
+      );
+    }
+
+    const xMax = Math.max(...points.map((d) => d.longestOverdue), 30) * 1.1;
+    const yMax = Math.max(...points.map((d) => d.overdueAmount), 1000) * 1.15;
+
+    const getX = (val: number) => paddingLeft + (val / xMax) * innerWidth;
+    const getY = (val: number) => paddingTop + innerHeight - (val / yMax) * innerHeight;
+
+    const getDotColor = (d: any) => {
+      if (d.longestOverdue > 60) return '#ef4444';
+      if (d.longestOverdue > 30) return '#f97316';
+      if (d.longestOverdue > 0) return '#f59e0b';
+      return '#3b82f6';
+    };
+
+    return (
+      <Svg width={chartCanvasWidth} height={160}>
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const y = paddingTop + innerHeight - tick * innerHeight;
+          const gridVal = tick * yMax;
+          return (
+            <G key={idx}>
+              <Line x1={paddingLeft} y1={y} x2={paddingLeft + innerWidth} y2={y} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" />
+              <SvgText x={paddingLeft - 6} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end" fontWeight="bold">
+                {gridVal >= 1000 ? `₱${(gridVal / 1000).toFixed(0)}k` : `₱${gridVal.toFixed(0)}`}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {[0, 0.25, 0.5, 0.75, 1].map((tick, idx) => {
+          const x = paddingLeft + tick * innerWidth;
+          const gridVal = tick * xMax;
+          return (
+            <G key={idx}>
+              <Line x1={x} y1={paddingTop} x2={x} y2={paddingTop + innerHeight} stroke={t.cardBorder} strokeWidth={1} strokeDasharray="2,2" opacity={0.5} />
+              <SvgText x={x} y={paddingTop + innerHeight + 14} fill={t.textSecondary} fontSize={8} textAnchor="middle" fontWeight="bold">
+                {Math.round(gridVal)}d
+              </SvgText>
+            </G>
+          );
+        })}
+
+        {points.map((p, idx) => {
+          const cx = getX(p.longestOverdue);
+          const cy = getY(p.overdueAmount);
+          const initials = p.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+
+          return (
+            <G key={idx}>
+              <Circle cx={cx} cy={cy} r={6} fill={getDotColor(p)} stroke={t.cardBg} strokeWidth={1} />
+              <SvgText x={cx} y={cy - 8} fill={t.textPrimary} fontSize={7} fontWeight="bold" textAnchor="middle">
+                {initials}
+              </SvgText>
+            </G>
           );
         })}
       </Svg>
@@ -1120,7 +1405,7 @@ export default function ReportsScreen() {
   const csCircumference = 2 * Math.PI * csRadius;
   const csStrokeDashoffset = csCircumference * (1 - csPercentage / 100);
 
-  const colors = ['#ee4d2d', '#3b82f6', '#10b981', '#fbbf24', '#a855f7', '#64748b'];
+  const radialOffset = 2 * Math.PI * 32;
 
   return (
     <View style={[styles.container, { backgroundColor: t.bg }]}>
@@ -1143,9 +1428,9 @@ export default function ReportsScreen() {
         {/* S-Pay Branding and Description */}
         <View style={styles.brandContainer}>
           <Text style={styles.brandSub}>S-Pay Client</Text>
-          <Text style={[styles.brandTitle, { color: t.textPrimary }]}>Financial Records & Forecasts</Text>
+          <Text style={[styles.brandTitle, { color: t.textPrimary }]}>Reports & Insights</Text>
           <Text style={[styles.brandDesc, { color: t.textSecondary }]}>
-            Review amortization ledgers, analyze compliance vectors, and run simulated cost optimization models.
+            Analyze cash flow history, review payment patterns, and check predictive budgeting recommendations.
           </Text>
         </View>
 
@@ -1170,13 +1455,7 @@ export default function ReportsScreen() {
                     isActive && styles.activePillBorder,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.filterPillText,
-                      { color: isActive ? t.textPrimary : t.textSecondary },
-                      isActive && styles.activePillText,
-                    ]}
-                  >
+                  <Text style={[styles.filterPillText, { color: isActive ? t.textPrimary : t.textSecondary }, isActive && styles.activePillText]}>
                     {btn.label}
                   </Text>
                 </TouchableOpacity>
@@ -1185,117 +1464,81 @@ export default function ReportsScreen() {
           </ScrollView>
         </View>
 
-        {/* Export action */}
-        <TouchableOpacity
-          onPress={handleExportCSV}
-          style={[styles.exportBtn, { backgroundColor: t.textPrimary }]}
-        >
+        {/* Export Ledger Button */}
+        <TouchableOpacity onPress={handleExportCSV} style={[styles.exportBtn, { backgroundColor: t.textPrimary }]}>
           <Download size={14} color={isDarkMode ? '#000000' : '#ffffff'} style={{ marginRight: 8 }} />
-          <Text style={[styles.exportBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Export Ledger CSV</Text>
+          <Text style={[styles.exportBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Export Ledger</Text>
         </TouchableOpacity>
 
-        {/* Navigation Sub-Tabs */}
+        {/* Navigation Sub-Tabs (5 Tab parity) */}
         <View style={[styles.tabBar, { borderColor: t.divider }]}>
-          {[
-            { id: 'overview', label: 'Summary' },
-            { id: 'detailed', label: 'Compliance' },
-            { id: 'forecast', label: 'Forecasting' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id as any)}
-                style={[styles.tabItem, isActive && { borderBottomColor: t.accent }]}
-              >
-                <Text
-                  style={[
-                    styles.tabItemLabel,
-                    { color: isActive ? t.accent : t.textSecondary },
-                    isActive && { fontWeight: '700' },
-                  ]}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBarScroll}>
+            {[
+              { id: 'overview', label: 'Financial Summary' },
+              { id: 'detailed', label: 'Compliance & Categories' },
+              { id: 'forecast', label: 'AI Forecast & Risks' },
+              { id: 'goals', label: 'Goals & Savings' },
+              { id: 'simulator', label: 'Purchase Simulator' },
+            ].map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveTab(tab.id as any)}
+                  style={[styles.tabItem, isActive && { borderBottomColor: t.accent }]}
                 >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                  <Text style={[styles.tabItemLabel, { color: isActive ? t.accent : t.textSecondary }, isActive && { fontWeight: '700' }]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        {/* OVERVIEW PANEL */}
+        {/* OVERVIEW PANEL: Financial Summary */}
         {activeTab === 'overview' && (
           <View style={styles.panelContent}>
-            {/* Credit score rating radial details */}
+            {/* KPI Cards Row 1: Health Score Gauge */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>CREDIT RATING SUMMARY</Text>
-              <View style={styles.scoreRow}>
-                <View style={styles.gaugeContainer}>
-                  <Svg width={110} height={110} style={{ transform: [{ rotate: '-90deg' }] }}>
+              <View style={styles.kpiFlexRow}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>Health Score</Text>
+                  <Text style={[styles.kpiValueLarge, { color: t.textPrimary }]}>{metrics.healthScore} / 100</Text>
+                  <View style={[styles.healthLabelContainer, { backgroundColor: status.bgColor, borderColor: status.borderColor }]}>
+                    <Text style={[styles.healthLabelText, { color: status.color }]}>{status.label}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.radialContainer}>
+                  <Svg width={74} height={74} style={{ transform: [{ rotate: '-90deg' }] }}>
+                    <Circle cx="37" cy="37" r="32" stroke={isDarkMode ? '#1e293b' : '#e2e8f0'} strokeWidth="6" fill="none" />
                     <Circle
-                      cx={55}
-                      cy={55}
-                      r={csRadius}
-                      stroke={isDarkMode ? '#1e293b' : '#e2e8f0'}
-                      strokeWidth={8}
-                      fill="transparent"
-                    />
-                    <Circle
-                      cx={55}
-                      cy={55}
-                      r={csRadius}
-                      stroke="#ee4d2d"
-                      strokeWidth={8}
-                      strokeDasharray={csCircumference}
-                      strokeDashoffset={csStrokeDashoffset}
+                      cx="37" cy="37" r="32"
+                      stroke={metrics.healthScore >= 70 ? '#10b981' : '#f59e0b'} strokeWidth="6" fill="none"
+                      strokeDasharray={radialOffset}
+                      strokeDashoffset={radialOffset * (1 - metrics.healthScore / 100)}
                       strokeLinecap="round"
-                      fill="transparent"
                     />
                   </Svg>
-                  <View style={styles.gaugeTextWrapper}>
-                    <Text style={[styles.gaugeVal, { color: t.textPrimary }]}>{metrics.creditScore}</Text>
-                    <Text style={styles.gaugeLimits}>500-850</Text>
+                  <View style={styles.radialOverlayText}>
+                    <Text style={[styles.radialTextVal, { color: t.textPrimary }]}>{metrics.healthScore}%</Text>
                   </View>
                 </View>
-
-                <View style={styles.scoreMetaCol}>
-                  <View style={styles.scoreMetaItem}>
-                    <Award size={14} color="#fbbf24" style={{ marginRight: 6 }} />
-                    <View>
-                      <Text style={[styles.scoreMetaLabel, { color: t.textSecondary }]}>Wellness Score</Text>
-                      <Text style={[styles.scoreMetaVal, { color: t.textPrimary }]}>{metrics.healthScore}%</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.scoreMetaItem}>
-                    <Calendar size={14} color="#3b82f6" style={{ marginRight: 6 }} />
-                    <View>
-                      <Text style={[styles.scoreMetaLabel, { color: t.textSecondary }]}>On-Time Rate</Text>
-                      <Text style={[styles.scoreMetaVal, { color: t.textPrimary }]}>{metrics.onTimeRate}%</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.scoreMetaItem}>
-                    <TrendingUp size={14} color="#10b981" style={{ marginRight: 6 }} />
-                    <View>
-                      <Text style={[styles.scoreMetaLabel, { color: t.textSecondary }]}>Payment Streak</Text>
-                      <Text style={[styles.scoreMetaVal, { color: t.textPrimary }]}>{metrics.streak} Mo</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              <View style={[styles.healthLabelContainer, { backgroundColor: status.bgColor, borderColor: status.borderColor }]}>
-                <Text style={[styles.healthLabelText, { color: status.color }]}>Status: {status.label}</Text>
               </View>
             </View>
 
-            {/* Spent & Settlement rate overview */}
+            {/* Total Spent and Settlement Rate with Sparklines */}
             <View style={styles.statsGrid}>
-              {/* Spent */}
+              {/* Total Spent */}
               <View style={[styles.smallCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <View style={styles.smallCardHeader}>
                   <Text style={[styles.smallCardLabel, { color: t.textSecondary }]}>Total Spent</Text>
-                  <DollarSign size={15} color="#ee4d2d" />
+                  {spendSparklinePath ? (
+                    <Svg width={50} height={20} viewBox="0 0 80 24" style={styles.sparkline}>
+                      <Path d={spendSparklinePath} fill="none" stroke="#ee4d2d" strokeWidth="2.5" strokeLinecap="round" />
+                    </Svg>
+                  ) : null}
                 </View>
                 <Text style={[styles.smallCardValue, { color: t.textPrimary }]}>{formatCurrency(metrics.totalSpent)}</Text>
                 <Text style={[styles.smallCardDesc, { color: t.textSecondary }]}>{metrics.totalOrders} total orders</Text>
@@ -1305,34 +1548,31 @@ export default function ReportsScreen() {
               <View style={[styles.smallCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <View style={styles.smallCardHeader}>
                   <Text style={[styles.smallCardLabel, { color: t.textSecondary }]}>Settled Rate</Text>
-                  <TrendingUp size={15} color="#10b981" />
+                  {complianceSparklinePath ? (
+                    <Svg width={50} height={20} viewBox="0 0 80 24" style={styles.sparkline}>
+                      <Path d={complianceSparklinePath} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
+                    </Svg>
+                  ) : null}
                 </View>
                 <Text style={[styles.smallCardValue, { color: t.textPrimary }]}>{metrics.paymentCompletionRate}%</Text>
-                <View style={[styles.miniProgressTrack, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
-                  <View style={[styles.miniProgressFill, { width: `${metrics.paymentCompletionRate}%`, backgroundColor: '#10b981' }]} />
-                </View>
+                <Text style={[styles.smallCardDesc, { color: t.textSecondary }]}>{metrics.completedPayments} of {metrics.totalPayments} paid</Text>
               </View>
             </View>
 
             {/* Exposure Status cards */}
             <View style={styles.exposureGrid}>
-              {/* Paid */}
               <View style={[styles.exposureCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <CheckCircle2 size={16} color="#10b981" style={{ marginBottom: 6 }} />
+                <CheckCircle2 size={15} color="#10b981" style={{ marginBottom: 4 }} />
                 <Text style={styles.exposureLabel}>Settled</Text>
                 <Text style={[styles.exposureVal, { color: t.textPrimary }]}>{formatCurrency(metrics.totalPaidAmount)}</Text>
               </View>
-
-              {/* Pending */}
               <View style={[styles.exposureCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Clock size={16} color="#fbbf24" style={{ marginBottom: 6 }} />
+                <Clock size={15} color="#fbbf24" style={{ marginBottom: 4 }} />
                 <Text style={styles.exposureLabel}>Upcoming</Text>
                 <Text style={[styles.exposureVal, { color: t.textPrimary }]}>{formatCurrency(metrics.pendingAmount)}</Text>
               </View>
-
-              {/* Overdue */}
               <View style={[styles.exposureCard, { backgroundColor: t.cardBg, borderColor: metrics.overdueAmount > 0 ? 'rgba(239, 68, 68, 0.3)' : t.cardBorder }]}>
-                <ShieldAlert size={16} color="#ef4444" style={{ marginBottom: 6 }} />
+                <ShieldAlert size={15} color="#ef4444" style={{ marginBottom: 4 }} />
                 <Text style={styles.exposureLabel}>Overdue</Text>
                 <Text style={[styles.exposureVal, { color: metrics.overdueAmount > 0 ? '#ef4444' : t.textPrimary }]}>
                   {formatCurrency(metrics.overdueAmount)}
@@ -1340,27 +1580,21 @@ export default function ReportsScreen() {
               </View>
             </View>
 
-            {/* 12-Month Area Chart */}
+            {/* Spending Trend Area Chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              <View style={{ marginBottom: 16 }}>
+              <View style={{ marginBottom: 12 }}>
                 <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Monthly Spending Trend</Text>
                 <Text style={styles.chartHeaderSub}>12-month historical cumulative spent & settled principal</Text>
-                <View style={[styles.legendRow, { marginTop: 8 }]}>
-                  <View style={[styles.legendDot, { backgroundColor: '#ee4d2d' }]} />
-                  <Text style={styles.legendLabel}>Spent</Text>
-                  <View style={[styles.legendDot, { backgroundColor: t.textSecondary, borderRadius: 0 }]} />
-                  <Text style={styles.legendLabel}>Paid</Text>
-                </View>
               </View>
-              <View style={styles.chartBox}>{renderAreaChart()}</View>
+              <View style={styles.chartBox}>{renderAreaChart(mappedMonthlyData)}</View>
             </View>
 
-            {/* Installment breakdown donut */}
+            {/* Term preferences donut */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.donutHeaderRow}>
                 <View>
                   <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>TERM PREFERENCES</Text>
-                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Distribution by Amortization Length</Text>
+                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Amortization Distribution</Text>
                 </View>
                 <PieIcon size={16} color={t.textSecondary} />
               </View>
@@ -1368,7 +1602,7 @@ export default function ReportsScreen() {
               {installmentBreakdown.length > 0 ? (
                 <View style={styles.donutSectionRow}>
                   <View style={styles.donutGraphWrapper}>
-                    {renderDonutChart()}
+                    {renderDonutChart(mappedInstallmentBreakdown)}
                     <View style={styles.donutTextOverlay}>
                       <Text style={[styles.donutCenterValue, { color: t.textPrimary }]}>{installmentBreakdown.length}</Text>
                       <Text style={styles.donutCenterLabel}>Terms</Text>
@@ -1378,7 +1612,7 @@ export default function ReportsScreen() {
                   <View style={styles.donutLegendContainer}>
                     {installmentBreakdown.map((item, idx) => (
                       <View key={item.installmentMonths} style={styles.donutLegendRow}>
-                        <View style={[styles.donutLegendDot, { backgroundColor: colors[idx % colors.length] }]} />
+                        <View style={[styles.donutLegendDot, { backgroundColor: catColors[idx % catColors.length].bar }]} />
                         <Text style={[styles.donutLegendLabel, { color: t.textSecondary }]} numberOfLines={1}>
                           {item.installmentMonths} Mo ({item.percentage}%)
                         </Text>
@@ -1397,7 +1631,16 @@ export default function ReportsScreen() {
               )}
             </View>
 
-            {/* Remaining payoff timeline */}
+            {/* Cumulative Personal Debt Lifecycle Waterfall */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Personal Debt Lifecycle</Text>
+                <Text style={styles.chartHeaderSub}>Waterfall flow showing total checkout liability offsets to paid principal</Text>
+              </View>
+              <View style={styles.chartBox}>{renderWaterfallChart(metrics.totalPaidAmount, metrics.pendingAmount, metrics.overdueAmount)}</View>
+            </View>
+
+            {/* Payoff Timeline progress */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.payoffHeaderRow}>
                 <View style={[styles.payoffIconFrame, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.1)' : 'rgba(238, 77, 45, 0.05)' }]}>
@@ -1405,7 +1648,7 @@ export default function ReportsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Remaining Payoff Timeline</Text>
-                  <Text style={[styles.smallCardDesc, { color: t.textSecondary }]}>Expected months to clear active installment plans</Text>
+                  <Text style={[styles.smallCardDesc, { color: t.textSecondary }]}>Estimated duration to settle active bills</Text>
                 </View>
                 <View style={styles.payoffCountWrapper}>
                   <Text style={[styles.payoffCount, { color: t.textPrimary }]}>{metrics.monthsToPayoff}</Text>
@@ -1424,7 +1667,7 @@ export default function ReportsScreen() {
               </View>
             </View>
 
-            {/* Recent purchase installments list */}
+            {/* Recent purchase list */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingHorizontal: 0, paddingBottom: 0 }]}>
               <View style={{ paddingHorizontal: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View>
@@ -1435,7 +1678,6 @@ export default function ReportsScreen() {
               </View>
 
               <View style={[styles.dividerLine, { backgroundColor: t.divider }]} />
-
               <View>
                 {recentOrders.length > 0 ? (
                   recentOrders.map((o) => (
@@ -1463,11 +1705,8 @@ export default function ReportsScreen() {
                           </View>
                           <Text style={[styles.recentItemAmount, { color: t.textPrimary }]}>{formatCurrency(o.amount)}</Text>
                         </View>
-
                         <View style={styles.recentProgressCol}>
-                          <Text style={styles.recentProgressLabel}>
-                            {o.paidInstallments}/{o.installmentMonths} Mo
-                          </Text>
+                          <Text style={styles.recentProgressLabel}>{o.paidInstallments}/{o.installmentMonths} Mo</Text>
                           <View style={[styles.miniProgressTrack, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0', width: 60 }]}>
                             <View style={[styles.miniProgressFill, { width: `${o.progressPercent}%`, backgroundColor: '#3b82f6' }]} />
                           </View>
@@ -1485,14 +1724,14 @@ export default function ReportsScreen() {
           </View>
         )}
 
-        {/* DETAILED COMPLIANCE & CATEGORIES PANEL */}
+        {/* COMPLIANCE & CATEGORIES PANEL */}
         {activeTab === 'detailed' && (
           <View style={styles.panelContent}>
-            {/* Compliance rating index summary */}
+            {/* Payment compliance ledger cards */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.complianceHeaderRow}>
                 <View>
-                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>COMPLIANCE LEDGER</Text>
+                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>COMPLIANCE SUMMARY</Text>
                   <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Payment Compliance Index</Text>
                 </View>
                 <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, compliance: true }))}>
@@ -1506,35 +1745,42 @@ export default function ReportsScreen() {
                   <Text style={[styles.complianceCellValue, { color: t.textPrimary }]}>{metrics.onTimeRate}%</Text>
                   <Text style={styles.complianceCellDesc}>{metrics.onTimePayments} on-time payments</Text>
                 </View>
-
                 <View style={[styles.complianceGridCell, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.cardBorder }]}>
                   <Text style={styles.complianceCellLabel}>LATE PAYMENTS</Text>
                   <Text style={[styles.complianceCellValue, { color: t.textPrimary }]}>{metrics.latePayments}</Text>
-                  <Text style={styles.complianceCellDesc}>Requires due warning</Text>
+                  <Text style={styles.complianceCellDesc}>Requires due optimization</Text>
                 </View>
-
                 <View style={[styles.complianceGridCell, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.cardBorder }]}>
                   <Text style={styles.complianceCellLabel}>ON-TIME STREAK</Text>
                   <Text style={[styles.complianceCellValue, { color: t.textPrimary }]}>{metrics.streak}</Text>
-                  <Text style={styles.complianceCellDesc}>Consecutive months</Text>
+                  <Text style={styles.complianceCellDesc}>Consecutive bills</Text>
                 </View>
               </View>
             </View>
 
-            {/* Weekday patterns bar chart */}
+            {/* Weekday pattern bar chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={{ marginBottom: 12 }}>
                 <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Weekday Settlement Pattern</Text>
-                <Text style={styles.chartHeaderSub}>Days of the week when installment payments are submitted</Text>
+                <Text style={styles.chartHeaderSub}>Total collection amounts completed on different days of the week</Text>
               </View>
               <View style={styles.chartBox}>{renderBarChart(paymentPatterns, 'totalAmount', 'dayName', '#64748b')}</View>
             </View>
 
-            {/* Seasonal Quarterly Analysis bar chart */}
+            {/* Grouped Spent vs Paid Monthly comparative chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Monthly Spending vs Settlement</Text>
+                <Text style={styles.chartHeaderSub}>Comparative analysis of monthly checked-out spent vs paid principal</Text>
+              </View>
+              <View style={styles.chartBox}>{renderGroupedBarChart(mappedMonthlyData)}</View>
+            </View>
+
+            {/* Seasonal Quarterly analysis bar chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={{ marginBottom: 12 }}>
                 <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Seasonal Quarterly Breakdown</Text>
-                <Text style={styles.chartHeaderSub}>Order counts and spending volumes grouped by calendar quarters</Text>
+                <Text style={styles.chartHeaderSub}>Checkout volume averages grouped by calendar quarters</Text>
               </View>
               <View style={styles.chartBox}>
                 {seasonalData.length > 0 ? (
@@ -1556,56 +1802,69 @@ export default function ReportsScreen() {
               </View>
             </View>
 
-            {/* Category Share progress bars */}
+            {/* Category Share Donut Chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              <View style={styles.categoryHeaderRow}>
+              <View style={styles.donutHeaderRow}>
                 <View>
-                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>CATEGORY SHARE</Text>
-                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Spending Distribution</Text>
+                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>CLASSIFICATIONS</Text>
+                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Category Valuation Share</Text>
                 </View>
                 <Sparkles size={16} color={t.textSecondary} />
               </View>
 
-              <View style={styles.categoryList}>
-                {spendingCategories.slice(0, 5).map((cat, idx) => {
-                  const styling = catColors[idx % catColors.length];
-                  return (
-                    <View key={cat.category} style={styles.categoryRow}>
-                      <View style={styles.categoryLabelRow}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <View style={[styles.categoryColorDot, { backgroundColor: styling.bar }]} />
-                          <Text style={[styles.categoryName, { color: t.textPrimary }]}>{cat.category}</Text>
-                        </View>
-                        <Text style={[styles.categoryPercent, { color: t.textPrimary }]}>{cat.percentage}%</Text>
-                      </View>
-
-                      <View style={[styles.progressTrack, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0', height: 6 }]}>
-                        <View style={[styles.progressFill, { width: `${cat.percentage}%`, backgroundColor: styling.bar, height: 6 }]} />
-                      </View>
-
-                      <View style={styles.categoryMetaRow}>
-                        <Text style={styles.categoryMetaText}>{cat.orderCount} orders</Text>
-                        <Text style={styles.categoryMetaText}>Spent: {formatCurrency(cat.totalSpent)}</Text>
-                      </View>
+              {spendingCategories.length > 0 ? (
+                <View style={styles.donutSectionRow}>
+                  <View style={styles.donutGraphWrapper}>
+                    {renderDonutChart(mappedSpendingCategories)}
+                    <View style={styles.donutTextOverlay}>
+                      <Text style={[styles.donutCenterValue, { color: t.textPrimary }]}>{spendingCategories.length}</Text>
+                      <Text style={styles.donutCenterLabel}>Categories</Text>
                     </View>
-                  );
-                })}
-
-                {spendingCategories.length === 0 && (
-                  <View style={styles.emptyContainer}>
-                    <Text style={{ color: t.textSecondary, fontSize: 12 }}>No category breakdown recorded.</Text>
                   </View>
-                )}
 
-                {spendingCategories.length > 5 && (
-                  <TouchableOpacity
-                    onPress={() => setModals((prev) => ({ ...prev, categories: true }))}
-                    style={[styles.viewAllPillsBtn, { borderColor: t.cardBorder }]}
-                  >
-                    <Text style={[styles.viewAllPillsBtnText, { color: t.textPrimary }]}>View All Categories</Text>
-                  </TouchableOpacity>
-                )}
+                  <View style={styles.donutLegendContainer}>
+                    {spendingCategories.slice(0, 4).map((item, idx) => (
+                      <View key={item.category} style={styles.donutLegendRow}>
+                        <View style={[styles.donutLegendDot, { backgroundColor: catColors[idx % catColors.length].bar }]} />
+                        <Text style={[styles.donutLegendLabel, { color: t.textSecondary }]} numberOfLines={1}>
+                          {item.category} ({item.percentage}%)
+                        </Text>
+                        <Text style={[styles.donutLegendValue, { color: t.textPrimary }]}>
+                          {formatCurrency(item.totalSpent)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Info size={16} color={t.textSecondary} style={{ marginBottom: 4 }} />
+                  <Text style={[styles.emptyText, { color: t.textSecondary }]}>No category records found.</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Category Average Ticket size Bar Chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Average Ticket size per Category</Text>
+                <Text style={styles.chartHeaderSub}>Average checkout value analyzed per category classification</Text>
               </View>
+              <View style={styles.chartBox}>{renderBarChart(spendingCategories.slice(0, 6), 'avgAmount', 'category', '#3b82f6')}</View>
+            </View>
+
+            {/* Category Order Volume Frequency Bar Chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Order Frequency per Category</Text>
+                <Text style={styles.chartHeaderSub}>Transaction counts placed across different categories</Text>
+              </View>
+              <View style={styles.chartBox}>{renderBarChart(spendingCategories.slice(0, 6), 'orderCount', 'category', '#10b981', 'number')}</View>
+              {spendingCategories.length > 5 && (
+                <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, categories: true }))} style={[styles.viewAllPillsBtn, { borderColor: t.cardBorder }]}>
+                  <Text style={[styles.viewAllPillsBtnText, { color: t.textPrimary }]}>View All Categories</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -1620,94 +1879,106 @@ export default function ReportsScreen() {
                 <Text style={[styles.forecastCellValue, { color: t.textPrimary }]}>
                   {formatCurrency(forecastMonths.reduce((sum, m) => sum + m.projected, 0))}
                 </Text>
-                <Text style={styles.forecastCellDesc}>Next 6 Months cumulative</Text>
+                <Text style={styles.forecastCellDesc}>Next 6 Months forecast</Text>
               </View>
-
               <View style={[styles.forecastCell, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Text style={styles.forecastCellLabel}>MODEL R² SCALE</Text>
+                <Text style={styles.forecastCellLabel}>MODEL CONFIDENCE</Text>
                 <Text style={[styles.forecastCellValue, { color: t.textPrimary }]}>89%</Text>
-                <Text style={styles.forecastCellDesc}>Trend confidence interval</Text>
+                <Text style={styles.forecastCellDesc}>Regression R² scale</Text>
               </View>
-
               <View style={[styles.forecastCell, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <Text style={styles.forecastCellLabel}>DEFAULT RISK</Text>
                 <Text style={[styles.forecastCellValue, { color: '#ef4444' }]}>
                   {Math.round((100 - metrics.onTimeRate) / 10) * 10}%
                 </Text>
-                <Text style={styles.forecastCellDesc}>Default probability</Text>
+                <Text style={styles.forecastCellDesc}>Late defaults risk</Text>
               </View>
-
               <View style={[styles.forecastCell, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <Text style={styles.forecastCellLabel}>DEBT TO ASSET</Text>
                 <Text style={[styles.forecastCellValue, { color: t.textPrimary }]}>{metrics.debtRatio}%</Text>
-                <Text style={styles.forecastCellDesc}>Pending/Paid ratio scale</Text>
+                <Text style={styles.forecastCellDesc}>Pending/Paid ratio</Text>
               </View>
             </View>
 
             {/* AI Spending Forecast Line chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-              <View style={{ marginBottom: 16 }}>
+              <View style={{ marginBottom: 12 }}>
                 <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>AI-Powered Forecast</Text>
-                <Text style={styles.chartHeaderSub}>Dotted line shows projected monthly spent with upper/lower limits</Text>
-                <View style={[styles.legendRow, { marginTop: 8 }]}>
-                  <View style={[styles.legendDot, { backgroundColor: '#475569' }]} />
-                  <Text style={styles.legendLabel}>Historical</Text>
-                  <View style={[styles.legendDot, { backgroundColor: t.textSecondary, borderRadius: 0 }]} />
-                  <Text style={styles.legendLabel}>Forecast</Text>
-                </View>
+                <Text style={styles.chartHeaderSub}>Regression spending projections with upper & lower boundary curves</Text>
               </View>
-              <View style={styles.chartBox}>{renderForecastChart()}</View>
+              <View style={styles.chartBox}>{renderForecastChart(mappedMonthlyData, forecastMonths)}</View>
             </View>
 
-            {/* Interactive Scenario Planning */}
+            {/* Debt Aging horizontal stacked bar chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Personal Debt Aging</Text>
+                <Text style={styles.chartHeaderSub}>Overdue bill totals categorized by age duration segment brackets</Text>
+              </View>
+              <View style={styles.chartBox}>{renderAgingChart(delinquentBillsForAging)}</View>
+            </View>
+
+            {/* Unpaid Invoices Risk Matrix scatter plot */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Unpaid Installments Risk Matrix</Text>
+                <Text style={styles.chartHeaderSub}>outstanding checkout items plotted by value vs overdue days</Text>
+              </View>
+              <View style={styles.chartBox}>{renderRiskScatterPlot(riskPoints)}</View>
+            </View>
+
+            {/* AI Repayment volume forecast bar chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>AI Repayment Volume Forecast</Text>
+                <Text style={styles.chartHeaderSub}>Upcoming repayment transaction count forecast over 6 months</Text>
+              </View>
+              <View style={styles.chartBox}>{renderBarChart(forecastMonths, 'projected', 'monthName', '#3b82f6')}</View>
+            </View>
+
+            {/* Interactive Scenario Planning details list */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={{ marginBottom: 16 }}>
-                <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>SCENARIO SIMULATOR</Text>
-                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Interactive Scenario Planning</Text>
-                <Text style={styles.chartHeaderSub}>Projected monthly liabilities based on checkout adjustments</Text>
+                <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>SCENARIO PLANNING</Text>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Scenario Budget Outlines</Text>
               </View>
 
               <View style={styles.scenarioList}>
-                {/* Conservative */}
                 <View style={[styles.scenarioCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.divider }]}>
                   <View style={styles.scenarioHeadRow}>
                     <Text style={[styles.scenarioTitle, { color: t.textPrimary }]}>Conservative (-20% spent)</Text>
                     <Text style={[styles.scenarioPrice, { color: t.accent }]}>{formatCurrency(metrics.monthlyAvg * 0.8)}/mo</Text>
                   </View>
                   <Text style={[styles.scenarioDesc, { color: t.textSecondary }]}>
-                    Strict spending constraint. Simulated savings of {formatCurrency(metrics.monthlyAvg * 0.2 * 6)} over the next 6 months.
+                    Strict spending limit. Est. savings of {formatCurrency(metrics.monthlyAvg * 0.2 * 6)} over next 6 months.
                   </Text>
                 </View>
-
-                {/* Normal */}
                 <View style={[styles.scenarioCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.divider }]}>
                   <View style={styles.scenarioHeadRow}>
                     <Text style={[styles.scenarioTitle, { color: t.textPrimary }]}>Baseline Trend (Current)</Text>
                     <Text style={[styles.scenarioPrice, { color: t.textPrimary }]}>{formatCurrency(metrics.monthlyAvg)}/mo</Text>
                   </View>
                   <Text style={[styles.scenarioDesc, { color: t.textSecondary }]}>
-                    Continue current purchase patterns. Liabilities match active 12-month average.
+                    Continue Default behavior. Budget allocation matches active 12-month average.
                   </Text>
                 </View>
-
-                {/* Aggressive */}
                 <View style={[styles.scenarioCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.divider }]}>
                   <View style={styles.scenarioHeadRow}>
                     <Text style={[styles.scenarioTitle, { color: t.textPrimary }]}>Aggressive (+30% spent)</Text>
                     <Text style={[styles.scenarioPrice, { color: t.textPrimary }]}>{formatCurrency(metrics.monthlyAvg * 1.3)}/mo</Text>
                   </View>
                   <Text style={[styles.scenarioDesc, { color: t.textSecondary }]}>
-                    Increased installment activity. Ensure payment capacity contains buffer to avoid defaults.
+                    Increased checkout volume. Keep cash buffered to avoid late defaults.
                   </Text>
                 </View>
               </View>
             </View>
 
-            {/* Cost Optimization potential & mitigation strategies */}
+            {/* Savings & mitigation box */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.categoryHeaderRow}>
                 <View>
-                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>SAVINGS & MITIGATIONS</Text>
+                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>MITIGATION MATRIX</Text>
                   <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Cost Optimizations</Text>
                 </View>
                 <Lightbulb size={16} color={t.textSecondary} />
@@ -1719,35 +1990,30 @@ export default function ReportsScreen() {
                   <Text style={[styles.savingsCellVal, { color: t.textPrimary }]}>₱80</Text>
                   <Text style={styles.savingsCellDesc}>Est. coupons</Text>
                 </View>
-
                 <View style={[styles.savingsCell, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
                   <Text style={styles.savingsCellLabel}>SHORT TERM</Text>
                   <Text style={[styles.savingsCellVal, { color: t.textPrimary }]}>₱200</Text>
                   <Text style={styles.savingsCellDesc}>Interest saved</Text>
                 </View>
-
                 <View style={[styles.savingsCell, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
                   <Text style={styles.savingsCellLabel}>BULK PAY</Text>
                   <Text style={[styles.savingsCellVal, { color: t.textPrimary }]}>₱120</Text>
-                  <Text style={styles.savingsCellDesc}>Merchant discount</Text>
+                  <Text style={styles.savingsCellDesc}>Discount rewards</Text>
                 </View>
               </View>
 
               <View style={[styles.warningBox, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.05)' : 'rgba(238, 77, 45, 0.03)', borderColor: 'rgba(238, 77, 45, 0.2)' }]}>
                 <ShieldAlert size={18} color="#ee4d2d" style={{ marginRight: 8, marginTop: 2 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.warningBoxTitle, { color: t.textPrimary }]}>Financial Risk Management</Text>
+                  <Text style={[styles.warningBoxTitle, { color: t.textPrimary }]}>Mitigation Advice</Text>
                   <Text style={[styles.warningBoxDesc, { color: t.textSecondary }]}>
-                    Your wellness rating is <Text style={{ fontWeight: '700', color: t.textPrimary }}>{metrics.creditScore}</Text>. 
+                    Your default risk rating is <Text style={{ fontWeight: '700', color: t.textPrimary }}>{metrics.creditScore}</Text>. 
                     Establishing automated calendar reminders or opting for shorter 3-month options reduces credit liability risk and builds score.
                   </Text>
                 </View>
               </View>
 
-              <TouchableOpacity
-                onPress={() => setModals((prev) => ({ ...prev, recommendations: true }))}
-                style={[styles.learnBtn, { backgroundColor: t.textPrimary }]}
-              >
+              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, recommendations: true }))} style={[styles.learnBtn, { backgroundColor: t.textPrimary }]}>
                 <Text style={[styles.learnBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>
                   Learn Optimization Strategies
                 </Text>
@@ -1755,213 +2021,344 @@ export default function ReportsScreen() {
             </View>
           </View>
         )}
+
+        {/* BUDGET GOALS & SAVINGS TAB */}
+        {activeTab === 'goals' && (
+          <View style={styles.panelContent}>
+            {/* Payoff Curve Area Chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Amortizing Debt Payoff Curve</Text>
+                <Text style={styles.chartHeaderSub}>Expected path to reach ₱0 debt based on scheduled payoffs</Text>
+              </View>
+              <View style={styles.chartBox}>{renderAreaChart(payoffCurveData, 'spent', 'paid')}</View>
+            </View>
+
+            {/* Savings & Liabilities Donut allocation */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.donutHeaderRow}>
+                <View>
+                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>RECOMMENDED ALLOCATIONS</Text>
+                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Savings & Liability Allocation</Text>
+                </View>
+                <PieIcon size={16} color={t.textSecondary} />
+              </View>
+
+              <View style={styles.donutSectionRow}>
+                <View style={styles.donutGraphWrapper}>
+                  {renderDonutChart(goalAllocationData)}
+                  <View style={styles.donutTextOverlay}>
+                    <Text style={[styles.donutCenterValue, { color: t.textPrimary }]}>3</Text>
+                    <Text style={styles.donutCenterLabel}>Pillars</Text>
+                  </View>
+                </View>
+
+                <View style={styles.donutLegendContainer}>
+                  {goalAllocationData.map((item) => (
+                    <View key={item.name} style={styles.donutLegendRow}>
+                      <View style={[styles.donutLegendDot, { backgroundColor: item.color }]} />
+                      <Text style={[styles.donutLegendLabel, { color: t.textSecondary }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={[styles.donutLegendValue, { color: t.textPrimary }]}>
+                        {formatCurrency(item.value)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* PURCHASE SIMULATOR TAB */}
+        {activeTab === 'simulator' && (
+          <View style={styles.panelContent}>
+            {/* Simulator Inputs Card */}
+            <View style={[styles.card, { backgroundColor: 'rgba(238, 77, 45, 0.05)', borderColor: 'rgba(238, 77, 45, 0.25)', borderStyle: 'dashed' }]}>
+              <View style={{ marginBottom: 14 }}>
+                <Text style={[styles.cardHeaderTitle, { color: '#ee4d2d' }]}>Prospective Purchase Simulator</Text>
+                <Text style={[styles.brandDesc, { marginTop: 2, color: t.textSecondary }]}>
+                  Simulate checking out a new item to verify forecast impact on your debt ratio instantly.
+                </Text>
+              </View>
+
+              {/* Slider 1: Simulated Order Amount (with preset buttons) */}
+              <View style={{ marginBottom: 16 }}>
+                <View style={styles.sliderLabelRow}>
+                  <Text style={[styles.sliderLabel, { color: t.textPrimary }]}>Order Value</Text>
+                  <Text style={[styles.sliderValueText, { color: t.textPrimary }]}>{formatCurrency(simAmount)}</Text>
+                </View>
+                {/* Visual indicator bar */}
+                <View style={[styles.progressTrack, { backgroundColor: isDarkMode ? '#222d42' : '#e2e8f0', height: 4, marginVertical: 8 }]}>
+                  <View style={[styles.progressFill, { width: `${(simAmount / 100000) * 100}%`, backgroundColor: '#ee4d2d', height: 4 }]} />
+                </View>
+                {/* presets scroll row */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+                  {[5000, 10000, 15000, 30000, 50000, 100000].map(amt => (
+                    <TouchableOpacity
+                      key={amt}
+                      onPress={() => setSimAmount(amt)}
+                      style={[styles.presetBtn, simAmount === amt && { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' }]}
+                    >
+                      <Text style={[styles.presetBtnText, { color: simAmount === amt ? '#ffffff' : t.textSecondary }]}>
+                        {amt >= 1000 ? `₱${amt / 1000}k` : `₱${amt}`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                {/* Increments buttons */}
+                <View style={styles.fineTuneRow}>
+                  <TouchableOpacity onPress={() => setSimAmount(prev => Math.max(1000, prev - 1000))} style={[styles.fineTuneBtn, { borderColor: t.cardBorder }]}>
+                    <Text style={[styles.fineTuneBtnText, { color: t.textPrimary }]}>- ₱1k</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSimAmount(prev => Math.min(100000, prev + 1000))} style={[styles.fineTuneBtn, { borderColor: t.cardBorder }]}>
+                    <Text style={[styles.fineTuneBtnText, { color: t.textPrimary }]}>+ ₱1k</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Slider 2: Term length */}
+              <View>
+                <View style={styles.sliderLabelRow}>
+                  <Text style={[styles.sliderLabel, { color: t.textPrimary }]}>Installment Term</Text>
+                  <Text style={[styles.sliderValueText, { color: t.textPrimary }]}>{simTerm} Months</Text>
+                </View>
+                <View style={[styles.progressTrack, { backgroundColor: isDarkMode ? '#222d42' : '#e2e8f0', height: 4, marginVertical: 8 }]}>
+                  <View style={[styles.progressFill, { width: `${(simTerm / 12) * 100}%`, backgroundColor: '#ee4d2d', height: 4 }]} />
+                </View>
+                {/* presets scroll row */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+                  {[1, 3, 6, 9, 12].map(term => (
+                    <TouchableOpacity
+                      key={term}
+                      onPress={() => setSimTerm(term)}
+                      style={[styles.presetBtn, simTerm === term && { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' }]}
+                    >
+                      <Text style={[styles.presetBtnText, { color: simTerm === term ? '#ffffff' : t.textSecondary }]}>{term} Mo</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <View style={styles.fineTuneRow}>
+                  <TouchableOpacity onPress={() => setSimTerm(prev => Math.max(1, prev - 1))} style={[styles.fineTuneBtn, { borderColor: t.cardBorder }]}>
+                    <Text style={[styles.fineTuneBtnText, { color: t.textPrimary }]}>- 1 Month</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setSimTerm(prev => Math.min(12, prev + 1))} style={[styles.fineTuneBtn, { borderColor: t.cardBorder }]}>
+                    <Text style={[styles.fineTuneBtnText, { color: t.textPrimary }]}>+ 1 Month</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Summary of simulated payment */}
+              <View style={[styles.warningBox, { backgroundColor: t.cardBg, borderColor: 'rgba(238, 77, 45, 0.2)', marginBottom: 0, marginTop: 14 }]}>
+                <Sparkles size={16} color="#ee4d2d" style={{ marginRight: 8, marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.warningBoxTitle, { color: t.textPrimary }]}>Simulated Installment Payload</Text>
+                  <Text style={[styles.warningBoxDesc, { color: t.textSecondary }]}>
+                    Adds <Text style={{ fontWeight: '700', color: t.textPrimary }}>{simTerm} monthly payments</Text> of <Text style={{ fontWeight: '700', color: '#ee4d2d' }}>{formatCurrency(simAmount / simTerm)} / Mo</Text> to your future schedule.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Simulated Forecast Curve */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Simulated Repayment Curve</Text>
+                <Text style={styles.chartHeaderSub}>Repayments curve with the simulated checkout added</Text>
+              </View>
+              <View style={styles.chartBox}>{renderForecastChart(mappedMonthlyData, simulatedForecastPoints)}</View>
+            </View>
+
+            {/* Simulated DTI Ratio Bar chart */}
+            <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Simulated Debt-To-Income (DTI) Ratio</Text>
+                <Text style={styles.chartHeaderSub}>Monthly DTI ratios simulating installment payload against estimated earnings (30% threshold)</Text>
+              </View>
+              <View style={styles.chartBox}>{renderBarChart(simulatedDtiData, 'ratio', 'monthName', '#ea580c', 'number')}</View>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* --- DETAIL MODAL: CATEGORIES --- */}
-      <Modal
-        visible={modals.categories}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModals((prev) => ({ ...prev, categories: false }))}
-      >
+      <Modal visible={modals.categories} transparent animationType="fade" onRequestClose={() => setModals((prev) => ({ ...prev, categories: false }))}>
         <View style={styles.modalOverlay}>
           <SwipeDismissModal onDismiss={() => setModals((prev) => ({ ...prev, categories: false }))}>
-          <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16 }]}>
-            <View style={[styles.modalHeader, { borderColor: t.divider }]}>
-              <Text style={[styles.modalTitle, { color: t.textPrimary }]}>All Spending Categories</Text>
-              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, categories: false }))} style={styles.modalCloseBtn}>
-                <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
+            <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16 }]}>
+              <View style={[styles.modalHeader, { borderColor: t.divider }]}>
+                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>All Spending Categories</Text>
+                <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, categories: false }))} style={styles.modalCloseBtn}>
+                  <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
+                {spendingCategories.map((cat) => (
+                  <View key={cat.category} style={[styles.modalCategoryRow, { borderColor: t.divider }]}>
+                    <View>
+                      <Text style={[styles.modalCategoryName, { color: t.textPrimary }]}>{cat.category}</Text>
+                      <Text style={[styles.modalCategoryDesc, { color: t.textSecondary }]}>
+                        Purchased {cat.orderCount} orders • First: {new Date(cat.firstPurchase).toLocaleDateString('en-PH')}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.modalCategoryAmount, { color: t.textPrimary }]}>{formatCurrency(cat.totalSpent)}</Text>
+                      <Text style={[styles.modalCategoryShare, { color: t.textSecondary }]}>Share: {cat.percentage}%</Text>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, categories: false }))} style={[styles.modalActionBtn, { backgroundColor: t.textPrimary }]}>
+                <Text style={[styles.modalActionBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Close</Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
-              {spendingCategories.map((cat, idx) => (
-                <View key={cat.category} style={[styles.modalCategoryRow, { borderColor: t.divider }]}>
-                  <View>
-                    <Text style={[styles.modalCategoryName, { color: t.textPrimary }]}>{cat.category}</Text>
-                    <Text style={[styles.modalCategoryDesc, { color: t.textSecondary }]}>
-                      Purchased {cat.orderCount} orders • First: {new Date(cat.firstPurchase).toLocaleDateString('en-PH')}
-                    </Text>
-                  </View>
-
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[styles.modalCategoryAmount, { color: t.textPrimary }]}>{formatCurrency(cat.totalSpent)}</Text>
-                    <Text style={[styles.modalCategoryShare, { color: t.textSecondary }]}>Share: {cat.percentage}%</Text>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              onPress={() => setModals((prev) => ({ ...prev, categories: false }))}
-              style={[styles.modalActionBtn, { backgroundColor: t.textPrimary }]}
-            >
-              <Text style={[styles.modalActionBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
           </SwipeDismissModal>
         </View>
       </Modal>
 
       {/* --- DETAIL MODAL: COMPLIANCE LEDGER --- */}
-      <Modal
-        visible={modals.compliance}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModals((prev) => ({ ...prev, compliance: false }))}
-      >
+      <Modal visible={modals.compliance} transparent animationType="fade" onRequestClose={() => setModals((prev) => ({ ...prev, compliance: false }))}>
         <View style={styles.modalOverlay}>
           <SwipeDismissModal onDismiss={() => setModals((prev) => ({ ...prev, compliance: false }))}>
-          <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16, width: layout.modalWidth, alignSelf: 'center' }]}>
-            <View style={[styles.modalHeader, { borderColor: t.divider }]}>
-              <View>
-                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Detailed Compliance Ledger</Text>
-                <Text style={styles.modalHeaderSub}>Amortization schedule under selected period</Text>
-              </View>
-              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, compliance: false }))} style={styles.modalCloseBtn}>
-                <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
-              <View style={styles.tableHead}>
-                <Text style={[styles.thText, { flex: 2 }]}>ITEM NAME</Text>
-                <Text style={[styles.thText, { flex: 1.2, textAlign: 'right', paddingRight: 6 }]}>DUE</Text>
-                <Text style={[styles.thText, { flex: 1.2, textAlign: 'center' }]}>DATE</Text>
-                <Text style={[styles.thText, { flex: 1, textAlign: 'right' }]}>STATUS</Text>
+            <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16, width: layout.modalWidth, alignSelf: 'center' }]}>
+              <View style={[styles.modalHeader, { borderColor: t.divider }]}>
+                <View>
+                  <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Detailed Compliance Ledger</Text>
+                  <Text style={styles.modalHeaderSub}>Amortization schedule under selected period</Text>
+                </View>
+                <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, compliance: false }))} style={styles.modalCloseBtn}>
+                  <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
+                </TouchableOpacity>
               </View>
 
-              {compliancePayments.map((p) => {
-                let statusBg = t.divider;
-                let statusColor = t.textSecondary;
-                let label = 'Pending';
+              <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.tableHead}>
+                  <Text style={[styles.thText, { flex: 2 }]}>ITEM NAME</Text>
+                  <Text style={[styles.thText, { flex: 1.2, textAlign: 'right', paddingRight: 6 }]}>DUE</Text>
+                  <Text style={[styles.thText, { flex: 1.2, textAlign: 'center' }]}>DATE</Text>
+                  <Text style={[styles.thText, { flex: 1, textAlign: 'right' }]}>STATUS</Text>
+                </View>
 
-                if (p.status === 'on_time') {
-                  statusBg = 'rgba(16, 185, 129, 0.1)';
-                  statusColor = '#10b981';
-                  label = 'On-time';
-                } else if (p.status === 'late') {
-                  statusBg = isDarkMode ? '#1e293b' : '#f1f5f9';
-                  statusColor = t.textSecondary;
-                  label = 'Late';
-                } else if (p.status === 'overdue') {
-                  statusBg = 'rgba(239, 68, 68, 0.1)';
-                  statusColor = '#ef4444';
-                  label = 'Overdue';
-                }
+                {compliancePayments.map((p) => {
+                  let statusBg = t.divider;
+                  let statusColor = t.textSecondary;
+                  let label = 'Pending';
 
-                return (
-                  <View key={p.id} style={[styles.trRow, { borderColor: t.divider }]}>
-                    <View style={{ flex: 2, paddingRight: 4 }}>
-                      <Text style={[styles.tdName, { color: t.textPrimary }]} numberOfLines={2}>
-                        {p.itemName}
+                  if (p.status === 'on_time') {
+                    statusBg = 'rgba(16, 185, 129, 0.1)';
+                    statusColor = '#10b981';
+                    label = 'On-time';
+                  } else if (p.status === 'late') {
+                    statusBg = isDarkMode ? '#1e293b' : '#f1f5f9';
+                    statusColor = t.textSecondary;
+                    label = 'Late';
+                  } else if (p.status === 'overdue') {
+                    statusBg = 'rgba(239, 68, 68, 0.1)';
+                    statusColor = '#ef4444';
+                    label = 'Overdue';
+                  }
+
+                  return (
+                    <View key={p.id} style={[styles.trRow, { borderColor: t.divider }]}>
+                      <View style={{ flex: 2, paddingRight: 4 }}>
+                        <Text style={[styles.tdName, { color: t.textPrimary }]} numberOfLines={2}>
+                          {p.itemName}
+                        </Text>
+                        <Text style={[styles.tdSub, { color: t.textSecondary }]}>
+                          Month {p.monthNumber}/{p.installmentMonths}
+                        </Text>
+                      </View>
+                      <Text style={[styles.tdAmount, { color: t.textPrimary, flex: 1.2 }]} numberOfLines={1}>
+                        {formatCurrency(p.amountDue)}
                       </Text>
-                      <Text style={[styles.tdSub, { color: t.textSecondary }]}>
-                        Month {p.monthNumber}/{p.installmentMonths}
+                      <Text style={[styles.tdDate, { color: t.textSecondary, flex: 1.2 }]} numberOfLines={1}>
+                        {new Date(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
                       </Text>
-                    </View>
-
-                    <Text style={[styles.tdAmount, { color: t.textPrimary, flex: 1.2 }]} numberOfLines={1}>
-                      {formatCurrency(p.amountDue)}
-                    </Text>
-
-                    <Text style={[styles.tdDate, { color: t.textSecondary, flex: 1.2 }]} numberOfLines={1}>
-                      {new Date(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                    </Text>
-
-                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <View style={[styles.miniStatusBadge, { backgroundColor: statusBg }]}>
-                        <Text style={[styles.miniStatusBadgeText, { color: statusColor }]}>{label}</Text>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <View style={[styles.miniStatusBadge, { backgroundColor: statusBg }]}>
+                          <Text style={[styles.miniStatusBadgeText, { color: statusColor }]}>{label}</Text>
+                        </View>
                       </View>
                     </View>
+                  );
+                })}
+
+                {compliancePayments.length === 0 && (
+                  <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                    <Text style={{ color: t.textSecondary, fontSize: 12 }}>No dues found.</Text>
                   </View>
-                );
-              })}
+                )}
+              </ScrollView>
 
-              {compliancePayments.length === 0 && (
-                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                  <Text style={{ color: t.textSecondary, fontSize: 12 }}>No dues found.</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <TouchableOpacity
-              onPress={() => setModals((prev) => ({ ...prev, compliance: false }))}
-              style={[styles.modalActionBtn, { backgroundColor: t.textPrimary }]}
-            >
-              <Text style={[styles.modalActionBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, compliance: false }))} style={[styles.modalActionBtn, { backgroundColor: t.textPrimary }]}>
+                <Text style={[styles.modalActionBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Close</Text>
+              </TouchableOpacity>
+            </View>
           </SwipeDismissModal>
         </View>
       </Modal>
 
       {/* --- DETAIL MODAL: RECOMMENDATIONS --- */}
-      <Modal
-        visible={modals.recommendations}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModals((prev) => ({ ...prev, recommendations: false }))}
-      >
+      <Modal visible={modals.recommendations} transparent animationType="fade" onRequestClose={() => setModals((prev) => ({ ...prev, recommendations: false }))}>
         <View style={styles.modalOverlay}>
           <SwipeDismissModal onDismiss={() => setModals((prev) => ({ ...prev, recommendations: false }))}>
-          <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16 }]}>
-            <View style={[styles.modalHeader, { borderColor: t.divider }]}>
-              <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Cost Optimization Strategies</Text>
-              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, recommendations: false }))} style={styles.modalCloseBtn}>
-                <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
+            <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16 }]}>
+              <View style={[styles.modalHeader, { borderColor: t.divider }]}>
+                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Cost Optimization Strategies</Text>
+                <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, recommendations: false }))} style={styles.modalCloseBtn}>
+                  <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.recItem}>
+                  <View style={[styles.recIconFrame, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+                    <CheckCircle2 size={16} color="#10b981" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>1. Early Settlement Bonus</Text>
+                    <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
+                      Settle payments 3 or more days before the due date. While S-Pay is zero-interest, merchants frequently distribute early compliance coupons or direct cashback incentives for consistent early buyers.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[styles.dividerLine, { backgroundColor: t.divider, marginVertical: 14 }]} />
+
+                <View style={styles.recItem}>
+                  <View style={[styles.recIconFrame, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+                    <TrendingDown size={16} color="#3b82f6" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>2. Shorter Amortizations</Text>
+                    <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
+                      Choosing a 3-month or 1-month plan instead of 12-month plans reduces overall pending exposure, lowering your debt ratio faster and boosting your credit wellness standing in the Spay ecosystem.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[styles.dividerLine, { backgroundColor: t.divider, marginVertical: 14 }]} />
+
+                <View style={styles.recItem}>
+                  <View style={[styles.recIconFrame, { backgroundColor: 'rgba(251, 191, 36, 0.1)' }]}>
+                    <Sparkles size={16} color="#fbbf24" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>3. Consolidate Purchases</Text>
+                    <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
+                      Grouping items into a single consolidated checkout order optimizes installment dates, aligning all your monthly dues to a single calendar day for cleaner, structured bookkeeping.
+                    </Text>
+                  </View>
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, recommendations: false }))} style={[styles.modalActionBtn, { backgroundColor: t.textPrimary }]}>
+                <Text style={[styles.modalActionBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Close</Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView contentContainerStyle={styles.modalScrollBody} showsVerticalScrollIndicator={false}>
-              <View style={styles.recItem}>
-                <View style={[styles.recIconFrame, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-                  <CheckCircle2 size={16} color="#10b981" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>1. Early Settlement Bonus</Text>
-                  <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
-                    Settle payments 3 or more days before the due date. While S-Pay is zero-interest, merchants frequently distribute early compliance coupons or direct cashback incentives for consistent early buyers.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={[styles.dividerLine, { backgroundColor: t.divider, marginVertical: 14 }]} />
-
-              <View style={styles.recItem}>
-                <View style={[styles.recIconFrame, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
-                  <TrendingDown size={16} color="#3b82f6" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>2. Shorter Amortizations</Text>
-                  <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
-                    Choosing a 3-month or 1-month plan instead of 12-month plans reduces overall pending exposure, lowering your debt ratio faster and boosting your credit wellness standing in the Spay ecosystem.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={[styles.dividerLine, { backgroundColor: t.divider, marginVertical: 14 }]} />
-
-              <View style={styles.recItem}>
-                <View style={[styles.recIconFrame, { backgroundColor: 'rgba(251, 191, 36, 0.1)' }]}>
-                  <Sparkles size={16} color="#fbbf24" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>3. Consolidate Purchases</Text>
-                  <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
-                    Grouping items into a single consolidated checkout order optimizes installment dates, aligning all your monthly dues to a single calendar day for cleaner, structured bookkeeping.
-                  </Text>
-                </View>
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity
-              onPress={() => setModals((prev) => ({ ...prev, recommendations: false }))}
-              style={[styles.modalActionBtn, { backgroundColor: t.textPrimary }]}
-            >
-              <Text style={[styles.modalActionBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
           </SwipeDismissModal>
         </View>
       </Modal>
@@ -1979,7 +2376,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
+    borderBottomWidth: 1.5,
   },
   backBtn: {
     padding: 8,
@@ -2072,7 +2469,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1.5,
     marginTop: 4,
+  },
+  tabBarScroll: {
     gap: 20,
+    paddingRight: 20,
   },
   tabItem: {
     paddingBottom: 10,
@@ -2102,58 +2502,42 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Bold',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: 6,
   },
-  scoreRow: {
+  kpiFlexRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  gaugeContainer: {
+  kpiValueLarge: {
+    fontSize: 26,
+    fontFamily: 'Jakarta-ExtraBold',
+  },
+  radialContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 110,
-    height: 110,
+    width: 74,
+    height: 74,
   },
-  gaugeTextWrapper: {
+  radialOverlayText: {
     position: 'absolute',
     alignItems: 'center',
   },
-  gaugeVal: {
-    fontSize: 24,
+  radialTextVal: {
+    fontSize: 14,
     fontFamily: 'Jakarta-ExtraBold',
   },
-  gaugeLimits: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontFamily: 'Jakarta-Medium',
-    marginTop: 1,
-  },
-  scoreMetaCol: {
-    flex: 1,
-    marginLeft: 20,
-    gap: 8,
-  },
-  scoreMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  scoreMetaLabel: {
-    fontSize: 9,
-    fontFamily: 'Jakarta-Medium',
-  },
-  scoreMetaVal: {
-    fontSize: 13,
-    fontFamily: 'Jakarta-Bold',
-  },
   healthLabelContainer: {
-    marginTop: 16,
+    marginTop: 8,
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
     alignItems: 'center',
     borderWidth: 1,
+    alignSelf: 'flex-start',
   },
   healthLabelText: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: 'Jakarta-Bold',
   },
   statsGrid: {
@@ -2190,16 +2574,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Medium',
     marginTop: 2,
   },
-  miniProgressTrack: {
-    height: 4,
-    borderRadius: 2,
-    marginTop: 8,
-    width: '100%',
-    overflow: 'hidden',
-  },
-  miniProgressFill: {
-    height: '100%',
-    borderRadius: 2,
+  sparkline: {
+    alignSelf: 'flex-end',
   },
   exposureGrid: {
     flexDirection: 'row',
@@ -2228,12 +2604,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Jakarta-ExtraBold',
   },
-  chartTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
   chartHeaderTitle: {
     fontSize: 14,
     fontFamily: 'Outfit-Bold',
@@ -2243,22 +2613,6 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontFamily: 'Jakarta-Medium',
     marginTop: 2,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  legendDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  legendLabel: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontFamily: 'Jakarta-Bold',
-    marginRight: 6,
   },
   chartBox: {
     alignItems: 'center',
@@ -2436,11 +2790,22 @@ const styles = StyleSheet.create({
   recentProgressCol: {
     alignItems: 'flex-end',
     gap: 4,
+    marginLeft: 8,
   },
   recentProgressLabel: {
     fontSize: 8,
     color: '#94a3b8',
     fontFamily: 'Jakarta-Bold',
+  },
+  miniProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  miniProgressFill: {
+    height: '100%',
+    borderRadius: 2,
   },
   complianceHeaderRow: {
     flexDirection: 'row',
@@ -2484,40 +2849,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
-  },
-  categoryList: {
-    gap: 14,
-  },
-  categoryRow: {
-    gap: 6,
-  },
-  categoryLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  categoryColorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-    marginRight: 6,
-  },
-  categoryName: {
-    fontSize: 12,
-    fontFamily: 'Jakarta-Bold',
-  },
-  categoryPercent: {
-    fontSize: 11,
-    fontFamily: 'Jakarta-Bold',
-  },
-  categoryMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  categoryMetaText: {
-    fontSize: 8.5,
-    color: '#94a3b8',
-    fontFamily: 'Jakarta-Bold',
   },
   viewAllPillsBtn: {
     height: 38,
@@ -2640,6 +2971,53 @@ const styles = StyleSheet.create({
   },
   learnBtnText: {
     fontSize: 12,
+    fontFamily: 'Jakarta-Bold',
+  },
+  sliderLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sliderLabel: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Bold',
+  },
+  sliderValueText: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-ExtraBold',
+  },
+  presetsRow: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  presetBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: 'transparent',
+  },
+  presetBtnText: {
+    fontSize: 10,
+    fontFamily: 'Jakarta-Bold',
+  },
+  fineTuneRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  fineTuneBtn: {
+    flex: 1,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  fineTuneBtnText: {
+    fontSize: 11,
     fontFamily: 'Jakarta-Bold',
   },
   modalOverlay: {
