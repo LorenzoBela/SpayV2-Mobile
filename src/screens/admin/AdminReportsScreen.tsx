@@ -14,6 +14,8 @@ import {
   Modal,
   TextInput,
   Dimensions,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -25,6 +27,7 @@ import {
   Activity,
   Layers,
   ChevronRight,
+  ChevronLeft,
   Sparkles,
   Award,
   Users,
@@ -44,6 +47,9 @@ import {
   ArrowDownRight,
   UserCheck,
   ShieldCheck,
+  BarChart3,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -94,7 +100,15 @@ export default function AdminReportsScreen() {
   const [tempEndYear, setTempEndYear] = useState(new Date().getFullYear());
 
   // Sub Tab Navigation
-  const [activeTab, setActiveTab] = useState<'revenue' | 'forecast' | 'behavior'>('revenue');
+  const [activeTab, setActiveTab] = useState<'revenue' | 'forecast' | 'behavior' | 'risk' | 'client'>('revenue');
+
+  // Client Analytics Drill-Down States
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [ordersPage, setOrdersPage] = useState<number>(1);
+  const [agreementSearch, setAgreementSearch] = useState<string>('');
+  const [agreementStatusFilter, setAgreementStatusFilter] = useState<'ALL' | 'ACTIVE' | 'PAID'>('ALL');
+  const [clientAnalyticsSearch, setClientAnalyticsSearch] = useState<string>('');
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Record<string, boolean>>({});
 
   // Bulk Reminders Modal States
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -136,6 +150,13 @@ export default function AdminReportsScreen() {
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
     queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+    staleTime: 30000,
+  });
+
+  const { data: clientAnalyticsData, isLoading: loadingClient } = useQuery({
+    queryKey: ['admin-client-analytics', selectedClientId],
+    queryFn: () => callAdminApi('get-client-analytics', { clientId: selectedClientId }),
+    enabled: !!selectedClientId,
     staleTime: 30000,
   });
 
@@ -246,6 +267,111 @@ export default function AdminReportsScreen() {
   const yearComparison = reportsPayload?.yearComparison || [];
   const forecastData = reportsPayload?.forecastData || [];
   const termAnalysis = reportsPayload?.termAnalysis || [];
+  const orderFrequencyData = reportsPayload?.orderFrequencyData || [];
+  const orderDistributionData = reportsPayload?.orderDistributionData || [];
+  const deliveryFunnelData = reportsPayload?.deliveryFunnelData || [];
+  const clientsList = reportsPayload?.clientsList || [];
+
+  const selectedClientData = clientAnalyticsData?.success ? clientAnalyticsData.analytics : null;
+
+  const filteredOrders = useMemo(() => {
+    if (!selectedClientData || !selectedClientData.orders) return [];
+    return selectedClientData.orders.filter((order: any) => {
+      const matchesSearch = order.itemName.toLowerCase().includes(agreementSearch.toLowerCase().trim());
+      const matchesStatus =
+        agreementStatusFilter === 'ALL' ||
+        (agreementStatusFilter === 'PAID' && order.isPaid) ||
+        (agreementStatusFilter === 'ACTIVE' && !order.isPaid);
+      return matchesSearch && matchesStatus;
+    });
+  }, [selectedClientData, agreementSearch, agreementStatusFilter]);
+
+  const ORDERS_PER_PAGE = 5;
+  const totalOrdersCount = filteredOrders.length;
+  const ordersTotalPages = Math.ceil(totalOrdersCount / ORDERS_PER_PAGE) || 1;
+  const paginatedOrders = useMemo(() => {
+    return filteredOrders.slice((ordersPage - 1) * ORDERS_PER_PAGE, ordersPage * ORDERS_PER_PAGE);
+  }, [filteredOrders, ordersPage]);
+
+  const avgDaysLateClient = useMemo(() => {
+    if (!selectedClientData || !selectedClientData.orders) return 0;
+    let totalLateDays = 0;
+    let latePaymentsCount = 0;
+    selectedClientData.orders.forEach((o: any) => {
+      o.payments.forEach((p: any) => {
+        if (p.isPaid && p.paymentDate) {
+          const due = new Date(p.dueDate);
+          const pay = new Date(p.paymentDate);
+          if (pay > due) {
+            totalLateDays += Math.ceil((pay.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+            latePaymentsCount++;
+          }
+        } else if (!p.isPaid && new Date(p.dueDate) < new Date()) {
+          const due = new Date(p.dueDate);
+          const now = new Date();
+          totalLateDays += Math.ceil((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+          latePaymentsCount++;
+        }
+      });
+    });
+    return latePaymentsCount > 0 ? Math.round(totalLateDays / latePaymentsCount) : 0;
+  }, [selectedClientData]);
+
+  const clientCashFlowData = useMemo(() => {
+    if (!selectedClientData || !selectedClientData.summary) return [];
+    return [
+      { name: 'Paid', value: selectedClientData.summary.totalPaid, count: selectedClientData.summary.paidPaymentsCount, color: '#10b981' },
+      { name: 'Upcoming', value: selectedClientData.summary.totalOutstanding, count: selectedClientData.summary.unpaidPaymentsCount - selectedClientData.summary.overduePaymentsCount, color: '#3b82f6' },
+      { name: 'Overdue', value: selectedClientData.summary.totalOverdue, count: selectedClientData.summary.overduePaymentsCount, color: '#ef4444' }
+    ];
+  }, [selectedClientData]);
+
+  const clientPurchaseTrend = useMemo(() => {
+    if (!selectedClientData || !selectedClientData.orders) return [];
+    const monthlySpend: Record<string, number> = {};
+    selectedClientData.orders.forEach((o: any) => {
+      const date = new Date(o.orderDate);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      monthlySpend[key] = (monthlySpend[key] || 0) + o.amount;
+    });
+
+    return Object.entries(monthlySpend)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, val]) => {
+        const [year, month] = key.split('-');
+        const date = new Date(Number(year), Number(month) - 1, 1);
+        const monthLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        return {
+          month: monthLabel,
+          amount: Math.round(val)
+        };
+      })
+      .slice(-6);
+  }, [selectedClientData]);
+
+  const toggleExpandOrder = (orderId: string) => {
+    setExpandedOrderIds(prev => ({ ...prev, [orderId]: !prev[orderId] }));
+  };
+
+  // Set default selected client when list is loaded
+  useEffect(() => {
+    if (!selectedClientId && clientsList.length > 0) {
+      setSelectedClientId(clientsList[0].id);
+    }
+  }, [clientsList, selectedClientId]);
+
+  // Reset pagination and search filters when client changes
+  useEffect(() => {
+    setOrdersPage(1);
+    setAgreementSearch('');
+    setAgreementStatusFilter('ALL');
+    setExpandedOrderIds({});
+  }, [selectedClientId]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [agreementSearch, agreementStatusFilter]);
 
   // Financial Health Score (Weighted index)
   const healthScore = useMemo(() => {
@@ -576,7 +702,7 @@ export default function AdminReportsScreen() {
             </View>
           </View>
 
-          {/* Row 2: Overdue Balance & Default Duration */}
+          {/* Row 2: Overdue Balance & Portfolio at Risk */}
           <View style={styles.kpiRow}>
             {/* Overdue Balance */}
             <View style={[styles.kpiColCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
@@ -594,6 +720,46 @@ export default function AdminReportsScreen() {
               </Text>
             </View>
 
+            {/* Portfolio at Risk (PAR) */}
+            <View style={[styles.kpiColCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.kpiCardTop}>
+                <View style={[styles.iconWrapper, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}>
+                  <AlertCircle size={14} color="#f59e0b" />
+                </View>
+                <Text style={styles.kpiLabel}>Portfolio at Risk (PAR)</Text>
+              </View>
+              <Text style={[styles.kpiVal, { color: t.textPrimary }]} numberOfLines={1}>
+                {metrics.outstanding > 0 ? Math.round((metrics.overdueAmount / metrics.outstanding) * 100) : 0}%
+              </Text>
+              <View style={{ marginTop: 4, flexDirection: 'row' }}>
+                {(() => {
+                  const parVal = metrics.outstanding > 0 ? (metrics.overdueAmount / metrics.outstanding) * 100 : 0;
+                  if (parVal < 5) {
+                    return (
+                      <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ color: '#10b981', fontSize: 9, fontFamily: 'Outfit-Bold' }}>Low Credit Risk</Text>
+                      </View>
+                    );
+                  }
+                  if (parVal <= 15) {
+                    return (
+                      <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ color: '#f59e0b', fontSize: 9, fontFamily: 'Outfit-Bold' }}>Moderate Risk</Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ color: '#ef4444', fontSize: 9, fontFamily: 'Outfit-Bold' }}>High Default Risk</Text>
+                    </View>
+                  );
+                })()}
+              </View>
+            </View>
+          </View>
+
+          {/* Row 3: Default Time & Volume & Reach */}
+          <View style={styles.kpiRow}>
             {/* Default Duration */}
             <View style={[styles.kpiColCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.kpiCardTop}>
@@ -606,6 +772,22 @@ export default function AdminReportsScreen() {
                 {metrics.avgDaysOverdue} <Text style={{ fontSize: 11, fontWeight: 'normal' }}>Days</Text>
               </Text>
               <Text style={styles.kpiSubtext} numberOfLines={1}>Avg duration unpaid</Text>
+            </View>
+
+            {/* Volume & Reach */}
+            <View style={[styles.kpiColCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.kpiCardTop}>
+                <View style={[styles.iconWrapper, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                  <Users size={14} color="#3b82f6" />
+                </View>
+                <Text style={styles.kpiLabel}>Volume & Reach</Text>
+              </View>
+              <Text style={[styles.kpiVal, { color: t.textPrimary }]} numberOfLines={1}>
+                {metrics.totalOrders} <Text style={{ fontSize: 11, fontWeight: 'normal' }}>Orders</Text>
+              </Text>
+              <Text style={styles.kpiSubtext} numberOfLines={1}>
+                By <Text style={{ color: t.textPrimary, fontWeight: 'bold' }}>{metrics.activeClients} active clients</Text>
+              </Text>
             </View>
           </View>
 
@@ -652,25 +834,33 @@ export default function AdminReportsScreen() {
         </View>
 
         {/* Tab Navigator */}
-        <View style={[styles.tabBar, { borderBottomColor: t.cardBorder }]}>
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'revenue' && { borderBottomColor: t.accent }]}
-            onPress={() => setActiveTab('revenue')}
+        <View style={[styles.tabBarContainer, { borderBottomColor: t.cardBorder }]}>
+          <ScrollView
+            horizontal={true}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabBarScroll}
           >
-            <Text style={[styles.tabText, { color: activeTab === 'revenue' ? t.accent : t.textSecondary }]}>Collections</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'forecast' && { borderBottomColor: t.accent }]}
-            onPress={() => setActiveTab('forecast')}
-          >
-            <Text style={[styles.tabText, { color: activeTab === 'forecast' ? t.accent : t.textSecondary }]}>YoY & Forecast</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'behavior' && { borderBottomColor: t.accent }]}
-            onPress={() => setActiveTab('behavior')}
-          >
-            <Text style={[styles.tabText, { color: activeTab === 'behavior' ? t.accent : t.textSecondary }]}>Behavior</Text>
-          </TouchableOpacity>
+            {[
+              { id: 'revenue', label: 'Collections', icon: BarChart3 },
+              { id: 'forecast', label: 'YoY & Forecast', icon: TrendingUp },
+              { id: 'behavior', label: 'Behavior', icon: PieChart },
+              { id: 'risk', label: 'Risk & Delinquency', icon: AlertCircle },
+              { id: 'client', label: 'Client Analytics', icon: Users },
+            ].map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[styles.tabItem, isActive && { borderBottomColor: t.accent }]}
+                  onPress={() => setActiveTab(tab.id as any)}
+                >
+                  <Icon size={14} color={isActive ? t.accent : t.textSecondary} style={{ marginRight: 6 }} />
+                  <Text style={[styles.tabText, { color: isActive ? t.accent : t.textSecondary }]}>{tab.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* TAB 1: Collections & Dues */}
@@ -832,6 +1022,138 @@ export default function AdminReportsScreen() {
                 </View>
               </View>
             </View>
+
+            {/* Waterfall Chart Card */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Revenue Flowdown Analysis (Waterfall)</Text>
+                <Text style={styles.chartDesc}>Visualizing expected revenue flow offsets to actual collected cash.</Text>
+              </View>
+              {(() => {
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 45;
+                const paddingRight = 10;
+                const paddingTop = 15;
+                const paddingBottom = 25;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                const totalExpected = metrics.totalRevenue + metrics.outstanding;
+                const pending = metrics.outstanding - metrics.overdueAmount;
+                const overdue = metrics.overdueAmount;
+                const collected = metrics.totalRevenue;
+
+                const maxVal = Math.max(totalExpected, 1000) * 1.15;
+                const scaleY = (val: number) => (val / maxVal) * innerHeight;
+
+                const barWidth = Math.floor(innerWidth / 6);
+                const gap = Math.floor((innerWidth - barWidth * 4) / 5);
+
+                const bars = [
+                  { label: 'Expected', val: totalExpected, yStart: totalExpected, yEnd: 0, color: '#3b82f6' },
+                  { label: 'Pending', val: pending, yStart: totalExpected, yEnd: totalExpected - pending, color: '#94a3b8' },
+                  { label: 'Overdue', val: overdue, yStart: totalExpected - pending, yEnd: totalExpected - pending - overdue, color: '#ef4444' },
+                  { label: 'Collected', val: collected, yStart: collected, yEnd: 0, color: t.accent }
+                ];
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {/* Horizontal gridlines */}
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const y = paddingTop + (idx * innerHeight) / 4;
+                        const gridVal = maxVal - (idx * maxVal) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                              {formatCurrency(gridVal)}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+
+                      {/* Connector lines & bars */}
+                      {bars.map((bar, idx) => {
+                        const x = paddingLeft + gap + idx * (barWidth + gap);
+                        const yTop = paddingTop + innerHeight - scaleY(Math.max(bar.yStart, bar.yEnd));
+                        const yBottom = paddingTop + innerHeight - scaleY(Math.min(bar.yStart, bar.yEnd));
+                        const height = Math.max(yBottom - yTop, 2);
+
+                        const nextX = x + barWidth + gap;
+                        const yEndScreen = paddingTop + innerHeight - scaleY(bar.yEnd);
+
+                        return (
+                          <G key={idx}>
+                            <Rect x={x} y={yTop} width={barWidth} height={height} fill={bar.color} rx={4} />
+                            {idx < 3 && (
+                              <Path d={`M ${x + barWidth} ${yEndScreen} H ${nextX}`} stroke={t.textSecondary} strokeWidth={1} strokeDasharray="2 2" />
+                            )}
+                            <SvgText x={x + barWidth / 2} y={yTop - 6} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle" fontFamily="Outfit-Bold">
+                              {formatCurrency(bar.val)}
+                            </SvgText>
+                            <SvgText x={x + barWidth / 2} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
+                              {bar.label}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* Top Revenue Contributors */}
+            <View style={{ gap: 6 }}>
+              <Text style={[styles.chartTitle, { color: t.textPrimary, fontSize: 13, fontFamily: 'Outfit-Bold' }]}>Top Revenue Contributors</Text>
+              <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                {clientLeaderboard.length > 0 ? (
+                  clientLeaderboard.map((client: any, index: number) => (
+                    <View key={client.id} style={[styles.leaderboardRow, { borderBottomColor: t.border, paddingBottom: 8, marginBottom: 8 }, index === clientLeaderboard.length - 1 && { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
+                      <View style={styles.leaderboardRank}>
+                        <Text style={styles.leaderboardRankText}>0{index + 1}</Text>
+                      </View>
+                      <View style={styles.leaderboardInfo}>
+                        <Text style={[styles.leaderboardName, { color: t.textPrimary }]}>{client.name}</Text>
+                        <Text style={styles.leaderboardSub}>{client.orders} orders • {client.email}</Text>
+                      </View>
+                      <Text style={[styles.leaderboardVal, { color: t.textPrimary }]}>
+                        {formatCurrency(client.paidAmount + client.outstandingAmount)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No spenders recorded.</Text>
+                )}
+              </View>
+            </View>
+
+            {/* Top Selling Items */}
+            <View style={{ gap: 6, marginBottom: 10 }}>
+              <Text style={[styles.chartTitle, { color: t.textPrimary, fontSize: 13, fontFamily: 'Outfit-Bold' }]}>Top Selling Items</Text>
+              <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                {itemLeaderboard.length > 0 ? (
+                  itemLeaderboard.map((item: any, index: number) => (
+                    <View key={item.itemName} style={[styles.leaderboardRow, { borderBottomColor: t.border, paddingBottom: 8, marginBottom: 8 }, index === itemLeaderboard.length - 1 && { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
+                      <View style={styles.leaderboardRank}>
+                        <Text style={styles.leaderboardRankText}>#{index + 1}</Text>
+                      </View>
+                      <View style={styles.leaderboardInfo}>
+                        <Text style={[styles.leaderboardName, { color: t.textPrimary }]}>{item.itemName}</Text>
+                        <Text style={styles.leaderboardSub}>{item.orderCount} orders scheduled</Text>
+                      </View>
+                      <Text style={[styles.leaderboardVal, { color: t.textPrimary }]}>
+                        {formatCurrency(item.totalValue)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No items sold.</Text>
+                )}
+              </View>
+            </View>
           </View>
         )}
 
@@ -882,6 +1204,136 @@ export default function AdminReportsScreen() {
               </ScrollView>
             </View>
 
+            {/* Scenario Collections Forecast */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Scenario Collections Forecast</Text>
+                <Text style={styles.chartDesc}>3-month collections projection under Optimistic (95%), Expected ({metrics.collectionRate}%), and Pessimistic (70%) scenarios.</Text>
+              </View>
+              {(() => {
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 45;
+                const paddingRight = 15;
+                const paddingTop = 15;
+                const paddingBottom = 25;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                const rate = metrics.collectionRate / 100;
+                const recentHistory = monthlyData.slice(-4);
+                const historical = recentHistory.map((d: any) => ({
+                  month: d.month,
+                  collected: d.collected,
+                  isForecast: false
+                }));
+
+                const lastHistoricalVal = historical.length > 0 ? historical[historical.length - 1].collected : 0;
+                const lastHistoricalMonth = historical.length > 0 ? historical[historical.length - 1].month : '';
+
+                const projections = forecastData.map((d: any) => ({
+                  month: d.month,
+                  expected: d.projected * rate,
+                  optimistic: d.projected * 0.95,
+                  pessimistic: d.projected * 0.70,
+                  isForecast: true
+                }));
+
+                const points = [...historical, ...projections];
+                if (points.length === 0) {
+                  return (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No projection data available.</Text>
+                    </View>
+                  );
+                }
+
+                const yMax = Math.max(
+                  ...points.map((d: any) => Math.max(d.collected || 0, d.optimistic || 0, d.expected || 0, d.pessimistic || 0)),
+                  1000
+                ) * 1.15;
+
+                const getX = (idx: number) => paddingLeft + (points.length > 1 ? (idx / (points.length - 1)) * innerWidth : innerWidth / 2);
+                const getY = (val: number) => paddingTop + innerHeight - (val / yMax) * innerHeight;
+
+                const histPoints = points.filter((d: any) => !d.isForecast);
+                const histPath = histPoints.map((p: any, idx: number) => `${idx === 0 ? 'M' : 'L'} ${getX(idx)} ${getY(p.collected || 0)}`).join(' ');
+
+                const lastHistIdx = histPoints.length - 1;
+
+                const optPoints = [
+                  { idx: lastHistIdx, val: lastHistoricalVal },
+                  ...projections.map((p: any, idx: number) => ({ idx: lastHistIdx + 1 + idx, val: p.optimistic }))
+                ];
+                const optPath = optPoints.map((p: any, idx: number) => `${idx === 0 ? 'M' : 'L'} ${getX(p.idx)} ${getY(p.val)}`).join(' ');
+
+                const expPoints = [
+                  { idx: lastHistIdx, val: lastHistoricalVal },
+                  ...projections.map((p: any, idx: number) => ({ idx: lastHistIdx + 1 + idx, val: p.expected }))
+                ];
+                const expPath = expPoints.map((p: any, idx: number) => `${idx === 0 ? 'M' : 'L'} ${getX(p.idx)} ${getY(p.val)}`).join(' ');
+
+                const pessPoints = [
+                  { idx: lastHistIdx, val: lastHistoricalVal },
+                  ...projections.map((p: any, idx: number) => ({ idx: lastHistIdx + 1 + idx, val: p.pessimistic }))
+                ];
+                const pessPath = pessPoints.map((p: any, idx: number) => `${idx === 0 ? 'M' : 'L'} ${getX(p.idx)} ${getY(p.val)}`).join(' ');
+
+                let bandPath = '';
+                if (optPoints.length > 0 && pessPoints.length > 0) {
+                  const topPath = optPoints.map((p: any) => `${p.idx === lastHistIdx ? 'M' : 'L'} ${getX(p.idx)} ${getY(p.val)}`).join(' ');
+                  const bottomPath = [...pessPoints].reverse().map((p: any) => `L ${getX(p.idx)} ${getY(p.val)}`).join(' ');
+                  bandPath = `${topPath} ${bottomPath} Z`;
+                }
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {/* Horizontal gridlines */}
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const y = paddingTop + (idx * innerHeight) / 4;
+                        const gridVal = yMax - (idx * yMax) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                              {formatCurrency(gridVal)}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+
+                      {/* Shaded band */}
+                      {bandPath ? <Path d={bandPath} fill="#0ea5e9" opacity={0.08} /> : null}
+
+                      {/* Historical Line (Solid Orange/Accent) */}
+                      {histPath ? <Path d={histPath} stroke={t.accent} strokeWidth={2.5} fill="transparent" /> : null}
+
+                      {/* Scenario Lines */}
+                      {optPath ? <Path d={optPath} stroke="#10b981" strokeWidth={1.5} strokeDasharray="4 4" fill="transparent" /> : null}
+                      {expPath ? <Path d={expPath} stroke="#3b82f6" strokeWidth={2} strokeDasharray="4 4" fill="transparent" /> : null}
+                      {pessPath ? <Path d={pessPath} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 4" fill="transparent" /> : null}
+
+                      {/* Dots on points */}
+                      {points.map((p: any, idx: number) => {
+                        const isForecast = p.isForecast;
+                        const cx = getX(idx);
+                        const cy = isForecast ? getY(p.expected || 0) : getY(p.collected || 0);
+                        return (
+                          <G key={idx}>
+                            <Circle cx={cx} cy={cy} r={3.2} fill={isForecast ? '#3b82f6' : t.accent} />
+                            <SvgText x={cx} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
+                              {p.month}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+            </View>
+
             {/* Forecast List */}
             <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.chartHeader}>
@@ -916,7 +1368,285 @@ export default function AdminReportsScreen() {
         {/* TAB 3: Behavior */}
         {activeTab === 'behavior' && (
           <View style={styles.tabContentContainer}>
-            {/* Weekday Transaction Patterns */}
+            {/* 1. Average Order Value per Client */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Average Order Value per Client</Text>
+                <Text style={styles.chartDesc}>Monthly trend of average order values in PHP.</Text>
+              </View>
+              {(() => {
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 45;
+                const paddingRight = 15;
+                const paddingTop = 15;
+                const paddingBottom = 25;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                if (orderFrequencyData.length === 0) {
+                  return (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No order data recorded.</Text>
+                    </View>
+                  );
+                }
+
+                const maxVal = Math.max(...orderFrequencyData.map((d: any) => d.avgOrderValue), 1000) * 1.15;
+                const barWidth = Math.floor(innerWidth / (orderFrequencyData.length * 1.5));
+                const gap = Math.floor((innerWidth - barWidth * orderFrequencyData.length) / (orderFrequencyData.length + 1));
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const y = paddingTop + (idx * innerHeight) / 4;
+                        const gridVal = maxVal - (idx * maxVal) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                              {formatCurrency(gridVal)}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                      {orderFrequencyData.map((d: any, idx: number) => {
+                        const x = paddingLeft + gap + idx * (barWidth + gap);
+                        const val = d.avgOrderValue;
+                        const barHeight = (val / maxVal) * innerHeight;
+                        const y = paddingTop + innerHeight - barHeight;
+
+                        return (
+                          <G key={idx}>
+                            <Rect x={x} y={y} width={barWidth} height={Math.max(barHeight, 2)} fill="#3b82f6" rx={3} />
+                            <SvgText x={x + barWidth / 2} y={y - 4} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle" fontFamily="Outfit-Bold">
+                              {formatCurrency(val)}
+                            </SvgText>
+                            <SvgText x={x + barWidth / 2} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
+                              {d.month}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* 2. Average Orders per Client */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Average Orders per Client</Text>
+                <Text style={styles.chartDesc}>Monthly trend of average orders placed per active client.</Text>
+              </View>
+              {(() => {
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 45;
+                const paddingRight = 15;
+                const paddingTop = 15;
+                const paddingBottom = 25;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                if (orderFrequencyData.length === 0) {
+                  return (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No order data recorded.</Text>
+                    </View>
+                  );
+                }
+
+                const maxVal = Math.max(...orderFrequencyData.map((d: any) => d.avgOrders), 1) * 1.15;
+                const barWidth = Math.floor(innerWidth / (orderFrequencyData.length * 1.5));
+                const gap = Math.floor((innerWidth - barWidth * orderFrequencyData.length) / (orderFrequencyData.length + 1));
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const y = paddingTop + (idx * innerHeight) / 4;
+                        const gridVal = maxVal - (idx * maxVal) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                              {Math.round(gridVal * 10) / 10}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                      {orderFrequencyData.map((d: any, idx: number) => {
+                        const x = paddingLeft + gap + idx * (barWidth + gap);
+                        const val = d.avgOrders;
+                        const barHeight = (val / maxVal) * innerHeight;
+                        const y = paddingTop + innerHeight - barHeight;
+
+                        return (
+                          <G key={idx}>
+                            <Rect x={x} y={y} width={barWidth} height={Math.max(barHeight, 2)} fill={t.accent} rx={3} />
+                            <SvgText x={x + barWidth / 2} y={y - 4} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle" fontFamily="Outfit-Bold">
+                              {val}
+                            </SvgText>
+                            <SvgText x={x + barWidth / 2} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
+                              {d.month}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* 3. Order Count Distribution */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Order Count Distribution</Text>
+                <Text style={styles.chartDesc}>Proportion of clients grouped by total orders placed in this period.</Text>
+              </View>
+
+              {(() => {
+                if (orderDistributionData.length === 0) {
+                  return (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No distribution data recorded.</Text>
+                    </View>
+                  );
+                }
+
+                const totalClients = orderDistributionData.reduce((sum: number, d: any) => sum + d.value, 0);
+                const radii = [45, 35, 25, 15];
+                const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ee4d2d'];
+
+                return (
+                  <View style={styles.donutBody}>
+                    <View style={styles.donutGraphic}>
+                      <Svg width={120} height={120} viewBox="0 0 120 120">
+                        {orderDistributionData.map((item: any, idx: number) => {
+                          const r = radii[idx % radii.length];
+                          const color = colors[idx % colors.length];
+                          const pct = totalClients > 0 ? (item.value / totalClients) * 100 : 0;
+                          return (
+                            <G key={idx}>
+                              <Circle cx={60} cy={60} r={r} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} strokeWidth={6} fill="transparent" />
+                              {pct > 0 && (
+                                <Circle
+                                  cx={60} cy={60} r={r}
+                                  stroke={color} strokeWidth={6} fill="transparent"
+                                  strokeDasharray={2 * Math.PI * r}
+                                  strokeDashoffset={2 * Math.PI * r * (1 - pct / 100)}
+                                  strokeLinecap="round"
+                                  transform="rotate(-90 60 60)"
+                                />
+                              )}
+                            </G>
+                          );
+                        })}
+                      </Svg>
+                    </View>
+
+                    <View style={styles.donutLegend}>
+                      {orderDistributionData.map((item: any, idx: number) => {
+                        const color = colors[idx % colors.length];
+                        const total = totalClients > 0 ? Math.round((item.value / totalClients) * 100) : 0;
+                        return (
+                          <View key={item.name} style={styles.legendRow}>
+                            <View style={[styles.legendDot, { backgroundColor: color }]} />
+                            <View style={styles.legendTextWrapper}>
+                              <Text style={[styles.legendName, { color: t.textPrimary }]}>{item.name} ({total}%)</Text>
+                              <Text style={[styles.legendVal, { color: t.textSecondary }]}>{item.value} clients</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* 4. Reminder Delivery Success Funnel */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Reminder Delivery Success Funnel</Text>
+                <Text style={styles.chartDesc}>Successful vs failed notification attempts by delivery channel.</Text>
+              </View>
+              {(() => {
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 45;
+                const paddingRight = 15;
+                const paddingTop = 15;
+                const paddingBottom = 25;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                if (deliveryFunnelData.length === 0) {
+                  return (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No funnel data recorded.</Text>
+                    </View>
+                  );
+                }
+
+                const maxVal = Math.max(...deliveryFunnelData.map((d: any) => Math.max(d.Sent, d.Failed)), 1) * 1.15;
+                const channelWidth = Math.floor(innerWidth / deliveryFunnelData.length);
+                const barWidth = Math.floor(channelWidth * 0.3);
+                const gap = Math.floor(channelWidth * 0.1);
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const y = paddingTop + (idx * innerHeight) / 4;
+                        const gridVal = maxVal - (idx * maxVal) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                              {Math.round(gridVal)}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                      {deliveryFunnelData.map((d: any, idx: number) => {
+                        const groupX = paddingLeft + idx * channelWidth;
+                        const xSent = groupX + (channelWidth - barWidth * 2 - gap) / 2;
+                        const xFailed = xSent + barWidth + gap;
+
+                        const hSent = (d.Sent / maxVal) * innerHeight;
+                        const ySent = paddingTop + innerHeight - hSent;
+
+                        const hFailed = (d.Failed / maxVal) * innerHeight;
+                        const yFailed = paddingTop + innerHeight - hFailed;
+
+                        return (
+                          <G key={idx}>
+                            <Rect x={xSent} y={ySent} width={barWidth} height={Math.max(hSent, 2)} fill="#10b981" rx={2} />
+                            <SvgText x={xSent + barWidth / 2} y={ySent - 4} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle" fontFamily="Outfit-Bold">
+                              {d.Sent}
+                            </SvgText>
+                            <Rect x={xFailed} y={yFailed} width={barWidth} height={Math.max(hFailed, 2)} fill="#ef4444" rx={2} />
+                            <SvgText x={xFailed + barWidth / 2} y={yFailed - 4} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle" fontFamily="Outfit-Bold">
+                              {d.Failed}
+                            </SvgText>
+                            <SvgText x={groupX + channelWidth / 2} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
+                              {d.channel}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* 5. Weekday Transaction Patterns */}
             <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.chartHeader}>
                 <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Transaction Patterns by Day</Text>
@@ -951,7 +1681,7 @@ export default function AdminReportsScreen() {
               </View>
             </View>
 
-            {/* Installment Term sales */}
+            {/* 6. Installment Term sales */}
             <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.chartHeader}>
                 <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Installment Term Distribution</Text>
@@ -988,123 +1718,894 @@ export default function AdminReportsScreen() {
           </View>
         )}
 
-        {/* Top Revenue Contributors */}
-        <Text style={styles.sectionHeader}>Top Revenue Contributors</Text>
-        <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          {clientLeaderboard.length > 0 ? (
-            clientLeaderboard.map((client: any, index: number) => (
-              <View
-                key={client.id}
-                style={[
-                  styles.leaderboardRow,
-                  { borderBottomColor: t.border }
-                ]}
-              >
-                <View style={styles.leaderboardRank}>
-                  <Text style={styles.leaderboardRankText}>0{index + 1}</Text>
-                </View>
-                <View style={styles.leaderboardInfo}>
-                  <Text style={[styles.leaderboardName, { color: t.textPrimary }]}>{client.name}</Text>
-                  <Text style={styles.leaderboardSub}>{client.orders} orders • {client.email}</Text>
-                </View>
-                <Text style={[styles.leaderboardVal, { color: t.textPrimary }]}>
-                  {formatCurrency(client.paidAmount + client.outstandingAmount)}
-                </Text>
+        {/* TAB 4: Risk */}
+        {activeTab === 'risk' && (
+          <View style={styles.tabContentContainer}>
+            {/* DPD Aging Buckets Chart */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Days Past Due (DPD) Aging</Text>
+                <Text style={styles.chartDesc}>Total overdue amounts segmented by age categories (1-30, 31-60, 61-90, 90+ days overdue).</Text>
               </View>
-            ))
-          ) : (
-            <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No spenders recorded.</Text>
-          )}
-        </View>
+              {(() => {
+                let b1 = 0, b2 = 0, b3 = 0, b4 = 0;
+                let c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+                delinquentClients.forEach((c: any) => {
+                  const amt = Number(c.overdueAmount) || 0;
+                  if (c.longestOverdue <= 30) { b1 += amt; c1++; }
+                  else if (c.longestOverdue <= 60) { b2 += amt; c2++; }
+                  else if (c.longestOverdue <= 90) { b3 += amt; c3++; }
+                  else { b4 += amt; c4++; }
+                });
 
-        {/* Delinquency Risk Assessment */}
-        <Text style={styles.sectionHeader}>Delinquency Risk Assessment</Text>
-        <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          {delinquentClients.length > 0 ? (
-            delinquentClients.map((client: any) => {
-              const isReminding = !!remindingMap[client.id];
-              return (
-                <View
-                  key={client.id}
-                  style={[
-                    styles.riskCard,
-                    { borderColor: t.border }
-                  ]}
-                >
-                  <View style={styles.riskHeader}>
-                    <View style={styles.riskClientCol}>
-                      <Text style={[styles.riskName, { color: t.textPrimary }]}>{client.name}</Text>
-                      <Text style={styles.riskEmail}>{client.email}</Text>
-                    </View>
+                const agingData = [
+                  { bucket: '1-30 Days', value: b1, count: c1, color: '#f59e0b' },
+                  { bucket: '31-60 Days', value: b2, count: c2, color: '#f97316' },
+                  { bucket: '61-90 Days', value: b3, count: c3, color: '#ea580c' },
+                  { bucket: '90+ Days', value: b4, count: c4, color: '#ef4444' }
+                ];
 
-                    <TouchableOpacity
-                      style={[styles.riskAlertBtn, { backgroundColor: t.accentLight, borderColor: t.accent }]}
-                      onPress={() => handleSendSingleReminder(client.id)}
-                      disabled={isReminding}
-                    >
-                      <Mail size={12} color={t.accent} />
-                      <Text style={[styles.riskAlertText, { color: t.accent }]}>
-                        {isReminding ? 'Queueing...' : 'Alert'}
-                      </Text>
-                    </TouchableOpacity>
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 70;
+                const paddingRight = 15;
+                const paddingTop = 15;
+                const paddingBottom = 25;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                const maxVal = Math.max(...agingData.map((d: any) => d.value), 1000) * 1.15;
+                const yScaleStep = innerHeight / 4;
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {/* Vertical Gridlines */}
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const x = paddingLeft + (idx * innerWidth) / 4;
+                        const gridVal = (idx * maxVal) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${x} ${paddingTop} V ${chartHeight - paddingBottom}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={x} y={chartHeight - 10} fill={t.textSecondary} fontSize={8} textAnchor="middle">
+                              {gridVal >= 1000 ? `₱${Math.round(gridVal / 1000)}k` : `₱${gridVal}`}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+
+                      {/* Horizontal Bars */}
+                      {agingData.map((d: any, idx: number) => {
+                        const barHeight = yScaleStep * 0.6;
+                        const y = paddingTop + idx * yScaleStep + (yScaleStep - barHeight) / 2;
+                        const barWidth = d.value > 0 ? (d.value / maxVal) * innerWidth : 0;
+
+                        return (
+                          <G key={idx}>
+                            <SvgText x={paddingLeft - 8} y={y + barHeight / 2 + 3} fill={t.textPrimary} fontSize={9} fontWeight="bold" textAnchor="end">
+                              {d.bucket}
+                            </SvgText>
+                            <Rect x={paddingLeft} y={y} width={Math.max(barWidth, 2)} height={barHeight} fill={d.color} rx={3} />
+                            <SvgText x={paddingLeft + barWidth + 6} y={y + barHeight / 2 + 3} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="start" fontFamily="Outfit-Bold">
+                              {formatCurrency(d.value)} ({d.count})
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
                   </View>
-
-                  <View style={[styles.cardDivider, { backgroundColor: t.border }]} />
-
-                  <View style={styles.riskMetricsRow}>
-                    <View>
-                      <Text style={styles.riskLabel}>Overdue Bills</Text>
-                      <Text style={styles.riskVal}>{client.overdueCount}</Text>
-                    </View>
-                    <View>
-                      <Text style={styles.riskLabel}>Overdue Amount</Text>
-                      <Text style={styles.riskVal}>{formatCurrency(client.overdueAmount)}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.riskLabel}>Longest Default</Text>
-                      <Text style={[styles.riskVal, { color: t.textPrimary }]}>{client.longestOverdue} days</Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.riskEmpty}>
-              <ShieldCheck size={28} color="#10b981" />
-              <Text style={[styles.riskEmptyTitle, { color: t.textPrimary }]}>Zero High Risk Accounts</Text>
-              <Text style={styles.riskEmptyDesc}>All client accounts have less than 2 overdue installments.</Text>
+                );
+              })()}
             </View>
-          )}
-        </View>
 
-        {/* Top Selling Items */}
-        <Text style={styles.sectionHeader}>Top Selling Items</Text>
-        <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginBottom: 30 }]}>
-          {itemLeaderboard.length > 0 ? (
-            itemLeaderboard.map((item: any, index: number) => (
-              <View
-                key={item.itemName}
-                style={[
-                  styles.leaderboardRow,
-                  { borderBottomColor: t.border }
-                ]}
-              >
-                <View style={styles.leaderboardRank}>
-                  <Text style={styles.leaderboardRankText}>#{index + 1}</Text>
-                </View>
-                <View style={styles.leaderboardInfo}>
-                  <Text style={[styles.leaderboardName, { color: t.textPrimary }]}>{item.itemName}</Text>
-                  <Text style={styles.leaderboardSub}>{item.orderCount} orders scheduled</Text>
-                </View>
-                <Text style={[styles.leaderboardVal, { color: t.textPrimary }]}>
-                  {formatCurrency(item.totalValue)}
-                </Text>
+            {/* Client Risk Matrix */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.chartHeader}>
+                <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Client Risk Matrix</Text>
+                <Text style={styles.chartDesc}>Scatter plot of delinquent clients mapping Longest Default (days) vs. Overdue Amount (PHP).</Text>
               </View>
-            ))
-          ) : (
-            <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No items sold.</Text>
-          )}
-        </View>
+              {(() => {
+                const chartWidth = Dimensions.get('window').width - 64;
+                const chartHeight = 180;
+                const paddingLeft = 50;
+                const paddingRight = 15;
+                const paddingTop = 15;
+                const paddingBottom = 30;
+                const innerWidth = chartWidth - paddingLeft - paddingRight;
+                const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                if (delinquentClients.length === 0) {
+                  return (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No delinquent client accounts recorded.</Text>
+                    </View>
+                  );
+                }
+
+                const xMax = Math.max(...delinquentClients.map((d: any) => d.longestOverdue), 30) * 1.1;
+                const yMax = Math.max(...delinquentClients.map((d: any) => d.overdueAmount), 1000) * 1.15;
+
+                const getX = (val: number) => paddingLeft + (val / xMax) * innerWidth;
+                const getY = (val: number) => paddingTop + innerHeight - (val / yMax) * innerHeight;
+
+                const getDotColor = (d: any) => {
+                  if (d.longestOverdue > 60 || d.overdueAmount > 30000) return '#ef4444';
+                  if (d.longestOverdue > 30 || d.overdueAmount > 15000) return '#f97316';
+                  return '#f59e0b';
+                };
+
+                const getRadius = (count: number) => {
+                  return Math.min(Math.max(4 + count * 1.5, 5), 14);
+                };
+
+                return (
+                  <View style={styles.svgWrapper}>
+                    <Svg width={chartWidth} height={chartHeight}>
+                      {/* Horizontal Gridlines */}
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const y = paddingTop + (idx * innerHeight) / 4;
+                        const gridVal = yMax - (idx * yMax) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                            <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                              {gridVal >= 1000 ? `₱${Math.round(gridVal / 1000)}k` : `₱${gridVal}`}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+
+                      {/* Vertical Gridlines */}
+                      {[0, 1, 2, 3, 4].map(idx => {
+                        const x = paddingLeft + (idx * innerWidth) / 4;
+                        const gridVal = (idx * xMax) / 4;
+                        return (
+                          <G key={idx}>
+                            <Path d={`M ${x} ${paddingTop} V ${chartHeight - paddingBottom}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
+                            <SvgText x={x} y={chartHeight - 15} fill={t.textSecondary} fontSize={8} textAnchor="middle">
+                              {Math.round(gridVal)}d
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+
+                      {/* Axis Label */}
+                      <SvgText x={paddingLeft + innerWidth / 2} y={chartHeight - 2} fill={t.textSecondary} fontSize={8} fontWeight="bold" textAnchor="middle">
+                        LONGEST DEFAULT (DAYS OVERDUE)
+                      </SvgText>
+
+                      {/* Render Dots */}
+                      {delinquentClients.map((client: any, idx: number) => {
+                        const cx = getX(client.longestOverdue);
+                        const cy = getY(client.overdueAmount);
+                        const r = getRadius(client.overdueCount);
+                        const initials = client.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+
+                        return (
+                          <G key={idx}>
+                            <Circle cx={cx} cy={cy} r={r} fill={getDotColor(client)} stroke="#ffffff" strokeWidth={1} />
+                            <SvgText x={cx} y={cy - r - 4} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle">
+                              {initials}
+                            </SvgText>
+                          </G>
+                        );
+                      })}
+                    </Svg>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* Delinquency Risk Assessment List */}
+            <View style={{ gap: 6, marginBottom: 10 }}>
+              <Text style={[styles.chartTitle, { color: t.textPrimary, fontSize: 13, fontFamily: 'Outfit-Bold' }]}>Delinquency Risk Assessment</Text>
+              <View style={[styles.leaderboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                {delinquentClients.length > 0 ? (
+                  delinquentClients.map((client: any) => {
+                    const isReminding = !!remindingMap[client.id];
+                    return (
+                      <View key={client.id} style={[styles.riskCard, { borderColor: t.border }]}>
+                        <View style={styles.riskHeader}>
+                          <View style={styles.riskClientCol}>
+                            <Text style={[styles.riskName, { color: t.textPrimary }]}>{client.name}</Text>
+                            <Text style={styles.riskEmail}>{client.email}</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[styles.riskAlertBtn, { backgroundColor: t.accentLight, borderColor: t.accent }]}
+                            onPress={() => handleSendSingleReminder(client.id)}
+                            disabled={isReminding}
+                          >
+                            <Mail size={12} color={t.accent} />
+                            <Text style={[styles.riskAlertText, { color: t.accent }]}>
+                              {isReminding ? 'Queueing...' : 'Alert'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={[styles.cardDivider, { backgroundColor: t.border }]} />
+                        <View style={styles.riskMetricsRow}>
+                          <View>
+                            <Text style={styles.riskLabel}>Overdue Bills</Text>
+                            <Text style={styles.riskVal}>{client.overdueCount}</Text>
+                          </View>
+                          <View>
+                            <Text style={styles.riskLabel}>Overdue Amount</Text>
+                            <Text style={styles.riskVal}>{formatCurrency(client.overdueAmount)}</Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={styles.riskLabel}>Longest Default</Text>
+                            <Text style={[styles.riskVal, { color: t.textPrimary }]}>{client.longestOverdue} days</Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={styles.riskEmpty}>
+                    <ShieldCheck size={28} color="#10b981" />
+                    <Text style={[styles.riskEmptyTitle, { color: t.textPrimary }]}>Zero High Risk Accounts</Text>
+                    <Text style={styles.riskEmptyDesc}>All client accounts have less than 2 overdue installments.</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* TAB 5: Client Analytics */}
+        {activeTab === 'client' && (
+          <View style={styles.tabContentContainer}>
+            {/* Quick-Select Client Avatar Scroll Strip */}
+            <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <Text style={[styles.chartTitle, { color: t.textPrimary, fontSize: 13, fontFamily: 'Outfit-Bold' }]}>Quick Select Client</Text>
+              
+              {/* Filter clients input */}
+              <View style={[styles.searchBox, { borderColor: t.border, backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', marginBottom: 8, height: 36 }]}>
+                <Search size={14} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary, fontSize: 11 }]}
+                  placeholder="Filter clients name/email..."
+                  placeholderTextColor={t.textSecondary}
+                  value={clientAnalyticsSearch}
+                  onChangeText={setClientAnalyticsSearch}
+                  autoCorrect={false}
+                />
+              </View>
+
+              {(() => {
+                const filteredClientsList = clientsList.filter((c: any) => {
+                  const q = clientAnalyticsSearch.toLowerCase().trim();
+                  return !q || c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+                });
+
+                if (filteredClientsList.length === 0) {
+                  return (
+                    <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No matching clients found.</Text>
+                  );
+                }
+
+                return (
+                  <ScrollView
+                    horizontal={true}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.clientSelectScroll}
+                  >
+                    {filteredClientsList.map((client: any) => {
+                      const isSelected = selectedClientId === client.id;
+                      const initials = client.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+                      return (
+                        <TouchableOpacity
+                          key={client.id}
+                          style={[
+                            styles.clientAvatarItem,
+                            isSelected && { borderColor: t.accent, backgroundColor: t.accentLight }
+                          ]}
+                          onPress={() => setSelectedClientId(client.id)}
+                        >
+                          <View style={styles.avatarCircleWrapper}>
+                            {client.avatarUrl ? (
+                              <Image
+                                source={{ uri: client.avatarUrl }}
+                                style={[styles.clientAvatarImage, isSelected && { borderColor: t.accent, borderWidth: 1.5 }]}
+                              />
+                            ) : (
+                              <View style={[styles.clientAvatarInitials, { backgroundColor: isSelected ? t.accent : (isDarkMode ? '#1e293b' : '#e2e8f0') }]}>
+                                <Text style={[styles.avatarInitialsText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
+                                  {initials}
+                                </Text>
+                              </View>
+                            )}
+                            {isSelected && <View style={styles.activeIndicatorDot} />}
+                          </View>
+                          <Text style={[styles.clientAvatarText, { color: t.textPrimary }]} numberOfLines={1}>
+                            {client.name.split(' ')[0]}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                );
+              })()}
+            </View>
+
+            {loadingClient ? (
+              <View style={styles.clientTabLoader}>
+                <ActivityIndicator size="large" color={t.accent} />
+                <Text style={[styles.clientTabLoaderText, { color: t.textSecondary }]}>Aggregating client analytics...</Text>
+              </View>
+            ) : selectedClientData ? (
+              <View style={{ gap: 16 }}>
+                {/* Profile Detail & Credit utilization */}
+                <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={styles.profileHeader}>
+                    <View style={styles.profileAvatarLarge}>
+                      {selectedClientData.profile.avatarUrl ? (
+                        <Image source={{ uri: selectedClientData.profile.avatarUrl }} style={styles.avatarLargeImage} />
+                      ) : (
+                        <View style={[styles.avatarLargeInitials, { backgroundColor: t.accent }]}>
+                          <Text style={styles.avatarLargeInitialsText}>
+                            {selectedClientData.profile.name.substring(0, 1).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.profileHeaderDetails}>
+                      <Text style={[styles.profileName, { color: t.textPrimary }]}>{selectedClientData.profile.name}</Text>
+                      <Text style={[styles.profileEmail, { color: t.textSecondary }]} numberOfLines={1}>{selectedClientData.profile.email}</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.profileDetailsList, { borderTopColor: t.border }]}>
+                    <View style={styles.profileDetailRow}>
+                      <Text style={[styles.profileDetailLabel, { color: t.textSecondary }]}>Phone:</Text>
+                      <Text style={[styles.profileDetailValue, { color: t.textPrimary }]}>{selectedClientData.profile.phone || 'N/A'}</Text>
+                    </View>
+                    <View style={styles.profileDetailRow}>
+                      <Text style={[styles.profileDetailLabel, { color: t.textSecondary }]}>Joined:</Text>
+                      <Text style={[styles.profileDetailValue, { color: t.textPrimary }]}>
+                        {new Date(selectedClientData.profile.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    </View>
+                    <View style={styles.profileDetailRow}>
+                      <Text style={[styles.profileDetailLabel, { color: t.textSecondary }]}>Credit Limit:</Text>
+                      <Text style={[styles.profileDetailValue, { color: t.textPrimary }]}>{formatCurrency(selectedClientData.profile.creditLimit)}</Text>
+                    </View>
+                  </View>
+
+                  {/* Global Credit limit utilization progress */}
+                  {(() => {
+                    const totalDue = selectedClientData.summary.totalOutstanding + selectedClientData.summary.totalOverdue;
+                    const globalLimit = selectedClientData.profile.globalCreditLimit || 1;
+                    const utilization = ((totalDue / globalLimit) * 100).toFixed(2);
+                    return (
+                      <View style={[styles.creditLimitBox, { borderTopColor: t.border }]}>
+                        <View style={styles.creditLimitHeader}>
+                          <Text style={[styles.creditLimitLabel, { color: t.textSecondary }]}>Global Limit Utilization</Text>
+                          <Text style={[styles.creditLimitPct, { color: t.textPrimary }]}>{utilization}%</Text>
+                        </View>
+                        <View style={[styles.creditLimitTrack, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+                          <View style={[styles.creditLimitFill, { width: `${Math.min(100, Math.max(0.5, (totalDue / globalLimit) * 100))}%`, backgroundColor: t.textPrimary }]} />
+                        </View>
+                        <View style={styles.creditLimitFooter}>
+                          <Text style={[styles.creditLimitFooterText, { color: t.textSecondary }]}>Used: {formatCurrency(totalDue)}</Text>
+                          <Text style={[styles.creditLimitFooterText, { color: t.textSecondary }]}>Global Limit: {formatCurrency(globalLimit)}</Text>
+                        </View>
+                      </View>
+                    );
+                  })()}
+                </View>
+
+                {/* Summary Stats Bento Blocks */}
+                <View style={styles.bentoGrid}>
+                  <View style={styles.bentoRow}>
+                    <View style={[styles.bentoCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                      <Text style={[styles.bentoCardLabel, { color: t.textSecondary }]}>Lifetime Volume</Text>
+                      <Text style={[styles.bentoCardVal, { color: t.textPrimary }]} numberOfLines={1}>{formatCurrency(selectedClientData.summary.totalSpent)}</Text>
+                      <Text style={[styles.bentoCardSub, { color: t.textSecondary }]}>{selectedClientData.summary.totalOrders} total orders</Text>
+                    </View>
+                    <View style={[styles.bentoCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                      <Text style={[styles.bentoCardLabel, { color: t.textSecondary }]}>Paid to Date</Text>
+                      <Text style={[styles.bentoCardVal, { color: t.textPrimary }]} numberOfLines={1}>{formatCurrency(selectedClientData.summary.totalPaid)}</Text>
+                      <Text style={[styles.bentoCardSub, { color: t.textSecondary }]}>{selectedClientData.summary.paidPaymentsCount} payments settled</Text>
+                    </View>
+                  </View>
+                  <View style={styles.bentoRow}>
+                    <View style={[styles.bentoCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                      <Text style={[styles.bentoCardLabel, { color: t.textSecondary }]}>Repayment Rate</Text>
+                      <Text style={[styles.bentoCardVal, { color: t.textPrimary }]}>{selectedClientData.summary.collectionRate}%</Text>
+                      <Text style={[styles.bentoCardSub, { color: t.textSecondary }]}>On-time rate: {selectedClientData.summary.onTimeRate}%</Text>
+                    </View>
+                    <View style={[styles.bentoCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                      <Text style={[styles.bentoCardLabel, { color: t.textSecondary }]}>Upcoming Balance</Text>
+                      <Text style={[styles.bentoCardVal, { color: t.textPrimary }]} numberOfLines={1}>{formatCurrency(selectedClientData.summary.totalOutstanding)}</Text>
+                      <Text style={[styles.bentoCardSub, { color: t.textSecondary }]}>{selectedClientData.summary.unpaidPaymentsCount - selectedClientData.summary.overduePaymentsCount} bills due</Text>
+                    </View>
+                  </View>
+                  <View style={styles.bentoRow}>
+                    <View style={[styles.bentoCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                      <Text style={[styles.bentoCardLabel, { color: '#ef4444' }]}>Overdue Balance</Text>
+                      <Text style={[styles.bentoCardVal, { color: '#ef4444' }]} numberOfLines={1}>{formatCurrency(selectedClientData.summary.totalOverdue)}</Text>
+                      <Text style={[styles.bentoCardSub, { color: '#ef4444' }]}>{selectedClientData.summary.overduePaymentsCount} late bills</Text>
+                    </View>
+                    <View style={[styles.bentoCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                      <Text style={[styles.bentoCardLabel, { color: t.textSecondary }]}>Active Programs</Text>
+                      <Text style={[styles.bentoCardVal, { color: t.textPrimary }]}>{selectedClientData.summary.activeOrders}</Text>
+                      <Text style={[styles.bentoCardSub, { color: t.textSecondary }]}>{selectedClientData.summary.completedOrders} completed</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Client Financial Position Donut */}
+                <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={styles.chartHeader}>
+                    <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Client Financial Position</Text>
+                    <Text style={styles.chartDesc}>Life-cycle amortization values segmented by paid, upcoming, and overdue balances.</Text>
+                  </View>
+                  <View style={styles.donutBody}>
+                    <View style={styles.donutGraphic}>
+                      {(() => {
+                        const total = selectedClientData.summary.totalPaid + selectedClientData.summary.totalOutstanding + selectedClientData.summary.totalOverdue;
+                        const paidPct = total > 0 ? (selectedClientData.summary.totalPaid / total) * 100 : 0;
+                        const upcomingPct = total > 0 ? (selectedClientData.summary.totalOutstanding / total) * 100 : 0;
+                        const overduePct = total > 0 ? (selectedClientData.summary.totalOverdue / total) * 100 : 0;
+
+                        return (
+                          <Svg width={120} height={120} viewBox="0 0 120 120">
+                            {/* Paid Ring */}
+                            <Circle cx={60} cy={60} r={45} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} strokeWidth={7} fill="transparent" />
+                            {paidPct > 0 && (
+                              <Circle
+                                cx={60} cy={60} r={45}
+                                stroke="#10b981" strokeWidth={7} fill="transparent"
+                                strokeDasharray={2 * Math.PI * 45}
+                                strokeDashoffset={2 * Math.PI * 45 * (1 - paidPct / 100)}
+                                strokeLinecap="round"
+                                transform="rotate(-90 60 60)"
+                              />
+                            )}
+
+                            {/* Upcoming Ring */}
+                            <Circle cx={60} cy={60} r={33} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} strokeWidth={7} fill="transparent" />
+                            {upcomingPct > 0 && (
+                              <Circle
+                                cx={60} cy={60} r={33}
+                                stroke="#3b82f6" strokeWidth={7} fill="transparent"
+                                strokeDasharray={2 * Math.PI * 33}
+                                strokeDashoffset={2 * Math.PI * 33 * (1 - upcomingPct / 100)}
+                                strokeLinecap="round"
+                                transform="rotate(-90 60 60)"
+                              />
+                            )}
+
+                            {/* Overdue Ring */}
+                            <Circle cx={60} cy={60} r={21} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} strokeWidth={7} fill="transparent" />
+                            {overduePct > 0 && (
+                              <Circle
+                                cx={60} cy={60} r={21}
+                                stroke="#ef4444" strokeWidth={7} fill="transparent"
+                                strokeDasharray={2 * Math.PI * 21}
+                                strokeDashoffset={2 * Math.PI * 21 * (1 - overduePct / 100)}
+                                strokeLinecap="round"
+                                transform="rotate(-90 60 60)"
+                              />
+                            )}
+                          </Svg>
+                        );
+                      })()}
+                    </View>
+
+                    <View style={styles.donutLegend}>
+                      {clientCashFlowData.map((item: any) => {
+                        const total = selectedClientData.summary.totalPaid + selectedClientData.summary.totalOutstanding + selectedClientData.summary.totalOverdue;
+                        const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
+                        return (
+                          <View key={item.name} style={styles.legendRow}>
+                            <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                            <View style={styles.legendTextWrapper}>
+                              <Text style={[styles.legendName, { color: t.textPrimary }]}>{item.name} ({pct}%)</Text>
+                              <Text style={[styles.legendVal, { color: t.textSecondary }]}>{formatCurrency(item.value)}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+
+                {/* Spending Trend Bar Chart */}
+                <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={styles.chartHeader}>
+                    <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Monthly Purchase History</Text>
+                    <Text style={styles.chartDesc}>Monthly trend of order volumes placed by the client (in PHP) in the last 6 months.</Text>
+                  </View>
+                  {clientPurchaseTrend.length > 0 ? (
+                    (() => {
+                      const chartWidth = Dimensions.get('window').width - 64;
+                      const chartHeight = 180;
+                      const paddingLeft = 45;
+                      const paddingRight = 15;
+                      const paddingTop = 15;
+                      const paddingBottom = 25;
+                      const innerWidth = chartWidth - paddingLeft - paddingRight;
+                      const innerHeight = chartHeight - paddingTop - paddingBottom;
+
+                      const maxVal = Math.max(...clientPurchaseTrend.map((d: any) => d.amount), 1000) * 1.15;
+                      const barWidth = Math.floor(innerWidth / (clientPurchaseTrend.length * 1.5));
+                      const gap = Math.floor((innerWidth - barWidth * clientPurchaseTrend.length) / (clientPurchaseTrend.length + 1));
+
+                      return (
+                        <View style={styles.svgWrapper}>
+                          <Svg width={chartWidth} height={chartHeight}>
+                            {[0, 1, 2, 3, 4].map(idx => {
+                              const y = paddingTop + (idx * innerHeight) / 4;
+                              const gridVal = maxVal - (idx * maxVal) / 4;
+                              return (
+                                <G key={idx}>
+                                  <Path d={`M ${paddingLeft} ${y} H ${chartWidth - paddingRight}`} stroke={t.border} strokeWidth={1} strokeDasharray="3 3" />
+                                  <SvgText x={paddingLeft - 8} y={y + 3} fill={t.textSecondary} fontSize={8} textAnchor="end">
+                                    {gridVal >= 1000 ? `₱${Math.round(gridVal / 1000)}k` : `₱${gridVal}`}
+                                  </SvgText>
+                                </G>
+                              );
+                            })}
+                            {clientPurchaseTrend.map((d: any, idx: number) => {
+                              const x = paddingLeft + gap + idx * (barWidth + gap);
+                              const val = d.amount;
+                              const barHeight = (val / maxVal) * innerHeight;
+                              const y = paddingTop + innerHeight - barHeight;
+
+                              return (
+                                <G key={idx}>
+                                  <Rect x={x} y={y} width={barWidth} height={Math.max(barHeight, 2)} fill="#4b5563" rx={3} />
+                                  <SvgText x={x + barWidth / 2} y={y - 4} fill={t.textPrimary} fontSize={8} fontWeight="bold" textAnchor="middle" fontFamily="Outfit-Bold">
+                                    {formatCurrency(val)}
+                                  </SvgText>
+                                  <SvgText x={x + barWidth / 2} y={paddingTop + innerHeight + 15} fill={t.textSecondary} fontSize={9} textAnchor="middle">
+                                    {d.month}
+                                  </SvgText>
+                                </G>
+                              );
+                            })}
+                          </Svg>
+                        </View>
+                      );
+                    })()
+                  ) : (
+                    <View style={styles.emptyChart}>
+                      <Text style={[styles.emptyChartText, { color: t.textSecondary }]}>No purchase transactions found in this period.</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Communication Logs & Diagnostics Panel */}
+                <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={styles.chartHeader}>
+                    <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Communication Logs & Diagnostics</Text>
+                    <Text style={styles.chartDesc}>Audit trail of system alerts sent to this client.</Text>
+                  </View>
+
+                  {(() => {
+                    const attempts = selectedClientData.notificationAttempts || [];
+                    const stats = {
+                      SMS: { total: 0, success: 0 },
+                      EMAIL: { total: 0, success: 0 },
+                      PUSH: { total: 0, success: 0 },
+                      WHATSAPP: { total: 0, success: 0 }
+                    };
+                    attempts.forEach((a: any) => {
+                      const chan = (a.channel || '').toUpperCase();
+                      if (chan.includes('SMS')) {
+                        stats.SMS.total++;
+                        if (a.status === 'SENT') stats.SMS.success++;
+                      } else if (chan.includes('EMAIL') || chan.includes('MAIL')) {
+                        stats.EMAIL.total++;
+                        if (a.status === 'SENT') stats.EMAIL.success++;
+                      } else if (chan.includes('PUSH')) {
+                        stats.PUSH.total++;
+                        if (a.status === 'SENT') stats.PUSH.success++;
+                      } else if (chan.includes('WHATSAPP')) {
+                        stats.WHATSAPP.total++;
+                        if (a.status === 'SENT') stats.WHATSAPP.success++;
+                      }
+                    });
+
+                    const isReminding = !!remindingMap[selectedClientData.profile.id];
+
+                    return (
+                      <View style={{ gap: 12 }}>
+                        {/* Scrollable list of attempts */}
+                        <View style={{ maxHeight: 180, borderBottomWidth: 1, borderBottomColor: t.border, paddingBottom: 8 }}>
+                          <ScrollView nestedScrollEnabled={true}>
+                            {attempts.length > 0 ? (
+                              attempts.map((attempt: any) => {
+                                const isSuccess = attempt.status === 'SENT';
+                                return (
+                                  <View key={attempt.id} style={[styles.logItem, { borderColor: t.border, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' }]}>
+                                    <View style={styles.logHeader}>
+                                      <Text style={styles.logChannelText}>{attempt.channel.replace('_', ' ')}</Text>
+                                      <View style={[styles.statusBadge, { backgroundColor: isSuccess ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }]}>
+                                        <Text style={[styles.statusBadgeText, { color: isSuccess ? '#10b981' : '#ef4444' }]}>{attempt.status}</Text>
+                                      </View>
+                                    </View>
+                                    <Text style={[styles.logMessageText, { color: t.textSecondary }]}>
+                                      {isSuccess ? 'Notification successfully transmitted.' : attempt.errorMessage || 'Unknown delivery failure.'}
+                                    </Text>
+                                    <Text style={styles.logTimeText}>{new Date(attempt.createdAt).toLocaleString()}</Text>
+                                  </View>
+                                );
+                              })
+                            ) : (
+                              <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No communication logs recorded.</Text>
+                            )}
+                          </ScrollView>
+                        </View>
+
+                        {/* Channel Breakdown */}
+                        <Text style={[styles.subFieldsHeader, { marginTop: 4 }]}>Channel Delivery Breakdown</Text>
+                        <View style={styles.grid2x2}>
+                          {Object.entries(stats).map(([channel, stat]) => {
+                            const pct = stat.total > 0 ? Math.round((stat.success / stat.total) * 100) : 0;
+                            return (
+                              <View key={channel} style={[styles.channelStatCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                                <View style={styles.channelStatHeader}>
+                                  <Text style={[styles.channelStatName, { color: t.textSecondary }]}>{channel}</Text>
+                                  <Text style={[styles.channelStatTotal, { color: t.textPrimary }]}>{stat.total} sent</Text>
+                                </View>
+                                <View style={[styles.progressBg, { backgroundColor: isDarkMode ? '#334155' : '#e2e8f0', marginTop: 6, marginBottom: 4 }]}>
+                                  <View
+                                    style={[
+                                      styles.progressFill,
+                                      {
+                                        width: `${stat.total > 0 ? pct : 0}%`,
+                                        backgroundColor: stat.total === 0 ? '#cbd5e1' : pct >= 90 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444'
+                                      }
+                                    ]}
+                                  />
+                                </View>
+                                <View style={styles.channelStatFooter}>
+                                  <Text style={styles.channelStatFooterText}>Success Rate</Text>
+                                  <Text style={[styles.channelStatFooterPct, { color: t.textPrimary }]}>{stat.total > 0 ? `${pct}%` : '—'}</Text>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+
+                        {/* Repayment and Alert Profile */}
+                        <View style={styles.riskProfileRow}>
+                          <View style={[styles.riskProfileColCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                            <Text style={styles.riskProfileLabel}>Avg Delay Days</Text>
+                            <Text style={[styles.riskProfileVal, { color: t.textPrimary }]}>{avgDaysLateClient} d</Text>
+                            <Text style={styles.riskProfileSub}>settlement delay</Text>
+                          </View>
+                          <View style={[styles.riskProfileColCard, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                            <Text style={styles.riskProfileLabel}>Alert Success Rate</Text>
+                            <Text style={[styles.riskProfileVal, { color: t.textPrimary }]}>
+                              {(() => {
+                                const sentCount = attempts.filter((a: any) => a.status === 'SENT').length;
+                                return attempts.length > 0 ? Math.round((sentCount / attempts.length) * 100) : 100;
+                              })()}%
+                            </Text>
+                            <Text style={styles.riskProfileSub}>alert delivery</Text>
+                          </View>
+                        </View>
+
+                        <View style={[styles.riskLevelRow, { borderTopColor: t.border }]}>
+                          <Text style={[styles.riskLevelText, { color: t.textSecondary }]}>Risk Categorization</Text>
+                          {avgDaysLateClient === 0 ? (
+                            <View style={[styles.statusBadge, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}><Text style={{ color: '#10b981', fontSize: 8, fontWeight: 'bold' }}>Zero Risk</Text></View>
+                          ) : avgDaysLateClient <= 7 ? (
+                            <View style={[styles.statusBadge, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}><Text style={{ color: '#f59e0b', fontSize: 8, fontWeight: 'bold' }}>Low Risk</Text></View>
+                          ) : (
+                            <View style={[styles.statusBadge, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}><Text style={{ color: '#ef4444', fontSize: 8, fontWeight: 'bold' }}>High Risk</Text></View>
+                          )}
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.manualAlertBtn, { backgroundColor: t.accent }]}
+                          onPress={() => handleSendSingleReminder(selectedClientData.profile.id)}
+                          disabled={isReminding}
+                        >
+                          <Mail size={14} color="#ffffff" />
+                          <Text style={styles.manualAlertBtnText}>
+                            {isReminding ? 'Sending alert...' : 'Send Manual Payment Reminder'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })()}
+                </View>
+
+                {/* Financing Agreements & Ledgers List */}
+                <View style={[styles.chartCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={styles.chartHeader}>
+                    <Text style={[styles.chartTitle, { color: t.textPrimary }]}>Financing Agreements & Ledgers</Text>
+                    <Text style={styles.chartDesc}>Detailed list of client purchase agreements and monthly payment schedules.</Text>
+                  </View>
+
+                  {/* Search and Filter */}
+                  <View style={styles.agreementsFilterRow}>
+                    <TextInput
+                      style={[styles.agreementSearchInput, { borderColor: t.border, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: t.textPrimary }]}
+                      placeholder="Search agreements..."
+                      placeholderTextColor={t.textSecondary}
+                      value={agreementSearch}
+                      onChangeText={setAgreementSearch}
+                      autoCorrect={false}
+                    />
+                    <View style={styles.agreementsPillRow}>
+                      {[
+                        { id: 'ALL', label: 'All' },
+                        { id: 'ACTIVE', label: 'Active' },
+                        { id: 'PAID', label: 'Settled' }
+                      ].map((btn) => (
+                        <TouchableOpacity
+                          key={btn.id}
+                          style={[
+                            styles.agreementsPill,
+                            { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', borderColor: t.border },
+                            agreementStatusFilter === btn.id && { backgroundColor: t.accent, borderColor: t.accent }
+                          ]}
+                          onPress={() => setAgreementStatusFilter(btn.id as any)}
+                        >
+                          <Text style={[styles.agreementsPillText, agreementStatusFilter === btn.id ? { color: '#ffffff' } : { color: t.textSecondary }]}>
+                            {btn.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* Orders List */}
+                  <View style={{ gap: 12 }}>
+                    {paginatedOrders.length > 0 ? (
+                      paginatedOrders.map((order: any) => {
+                        const paidPayments = order.payments.filter((p: any) => p.isPaid).length;
+                        const totalPayments = order.payments.length;
+                        const progressPercent = totalPayments > 0 ? Math.round((paidPayments / totalPayments) * 100) : 0;
+                        const isExpanded = !!expandedOrderIds[order.id];
+
+                        return (
+                          <View key={order.id} style={[styles.agreementCard, { borderColor: t.border, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' }]}>
+                            <View style={styles.agreementCardHeader}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.agreementCardTitle, { color: t.textPrimary }]}>{order.itemName}</Text>
+                                <Text style={[styles.agreementCardSub, { color: t.textSecondary }]}>
+                                  Purchased: {new Date(order.orderDate).toLocaleDateString()}
+                                </Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                                <Text style={[styles.agreementCardVal, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
+                                <View style={[styles.statusBadge, { backgroundColor: order.isPaid ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)' }]}>
+                                  <Text style={[styles.statusBadgeText, { color: order.isPaid ? '#10b981' : '#f59e0b' }]}>
+                                    {order.isPaid ? 'Settled' : 'Active'}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+
+                            {/* Installments Progress Bar */}
+                            <View style={{ gap: 4, marginTop: 4 }}>
+                              <View style={styles.agreementProgressLabels}>
+                                <Text style={[styles.agreementProgressLabel, { color: t.textSecondary }]}>Installments Progress</Text>
+                                <Text style={[styles.agreementProgressPct, { color: t.textPrimary }]}>
+                                  {paidPayments}/{totalPayments} ({progressPercent}%)
+                                </Text>
+                              </View>
+                              <View style={[styles.progressBg, { backgroundColor: isDarkMode ? '#334155' : '#e2e8f0' }]}>
+                                <View style={[styles.progressFill, { width: `${progressPercent}%`, backgroundColor: t.accent }]} />
+                              </View>
+                            </View>
+
+                            {/* Expandable detailed installment list */}
+                            <View style={[styles.expandableDivider, { borderTopColor: t.border, marginTop: 8 }]} />
+                            <TouchableOpacity
+                              style={styles.expandTrigger}
+                              onPress={() => toggleExpandOrder(order.id)}
+                            >
+                              <Text style={styles.expandTriggerText}>
+                                {isExpanded ? '▼ Hide detailed breakdown' : '▶ Detailed Installments breakdown'}
+                              </Text>
+                            </TouchableOpacity>
+
+                            {isExpanded && (
+                              <View style={styles.expandedBreakdownGrid}>
+                                {order.payments.map((p: any) => {
+                                  const isOverdue = !p.isPaid && new Date(p.dueDate) < new Date();
+                                  return (
+                                    <View
+                                      key={p.id}
+                                      style={[
+                                        styles.paymentMiniCard,
+                                        { borderColor: t.border },
+                                        p.isPaid
+                                          ? { backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.05)' : 'rgba(16, 185, 129, 0.02)', borderColor: 'rgba(16, 185, 129, 0.1)' }
+                                          : isOverdue
+                                            ? { backgroundColor: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.1)' }
+                                            : { backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff' }
+                                      ]}
+                                    >
+                                      <View style={styles.paymentMiniHeader}>
+                                        <Text style={[styles.paymentMiniMonth, { color: t.textSecondary }]}>Month {p.monthNumber}</Text>
+                                        <Text style={[styles.paymentMiniAmt, p.isPaid ? { color: '#10b981' } : isOverdue ? { color: '#ef4444' } : { color: t.textPrimary }]}>
+                                          {formatCurrency(p.amountDue)}
+                                        </Text>
+                                      </View>
+                                      <View style={{ gap: 2 }}>
+                                        <Text style={styles.paymentMiniDate}>Due: {new Date(p.dueDate).toLocaleDateString()}</Text>
+                                        {p.isPaid && p.paymentDate && (
+                                          <Text style={[styles.paymentMiniPaidDate, { color: '#10b981' }]}>
+                                            Paid: {new Date(p.paymentDate).toLocaleDateString()}
+                                          </Text>
+                                        )}
+                                        {isOverdue && <Text style={styles.paymentMiniLate}>LATE</Text>}
+                                      </View>
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })
+                    ) : (
+                      <Text style={[styles.emptyListText, { color: t.textSecondary }]}>No order histories found for this client.</Text>
+                    )}
+
+                    {/* Pagination controls */}
+                    {ordersTotalPages > 1 && (
+                      <View style={[styles.paginationRow, { borderTopColor: t.border }]}>
+                        <Text style={[styles.paginationCount, { color: t.textSecondary }]}>
+                          Page {ordersPage} of {ordersTotalPages}
+                        </Text>
+                        <View style={styles.paginationBtns}>
+                          {/* First Page */}
+                          <TouchableOpacity
+                            style={[styles.paginationBtn, ordersPage === 1 && styles.paginationBtnDisabled]}
+                            disabled={ordersPage === 1}
+                            onPress={() => setOrdersPage(1)}
+                          >
+                            <ChevronsLeft size={14} color={ordersPage === 1 ? t.textSecondary : t.accent} />
+                          </TouchableOpacity>
+
+                          {/* Previous Page */}
+                          <TouchableOpacity
+                            style={[styles.paginationBtn, ordersPage === 1 && styles.paginationBtnDisabled]}
+                            disabled={ordersPage === 1}
+                            onPress={() => setOrdersPage(p => Math.max(1, p - 1))}
+                          >
+                            <ChevronLeft size={14} color={ordersPage === 1 ? t.textSecondary : t.accent} />
+                          </TouchableOpacity>
+
+                          {/* Next Page */}
+                          <TouchableOpacity
+                            style={[styles.paginationBtn, ordersPage === ordersTotalPages && styles.paginationBtnDisabled]}
+                            disabled={ordersPage === ordersTotalPages}
+                            onPress={() => setOrdersPage(p => Math.min(ordersTotalPages, p + 1))}
+                          >
+                            <ChevronRight size={14} color={ordersPage === ordersTotalPages ? t.textSecondary : t.accent} />
+                          </TouchableOpacity>
+
+                          {/* Last Page */}
+                          <TouchableOpacity
+                            style={[styles.paginationBtn, ordersPage === ordersTotalPages && styles.paginationBtnDisabled]}
+                            disabled={ordersPage === ordersTotalPages}
+                            onPress={() => setOrdersPage(ordersTotalPages)}
+                          >
+                            <ChevronsRight size={14} color={ordersPage === ordersTotalPages ? t.textSecondary : t.accent} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.clientTabEmpty}>
+                <Text style={[styles.clientTabEmptyText, { color: t.textSecondary }]}>Select a client to view analytics</Text>
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* --- TIME TIME-FRAME PICKER MODAL --- */}
@@ -2851,5 +4352,509 @@ const styles = StyleSheet.create({
   previewFooterSummary: {
     fontSize: 10,
     fontFamily: 'Outfit-Medium',
+  },
+  tabBarContainer: {
+    borderBottomWidth: 1,
+  },
+  tabBarScroll: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  clientSelectScroll: {
+    paddingVertical: 10,
+    gap: 12,
+  },
+  clientAvatarItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    width: 76,
+  },
+  avatarCircleWrapper: {
+    position: 'relative',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clientAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  clientAvatarInitials: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitialsText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  activeIndicatorDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ee4d2d',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+  },
+  clientAvatarText: {
+    fontSize: 10,
+    marginTop: 6,
+    fontWeight: '600',
+    fontFamily: 'Outfit-Medium',
+    textAlign: 'center',
+    width: 68,
+  },
+  clientTabLoader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  clientTabLoaderText: {
+    fontSize: 12,
+    fontFamily: 'Outfit-Regular',
+  },
+  profileCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  profileAvatarLarge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: 'hidden',
+  },
+  avatarLargeImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  avatarLargeInitials: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLargeInitialsText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  profileHeaderDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  profileName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  profileEmail: {
+    fontSize: 11,
+    fontFamily: 'Outfit-Regular',
+  },
+  profileDetailsList: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    paddingTop: 12,
+    gap: 8,
+  },
+  profileDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  profileDetailLabel: {
+    fontSize: 11,
+    fontFamily: 'Outfit-Regular',
+  },
+  profileDetailValue: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  creditLimitBox: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    paddingTop: 12,
+    gap: 6,
+  },
+  creditLimitHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  creditLimitLabel: {
+    fontSize: 11,
+    fontFamily: 'Outfit-Regular',
+  },
+  creditLimitPct: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  creditLimitTrack: {
+    height: 8,
+    borderRadius: 4,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  creditLimitFill: {
+    height: 8,
+    borderRadius: 4,
+  },
+  creditLimitFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  creditLimitFooterText: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+  },
+  bentoGrid: {
+    gap: 10,
+  },
+  bentoRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  bentoCard: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 12,
+    gap: 4,
+  },
+  bentoCardLabel: {
+    fontSize: 10,
+    fontFamily: 'Outfit-Medium',
+  },
+  bentoCardVal: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  bentoCardSub: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+  },
+  logItem: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 6,
+    gap: 4,
+  },
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  logChannelText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+    color: '#ee4d2d',
+    textTransform: 'uppercase',
+  },
+  statusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusBadgeText: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  logMessageText: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+    lineHeight: 12,
+  },
+  logTimeText: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontFamily: 'Outfit-Regular',
+  },
+  grid2x2: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  channelStatCard: {
+    width: '48%',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 8,
+    gap: 2,
+  },
+  channelStatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  channelStatName: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  channelStatTotal: {
+    fontSize: 8,
+    fontFamily: 'Outfit-Regular',
+  },
+  channelStatFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  channelStatFooterText: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontFamily: 'Outfit-Regular',
+  },
+  channelStatFooterPct: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  riskProfileRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  riskProfileColCard: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 8,
+    gap: 2,
+  },
+  riskProfileLabel: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontFamily: 'Outfit-Regular',
+  },
+  riskProfileVal: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  riskProfileSub: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontFamily: 'Outfit-Regular',
+  },
+  riskLevelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    paddingTop: 10,
+  },
+  riskLevelText: {
+    fontSize: 11,
+    fontFamily: 'Outfit-Medium',
+  },
+  manualAlertBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 6,
+  },
+  manualAlertBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  agreementsFilterRow: {
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 10,
+  },
+  agreementSearchInput: {
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 11,
+    fontFamily: 'Outfit-Regular',
+  },
+  agreementsPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  agreementsPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  agreementsPillText: {
+    fontSize: 10,
+    fontWeight: '600',
+    fontFamily: 'Outfit-Medium',
+  },
+  agreementCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    gap: 8,
+  },
+  agreementCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  agreementCardTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  agreementCardSub: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+    marginTop: 2,
+  },
+  agreementCardVal: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  agreementProgressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  agreementProgressLabel: {
+    fontSize: 9,
+    fontFamily: 'Outfit-Regular',
+  },
+  agreementProgressPct: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  expandableDivider: {
+    borderTopWidth: 1,
+  },
+  expandTrigger: {
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  expandTriggerText: {
+    fontSize: 9,
+    color: '#ee4d2d',
+    fontWeight: '600',
+    fontFamily: 'Outfit-Medium',
+  },
+  expandedBreakdownGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  paymentMiniCard: {
+    width: '48%',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 8,
+    gap: 4,
+  },
+  paymentMiniHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  paymentMiniMonth: {
+    fontSize: 8,
+    fontFamily: 'Outfit-Regular',
+  },
+  paymentMiniAmt: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  paymentMiniDate: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontFamily: 'Outfit-Regular',
+  },
+  paymentMiniPaidDate: {
+    fontSize: 8,
+    fontFamily: 'Outfit-Medium',
+  },
+  paymentMiniLate: {
+    fontSize: 8,
+    color: '#ef4444',
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    paddingTop: 10,
+    marginTop: 6,
+  },
+  paginationCount: {
+    fontSize: 10,
+    fontFamily: 'Outfit-Medium',
+  },
+  paginationBtns: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  paginationBtn: {
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paginationBtnDisabled: {
+    opacity: 0.4,
+  },
+  clientTabEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  clientTabEmptyText: {
+    fontSize: 12,
+    fontFamily: 'Outfit-Regular',
   },
 });

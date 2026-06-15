@@ -58,6 +58,7 @@ import {
   Search,
   ShoppingBag,
   CheckCircle2,
+  Check,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -606,6 +607,36 @@ export default function AdminDashboardScreen() {
   const projectedExposurePercent = stats.activeLimitExposure > 0
     ? Math.min(100, Math.round((projectedOutstanding / stats.activeLimitExposure) * 100))
     : 0;
+
+  const getCreditPoolMetrics = () => {
+    const totalScheduledAmount = parsedOrderAmount;
+    const projectedOutstanding = stats.outstandingBalance + totalScheduledAmount;
+    const availableAfter = stats.activeLimitExposure - projectedOutstanding;
+
+    const currentUtilPercent = stats.activeLimitExposure > 0 ? (stats.outstandingBalance / stats.activeLimitExposure) * 100 : 0;
+    const projectedUtilPercent = stats.activeLimitExposure > 0 ? (projectedOutstanding / stats.activeLimitExposure) * 100 : 0;
+    const addedUtilPercent = stats.activeLimitExposure > 0 ? (totalScheduledAmount / stats.activeLimitExposure) * 100 : 0;
+
+    const isOverLimit = projectedOutstanding > stats.activeLimitExposure;
+    const isNearingLimit = !isOverLimit && projectedUtilPercent >= 80;
+    const overLimitAmount = isOverLimit ? projectedOutstanding - stats.activeLimitExposure : 0;
+
+    return {
+      creditLimit: stats.activeLimitExposure,
+      currentOutstanding: stats.outstandingBalance,
+      totalScheduledAmount,
+      monthlyAmortizationSum: estimatedMonthlyDue,
+      projectedOutstanding,
+      availableAfter,
+      currentUtilPercent,
+      projectedUtilPercent,
+      addedUtilPercent,
+      isOverLimit,
+      isNearingLimit,
+      overLimitAmount
+    };
+  };
+
   const parsedGlobalLimit = Number(globalLimitAmount);
   const allocationPerClient = Number.isFinite(parsedGlobalLimit) && parsedGlobalLimit > 0 && clientsList.length > 0
     ? parsedGlobalLimit / clientsList.length
@@ -728,8 +759,8 @@ export default function AdminDashboardScreen() {
                   {!timeLeft.hasTarget
                     ? 'No payments scheduled'
                     : timeLeft.isOverdue
-                    ? 'DEADLINE HAS PASSED'
-                    : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
+                      ? 'DEADLINE HAS PASSED'
+                      : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
                 </Text>
               </View>
             </View>
@@ -885,7 +916,7 @@ export default function AdminDashboardScreen() {
         {/* Expected Cash Inflows Card */}
         <View style={[styles.inflowsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           <Text style={[styles.inflowsTitle, { color: t.textPrimary }]}>Expected Cash Inflows</Text>
-          
+
           <View style={styles.inflowsList}>
             <View style={styles.inflowRow}>
               <View style={styles.inflowLabelContainer}>
@@ -894,7 +925,7 @@ export default function AdminDashboardScreen() {
               </View>
               <Text style={[styles.inflowValue, { color: t.textPrimary }]}>{formatCurrency(inflows.thisWeekExpected)}</Text>
             </View>
-            
+
             <View style={styles.inflowRow}>
               <View style={styles.inflowLabelContainer}>
                 <View style={[styles.bulletPoint, { backgroundColor: '#10b981' }]} />
@@ -902,7 +933,7 @@ export default function AdminDashboardScreen() {
               </View>
               <Text style={[styles.inflowValue, { color: t.textPrimary }]}>{formatCurrency(inflows.nextWeekExpected)}</Text>
             </View>
-            
+
             <View style={[styles.inflowRow, styles.inflowRowBorder, { borderBottomColor: t.border }]}>
               <View style={styles.inflowLabelContainer}>
                 <View style={[styles.bulletPoint, { backgroundColor: '#ee4d2d' }]} />
@@ -1208,11 +1239,11 @@ export default function AdminDashboardScreen() {
                           </Text>
                         </View>
                         <View style={[styles.categoryProgressTrack, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9' }]}>
-                          <View 
+                          <View
                             style={[
-                              styles.categoryProgressBar, 
+                              styles.categoryProgressBar,
                               { width: `${percentage}%`, backgroundColor: t.accent }
-                            ]} 
+                            ]}
                           />
                         </View>
                       </View>
@@ -1349,16 +1380,23 @@ export default function AdminDashboardScreen() {
                             key={client.id}
                             style={[
                               styles.clientChoiceCard,
-                              { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: selected ? t.accent : t.cardBorder },
+                              { backgroundColor: selected ? (isDarkMode ? 'rgba(238, 77, 45, 0.12)' : 'rgba(238, 77, 45, 0.05)') : (isDarkMode ? '#111827' : '#ffffff'), borderColor: selected ? t.accent : t.cardBorder },
                               selected && styles.clientChoiceCardActive,
                             ]}
                             onPress={() => setSelectedClientId(client.id)}
                             activeOpacity={0.86}
                           >
-                            <Image
-                              source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
-                              style={styles.clientAvatar}
-                            />
+                            <View style={styles.clientAvatarWrapper}>
+                              <Image
+                                source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=120&bold=true` }}
+                                style={[styles.clientAvatar, { borderColor: selected ? t.accent : t.cardBorder }]}
+                              />
+                              {selected && (
+                                <View style={[styles.avatarCheckBadge, { backgroundColor: t.accent }]}>
+                                  <Check size={10} color="#ffffff" strokeWidth={3} />
+                                </View>
+                              )}
+                            </View>
                             <Text style={[styles.clientChoiceName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
                             <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]} numberOfLines={1}>{client.email}</Text>
                           </TouchableOpacity>
@@ -1577,20 +1615,97 @@ export default function AdminDashboardScreen() {
                   </View>
                 )}
 
-                <View style={[styles.exposurePreview, { backgroundColor: isDarkMode ? '#0b1220' : '#f8fafc', borderColor: t.cardBorder }]}>
-                  <View style={styles.exposurePreviewTop}>
-                    <Text style={[styles.previewTitle, { color: t.textPrimary }]}>Limit Impact Preview</Text>
-                    <Text style={[styles.previewPercent, { color: projectedExposurePercent > 80 ? '#ef4444' : '#10b981' }]}>
-                      {projectedExposurePercent}%
-                    </Text>
-                  </View>
-                  <View style={[styles.previewTrack, { backgroundColor: isDarkMode ? '#1f2937' : '#e5e7eb' }]}>
-                    <View style={[styles.previewFill, { width: `${projectedExposurePercent}%`, backgroundColor: projectedExposurePercent > 80 ? '#ef4444' : t.accent }]} />
-                  </View>
-                  <Text style={[styles.previewCaption, { color: t.textSecondary }]}>
-                    Projected exposure after this order: {formatCurrency(projectedOutstanding)}
-                  </Text>
-                </View>
+                {/* Redesigned Shared Credit Pool & Exposure Preview */}
+                {(() => {
+                  const metrics = getCreditPoolMetrics();
+                  return (
+                    <View style={[styles.exposureContainer, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                      <View style={[styles.exposureHeader, { borderBottomColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+                        <Text style={[styles.exposureTitle, { color: t.textPrimary }]}>Shared Credit Pool Exposure</Text>
+                        <View style={[styles.poolBadge, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+                          <Text style={[styles.poolBadgeText, { color: t.textSecondary }]}>
+                            Limit: {formatCurrency(metrics.creditLimit)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* KPI Grid */}
+                      <View style={styles.kpiGrid}>
+                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
+                          <Text style={styles.kpiLabel}>Current Outstanding</Text>
+                          <Text style={[styles.kpiValue, { color: t.textSecondary }]} numberOfLines={1}>
+                            {formatCurrency(metrics.currentOutstanding)}
+                          </Text>
+                          <Text style={styles.kpiSub}>Current Pool</Text>
+                        </View>
+
+                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
+                          <Text style={[styles.kpiLabel, { color: t.accent }]}>New Exposure</Text>
+                          <Text style={[styles.kpiValue, { color: t.textPrimary, fontWeight: 'bold' }]} numberOfLines={1}>
+                            {formatCurrency(metrics.projectedOutstanding)}
+                          </Text>
+                          <Text style={styles.kpiSub}>Projected</Text>
+                        </View>
+
+                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
+                          <Text style={styles.kpiLabel}>Available Credit</Text>
+                          <Text style={[styles.kpiValue, { color: metrics.isOverLimit ? '#ef4444' : '#10b981', fontWeight: 'bold' }]} numberOfLines={1}>
+                            {formatCurrency(metrics.availableAfter)}
+                          </Text>
+                          <Text style={styles.kpiSub}>{metrics.isOverLimit ? 'Over Limit' : 'Remaining'}</Text>
+                        </View>
+                      </View>
+
+                      {/* Utilization visual bar */}
+                      <View style={styles.utilizationRow}>
+                        <Text style={[styles.utilizationLabel, { color: t.textSecondary }]}>Pool Limit Utilization</Text>
+                        <Text style={[styles.utilizationPercent, { color: metrics.isOverLimit ? '#ef4444' : (metrics.isNearingLimit ? '#f59e0b' : t.textPrimary) }]}>
+                          {metrics.currentUtilPercent.toFixed(1)}% → {metrics.projectedUtilPercent.toFixed(1)}%
+                        </Text>
+                      </View>
+
+                      <View style={[styles.progressTrack, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
+                        <View
+                          style={[styles.progressCurrent, { width: `${Math.min(100, metrics.currentUtilPercent)}%`, backgroundColor: isDarkMode ? '#475569' : '#94a3b8' }]}
+                        />
+                        <View
+                          style={[
+                            styles.progressAdded,
+                            {
+                              width: `${Math.min(100 - metrics.currentUtilPercent, metrics.addedUtilPercent)}%`,
+                              backgroundColor: metrics.isOverLimit ? '#ef4444' : t.accent,
+                            }
+                          ]}
+                        />
+                      </View>
+
+                      {/* Alert Banners */}
+                      {metrics.isOverLimit && (
+                        <View style={[styles.alertCard, { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.08)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+                          <AlertCircle size={16} color="#ef4444" style={{ marginTop: 2 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.alertTitleText, { color: isDarkMode ? '#fca5a5' : '#991b1b' }]}>Shared Credit Limit Exceeded</Text>
+                            <Text style={[styles.alertDescriptionText, { color: isDarkMode ? '#fecaca' : '#7f1d1d' }]}>
+                              This scheduling action will exceed the global shared credit pool limit by {formatCurrency(metrics.overLimitAmount)}.
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {metrics.isNearingLimit && (
+                        <View style={[styles.alertCard, { backgroundColor: isDarkMode ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(245, 158, 11, 0.3)' }]}>
+                          <AlertTriangle size={16} color="#f59e0b" style={{ marginTop: 2 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.alertTitleText, { color: isDarkMode ? '#fde047' : '#92400e' }]}>High Pool Limit Utilization</Text>
+                            <Text style={[styles.alertDescriptionText, { color: isDarkMode ? '#fef08a' : '#78350f' }]}>
+                              This scheduling action will consume {metrics.projectedUtilPercent.toFixed(0)}% of the global credit pool capacity.
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
               </ScrollView>
 
               <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
@@ -1648,32 +1763,41 @@ export default function AdminDashboardScreen() {
                     if (!q) return true;
                     return `${c.name} ${c.email}`.toLowerCase().includes(q);
                   })
-                  .map((client: any) => (
-                    <TouchableOpacity
-                      key={client.id}
-                      style={[
-                        styles.rankingRow,
-                        { borderBottomColor: t.cardBorder, paddingVertical: 12, borderBottomWidth: 1 }
-                      ]}
-                      onPress={() => {
-                        if (clientSelectorActiveOrderId) {
-                          updateBulkOrderRow(clientSelectorActiveOrderId, 'clientId', client.id);
-                        }
-                        setClientSelectorActiveOrderId(null);
-                        setBulkClientSearchQuery('');
-                      }}
-                    >
-                      <Image
-                        source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
-                        style={styles.clientAvatar}
-                      />
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={[styles.clientChoiceName, { color: t.textPrimary }]}>{client.name}</Text>
-                        <Text style={[styles.clientChoiceEmail, { color: t.textSecondary }]}>{client.email}</Text>
-                      </View>
-                      <ChevronRight size={16} color={t.textSecondary} />
-                    </TouchableOpacity>
-                  ))
+                  .map((client: any) => {
+                    const activeBulkOrder = bulkOrders.find(o => o.id === clientSelectorActiveOrderId);
+                    const isSelected = activeBulkOrder?.clientId === client.id;
+                    return (
+                      <TouchableOpacity
+                        key={client.id}
+                        style={[
+                          styles.clientSelectRow,
+                          { borderBottomColor: t.border },
+                          isSelected && { backgroundColor: t.accentLight }
+                        ]}
+                        onPress={() => {
+                          if (clientSelectorActiveOrderId) {
+                            updateBulkOrderRow(clientSelectorActiveOrderId, 'clientId', client.id);
+                          }
+                          setClientSelectorActiveOrderId(null);
+                          setBulkClientSearchQuery('');
+                        }}
+                      >
+                        <Image
+                          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
+                        />
+                        <View style={{ flex: 1, marginLeft: 14 }}>
+                          <Text style={[styles.clientListRowName, { color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>
+                          <Text style={[styles.clientListRowEmail, { color: t.textSecondary }]}>{client.email}</Text>
+                        </View>
+                        {isSelected ? (
+                          <CheckCircle2 size={18} color={t.accent} />
+                        ) : (
+                          <ChevronRight size={16} color={t.textSecondary} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
                 }
               </ScrollView>
             </View>
@@ -2708,11 +2832,12 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   clientChoiceCard: {
-    width: 148,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 12,
-    gap: 8,
+    width: 164,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 14,
+    alignItems: 'center',
+    gap: 4,
   },
   clientChoiceCardActive: {
     shadowColor: '#ee4d2d',
@@ -2721,12 +2846,32 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
+  clientAvatarWrapper: {
+    position: 'relative',
+    marginBottom: 8,
+  },
   clientAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 2,
+  },
+  avatarCheckBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2.5,
+    elevation: 4,
   },
   clientAvatarText: {
     fontSize: 14,
@@ -2734,11 +2879,138 @@ const styles = StyleSheet.create({
   },
   clientChoiceName: {
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    width: '100%',
   },
   clientChoiceEmail: {
     fontSize: 10,
     fontWeight: '600',
+    textAlign: 'center',
+    width: '100%',
+  },
+  clientSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderRadius: 12,
+    marginVertical: 2,
+  },
+  clientListAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1.5,
+  },
+  clientListRowName: {
+    fontSize: 14,
+  },
+  clientListRowEmail: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  exposureContainer: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  exposureHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    paddingBottom: 8,
+  },
+  exposureTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    letterSpacing: -0.1,
+  },
+  poolBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  poolBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  kpiGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  kpiCard: {
+    flex: 1,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  kpiLabel: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  kpiValue: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  kpiSub: {
+    fontSize: 7,
+    color: '#94a3b8',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  utilizationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  utilizationLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  utilizationPercent: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  progressCurrent: {
+    height: '100%',
+  },
+  progressAdded: {
+    height: '100%',
+  },
+  alertCard: {
+    flexDirection: 'row',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  alertTitleText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  alertDescriptionText: {
+    fontSize: 10,
+    lineHeight: 14,
   },
   selectedClientStrip: {
     borderRadius: 14,

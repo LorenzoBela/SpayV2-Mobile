@@ -1,4 +1,5 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+import DatePicker from '../../components/DatePicker';
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import {
   StyleSheet,
@@ -52,6 +53,10 @@ import {
   ListTodo,
   BarChart3,
   History as HistoryIcon,
+  ShoppingBag,
+  RefreshCw,
+  Pencil,
+  Trash2,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -66,7 +71,7 @@ import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 
-type PaymentSubTab = 'ledger' | 'breakdown' | 'logs' | 'receipts';
+type PaymentSubTab = 'ledger' | 'breakdown' | 'logs' | 'receipts' | 'imports';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -94,6 +99,23 @@ function formatRelativeDate(value: string) {
     year: 'numeric',
   });
 }
+
+const getShopeeInterestDetails = (baseAmount: number, months: number, method: 'promo' | 'regular') => {
+  let interestRate = 0;
+  if (method === 'regular') {
+    if (months === 3) interestRate = 0.121;
+    else if (months === 6) interestRate = 0.241;
+    else if (months === 12) interestRate = 0.481;
+  }
+  const totalAmount = baseAmount * (1 + interestRate);
+  const monthlyPayment = totalAmount / months;
+  return {
+    interestRate,
+    interestAmount: baseAmount * interestRate,
+    totalAmount,
+    monthlyPayment
+  };
+};
 
 
 const MONTH_NAMES = [
@@ -283,6 +305,9 @@ export default function AdminPaymentsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'proof'>('all');
 
+  // Shopee Imports search
+  const [shopeeSearchQuery, setShopeeSearchQuery] = useState('');
+
   const { data: paymentsData, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['admin-payments', currentPage, searchQuery, ledgerFilter],
     queryFn: () => fetchAdminPayments({
@@ -293,6 +318,27 @@ export default function AdminPaymentsScreen() {
     }),
     staleTime: 30000,
   });
+
+  const { data: shopeeImportsData, refetch: refetchImports } = useQuery({
+    queryKey: ['admin-shopee-imports'],
+    queryFn: () => callAdminApi('get-shopee-imports'),
+    refetchInterval: ({ state }) => {
+      // Poll every 5 seconds only when on this subtab
+      return subTab === 'imports' ? 5000 : false;
+    },
+    enabled: true,
+  });
+
+  const shopeeImports = useMemo(() => shopeeImportsData?.imports || [], [shopeeImportsData]);
+  const pendingImportsCount = shopeeImports.length;
+
+  const filteredImports = useMemo(() => {
+    if (!shopeeSearchQuery) return shopeeImports;
+    return shopeeImports.filter((imp: any) =>
+      imp.itemName.toLowerCase().includes(shopeeSearchQuery.toLowerCase()) ||
+      imp.shopeeOrderId.toLowerCase().includes(shopeeSearchQuery.toLowerCase())
+    );
+  }, [shopeeImports, shopeeSearchQuery]);
 
   const error = queryError ? (queryError as Error).message : (paymentsData && !paymentsData.success ? paymentsData.error : null);
 
@@ -336,7 +382,7 @@ export default function AdminPaymentsScreen() {
     totalUpcomingAmount: 0
   };
 
-  // Sub-tab state ('ledger' | 'breakdown' | 'logs' | 'receipts')
+  // Sub-tab state ('ledger' | 'breakdown' | 'logs' | 'receipts' | 'imports')
   const [subTab, setSubTab] = useState<PaymentSubTab>('ledger');
   const [pendingSubTab, setPendingSubTab] = useState<PaymentSubTab | null>(null);
   const [ledgerViewMode, setLedgerViewMode] = useState<'list' | 'table'>('list');
@@ -364,6 +410,23 @@ export default function AdminPaymentsScreen() {
   const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
   const [receiptPreviewHtml, setReceiptPreviewHtml] = useState('');
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
+  // Shopee Review Modal State
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [selectedImport, setSelectedImport] = useState<any>(null);
+
+  // Modal Fields State
+  const [shopeeItemName, setShopeeItemName] = useState('');
+  const [shopeeClientId, setShopeeClientId] = useState('');
+  const [shopeeClientSearch, setShopeeClientSearch] = useState('');
+  const [shopeeMonths, setShopeeMonths] = useState('3');
+  const [shopeePaymentMethod, setShopeePaymentMethod] = useState<'promo' | 'regular'>('promo');
+  const [shopeeOrderDate, setShopeeOrderDate] = useState('');
+  const [shopeeFirstPaymentDate, setShopeeFirstPaymentDate] = useState('');
+
+  // Selected Client Credit Analytics state
+  const [selectedClientAnalytics, setSelectedClientAnalytics] = useState<any>(null);
+  const [loadingClientAnalytics, setLoadingClientAnalytics] = useState(false);
 
   // Bulk select state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -445,6 +508,120 @@ export default function AdminPaymentsScreen() {
 
     fetchReceiptPreview();
   }, [selectedReceipt, isReceiptPreviewOpen]);
+
+  // Load selected client analytics dynamically
+  useEffect(() => {
+    if (!shopeeClientId) {
+      setSelectedClientAnalytics(null);
+      return;
+    }
+    let isMounted = true;
+    const fetchAnalytics = async () => {
+      setLoadingClientAnalytics(true);
+      try {
+        const response = await callAdminApi('get-client-analytics', { clientId: shopeeClientId });
+        if (isMounted && response.success) {
+          setSelectedClientAnalytics(response.analytics);
+        } else if (isMounted) {
+          console.warn('Failed to load client analytics:', response.error);
+        }
+      } catch (err) {
+        console.error('Error fetching client analytics:', err);
+      } finally {
+        if (isMounted) setLoadingClientAnalytics(false);
+      }
+    };
+    fetchAnalytics();
+    return () => {
+      isMounted = false;
+    };
+  }, [shopeeClientId]);
+
+  // Reject Shopee Import
+  const handleRejectImport = (notificationId: string) => {
+    PremiumAlert.alert(
+      'Reject Shopee Import',
+      'Are you sure you want to reject and archive this gathered Shopee order import request? This will soft-delete/archive it for auditing.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject Request',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const response = await callAdminApi('reject-shopee-import', { notificationId });
+              if (response.success) {
+                PremiumAlert.alert('Success', 'Shopee order import request rejected.');
+                queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+              } else {
+                PremiumAlert.alert('Error', response.error || 'Failed to reject Shopee import.');
+              }
+            } catch (e: any) {
+              PremiumAlert.alert('Error', e?.message || 'Unexpected network error.');
+            } finally {
+              setActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Open Review modal & prefill details
+  const openReviewModal = (imp: any) => {
+    setSelectedImport(imp);
+    setShopeeItemName(imp.itemName);
+    setShopeeClientId('');
+    setShopeeClientSearch('');
+    setShopeeMonths('3');
+    setShopeePaymentMethod('promo');
+    const todayStr = dayjs(imp.createdAt || undefined).format('YYYY-MM-DD');
+    setShopeeOrderDate(todayStr);
+    const nextMonth5th = dayjs(todayStr).add(1, 'month').date(5).format('YYYY-MM-DD');
+    setShopeeFirstPaymentDate(nextMonth5th);
+    setSelectedClientAnalytics(null);
+    setIsReviewOpen(true);
+  };
+
+  // Submit approved shopee import
+  const handleApproveShopeeImportSubmit = async () => {
+    if (!selectedImport || !shopeeClientId) {
+      PremiumAlert.alert('Validation Error', 'Please assign a client before approving.');
+      return;
+    }
+    if (!shopeeItemName.trim()) {
+      PremiumAlert.alert('Validation Error', 'Item name cannot be empty.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const response = await callAdminApi('approve-shopee-import', {
+        finalItemName: shopeeItemName.trim(),
+        finalAmount: selectedImport.amount,
+        finalInstallmentMonths: parseInt(shopeeMonths, 10),
+        finalClientId: shopeeClientId,
+        paymentMethod: shopeePaymentMethod,
+        notificationId: selectedImport.notificationId,
+        orderDate: shopeeOrderDate || undefined,
+        firstPaymentDate: shopeeFirstPaymentDate || undefined,
+      });
+
+      if (response.success) {
+        PremiumAlert.alert('Success', 'Shopee order approved and assigned successfully!');
+        setIsReviewOpen(false);
+        setSelectedImport(null);
+        queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+      } else {
+        PremiumAlert.alert('Error', response.error || 'Failed to approve Shopee import.');
+      }
+    } catch (e: any) {
+      PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -1092,11 +1269,17 @@ export default function AdminPaymentsScreen() {
     });
     return Array.from(clientMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [profiles, receiptsList]);
+
+  const filteredClientsForReview = useMemo(() => {
+    if (!shopeeClientSearch) return clientsList;
+    return clientsList.filter(c => c.name.toLowerCase().includes(shopeeClientSearch.toLowerCase()));
+  }, [clientsList, shopeeClientSearch]);
   const tabLabels: Record<PaymentSubTab, string> = {
     ledger: 'Ledger',
     breakdown: 'Breakdown',
     logs: 'Activity Logs',
     receipts: 'Receipts',
+    imports: 'Shopee Imports',
   };
 
   if (loading) {
@@ -1399,6 +1582,7 @@ export default function AdminPaymentsScreen() {
               { id: 'breakdown', label: 'Breakdown', icon: BarChart3 },
               { id: 'logs', label: 'Activity Logs', icon: HistoryIcon },
               { id: 'receipts', label: 'Receipts', icon: Receipt },
+              { id: 'imports', label: 'Shopee Imports', icon: ShoppingBag },
             ].map(tab => {
               const TabIcon = tab.icon;
               const tabId = tab.id as PaymentSubTab;
@@ -1419,6 +1603,11 @@ export default function AdminPaymentsScreen() {
                   <Text style={[styles.subTabBtnText, { color: active || pending ? t.accent : t.textSecondary }]}>
                     {pending ? 'Loading...' : tab.label}
                   </Text>
+                  {tab.id === 'imports' && pendingImportsCount > 0 && (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>{pendingImportsCount}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -2321,6 +2510,84 @@ export default function AdminPaymentsScreen() {
             </View>
           </View>
         )}
+
+        {/* ─── TAB 5: SHOPEE IMPORTS ─── */}
+        {subTab === 'imports' && (
+          <View style={styles.tabContentWrapper}>
+            {/* Search & Poll Indicator */}
+            <View style={[styles.searchSection, { flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 0, marginBottom: 8 }]}>
+              <View style={[styles.searchBox, { flex: 1, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Search size={18} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary }]}
+                  placeholder="Search imports by item, order ID..."
+                  placeholderTextColor={t.textSecondary}
+                  value={shopeeSearchQuery}
+                  onChangeText={setShopeeSearchQuery}
+                />
+                {shopeeSearchQuery ? (
+                  <TouchableOpacity onPress={() => setShopeeSearchQuery('')}>
+                    <X size={16} color={t.textSecondary} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <View style={[styles.pollIndicator, { borderColor: t.cardBorder, backgroundColor: t.cardBg }]}>
+                <RefreshCw size={12} color={t.textSecondary} />
+                <Text style={styles.pollIndicatorText}>Polling</Text>
+              </View>
+            </View>
+
+            {/* Imports Cards List */}
+            <View style={{ gap: 12, marginTop: 4 }}>
+              {filteredImports.length > 0 ? (
+                filteredImports.map((imp: any) => (
+                  <View key={imp.notificationId} style={[styles.shopeeCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                    <View style={styles.shopeeCardHeader}>
+                      <View style={[styles.shopeeIconWrapper, { backgroundColor: 'rgba(238, 77, 45, 0.08)' }]}>
+                        <ShoppingBag size={18} color="#ee4d2d" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.shopeeItemName, { color: t.textPrimary }]} numberOfLines={1}>{imp.itemName}</Text>
+                        <Text style={styles.shopeeOrderIdText}>Order ID: {imp.shopeeOrderId}</Text>
+                        <Text style={styles.shopeeDateText}>Gathered on {formatDate(imp.createdAt)}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[styles.shopeeAmount, { color: t.textPrimary }]}>{formatCurrency(imp.amount)}</Text>
+                        <View style={styles.shopeeSourceBadge}>
+                          <Text style={styles.shopeeSourceBadgeText}>EXTENSION</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={[styles.shopeeCardActions, { borderTopColor: t.border }]}>
+                      <TouchableOpacity
+                        style={[styles.shopeeActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: '#ef4444' }]}
+                        onPress={() => handleRejectImport(imp.notificationId)}
+                        disabled={actionLoading}
+                      >
+                        <Trash2 size={12} color="#ef4444" />
+                        <Text style={[styles.shopeeActionText, { color: '#ef4444' }]}>Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.shopeeActionBtn, { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' }]}
+                        onPress={() => openReviewModal(imp)}
+                        disabled={actionLoading}
+                      >
+                        <Pencil size={12} color="#ffffff" />
+                        <Text style={[styles.shopeeActionText, { color: '#ffffff' }]}>Review</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <ShoppingBag size={36} color={t.textSecondary} style={{ opacity: 0.4, marginBottom: 8 }} />
+                  <Text style={[styles.emptyText, { textAlign: 'center' }]}>No pending Shopee imports found.</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
         
         {/* Extra spacing at bottom for lists */}
         <View style={{ height: 100 }} />
@@ -2823,6 +3090,300 @@ export default function AdminPaymentsScreen() {
           </SwipeDismissModal>
         </View>
       </Modal>
+
+      {/* Shopee Review & Assign Modal */}
+      {selectedImport && (
+        <Modal visible={isReviewOpen} animationType="slide" transparent={false}>
+          <SafeAreaView style={[styles.modalScrollContainer, { backgroundColor: t.bg }]} edges={['top', 'left', 'right', 'bottom']}>
+            <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
+
+            <View style={[styles.detailsHeroBanner, { backgroundColor: t.cardBg, borderBottomColor: t.border, borderBottomWidth: 1.5 }]}>
+              <View style={styles.detailsHeroTopRow}>
+                <View style={styles.detailsHeroTitleCluster}>
+                  <ShoppingBag size={18} color="#ee4d2d" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.detailsHeroEyebrow, { color: '#ee4d2d' }]}>SHOPEE IMPORT REVIEW</Text>
+                    <Text style={[styles.detailsHeroTitle, { color: t.textPrimary }]} numberOfLines={1}>Assign & Terms Setup</Text>
+                  </View>
+                </View>
+                <TouchableOpacity 
+                  style={[styles.detailsHeroCloseBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', borderColor: t.cardBorder }]} 
+                  onPress={() => setIsReviewOpen(false)}
+                  disabled={actionLoading}
+                >
+                  <X size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Form Input fields */}
+              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Order Details</Text>
+                
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: t.textSecondary }]}>Item Name / Description</Text>
+                  <TextInput
+                    style={[styles.modalTextInput, { color: t.textPrimary, borderColor: t.border }]}
+                    value={shopeeItemName}
+                    onChangeText={setShopeeItemName}
+                    placeholder="Enter item description"
+                    placeholderTextColor={t.textSecondary}
+                  />
+                </View>
+
+                <View style={[styles.inputContainer, { marginTop: 12 }]}>
+                  <Text style={[styles.inputLabel, { color: t.textSecondary }]}>Base Amount (Parsed from Shopee)</Text>
+                  <View style={[styles.modalTextInput, { borderColor: t.border, backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', justifyContent: 'center' }]}>
+                    <Text style={{ color: t.textPrimary, fontWeight: '600' }}>{formatCurrency(selectedImport.amount)}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Client Selector (Searchable Rail) */}
+              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Assign to Client</Text>
+                
+                {/* Search Client */}
+                <View style={[styles.searchBox, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.border, marginBottom: 12 }]}>
+                  <Search size={16} color={t.textSecondary} />
+                  <TextInput
+                    style={[styles.searchInput, { color: t.textPrimary, fontSize: 13, height: 36 }]}
+                    placeholder="Search client profile..."
+                    placeholderTextColor={t.textSecondary}
+                    value={shopeeClientSearch}
+                    onChangeText={setShopeeClientSearch}
+                  />
+                  {shopeeClientSearch ? (
+                    <TouchableOpacity onPress={() => setShopeeClientSearch('')}>
+                      <X size={14} color={t.textSecondary} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Horizontal Rail scroll of profiles */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {filteredClientsForReview.length > 0 ? (
+                    filteredClientsForReview.map(c => {
+                      const isSelected = shopeeClientId === c.id;
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[
+                            styles.clientRailCard,
+                            { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: isSelected ? '#ee4d2d' : t.border },
+                            isSelected && { borderWidth: 1.5 }
+                          ]}
+                          onPress={() => setShopeeClientId(isSelected ? '' : c.id)}
+                        >
+                          <View style={[styles.clientRailAvatar, { backgroundColor: isSelected ? t.accentLight : (isDarkMode ? '#1e293b' : '#f1f5f9') }]}>
+                            <Text style={[styles.clientRailAvatarText, { color: isSelected ? '#ee4d2d' : t.textPrimary }]}>
+                              {c.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <Text style={[styles.clientRailName, { color: t.textPrimary }]} numberOfLines={1}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })
+                  ) : (
+                    <Text style={[styles.emptyText, { marginVertical: 10, width: '100%', textAlign: 'center' }]}>No clients match search.</Text>
+                  )}
+                </ScrollView>
+
+                {shopeeClientId ? (
+                  <View style={[styles.selectedClientCallout, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border }]}>
+                    <Text style={[styles.selectedClientText, { color: t.textPrimary }]}>
+                      Selected: <Text style={{ fontWeight: 'bold' }}>{clientsList.find(c => c.id === shopeeClientId)?.name}</Text>
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.shopeeWarningText, { color: '#ef4444', marginTop: 8 }]}>* Please select a client to assign this order.</Text>
+                )}
+              </View>
+
+              {/* Client Credit Exposure Indicator */}
+              {shopeeClientId && (
+                <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                  <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Shared Credit Pool & Exposure Impact</Text>
+                  {loadingClientAnalytics ? (
+                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color={t.accent} />
+                      <Text style={{ marginTop: 8, fontSize: 11, color: t.textSecondary }}>Fetching credit utilization...</Text>
+                    </View>
+                  ) : selectedClientAnalytics ? (
+                    (() => {
+                      const limit = selectedClientAnalytics.profile?.creditLimit || 50000;
+                      const outstanding = (selectedClientAnalytics.summary?.totalOutstanding || 0) + (selectedClientAnalytics.summary?.totalOverdue || 0);
+                      const termNum = parseInt(shopeeMonths, 10);
+                      const interestDetails = getShopeeInterestDetails(selectedImport.amount, termNum, shopeePaymentMethod);
+                      const newOrderAmount = interestDetails.totalAmount;
+                      const projected = outstanding + newOrderAmount;
+                      const avail = Math.max(0, limit - projected);
+                      const currentUtil = Math.min(100, (outstanding / limit) * 100);
+                      const projectedUtil = Math.min(100, (projected / limit) * 100);
+                      const addedUtil = Math.min(100 - currentUtil, Math.max(0, projectedUtil - currentUtil));
+                      const isOver = projected > limit;
+
+                      return (
+                        <View style={{ gap: 12 }}>
+                          <View style={styles.kpiRow}>
+                            <View style={[styles.kpiItem, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.border }]}>
+                              <Text style={styles.kpiLabel}>Outstanding</Text>
+                              <Text style={[styles.kpiVal, { color: t.textPrimary }]}>{formatCurrency(outstanding)}</Text>
+                            </View>
+                            <View style={[styles.kpiItem, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.border }]}>
+                              <Text style={[styles.kpiLabel, { color: '#ee4d2d' }]}>Projected</Text>
+                              <Text style={[styles.kpiVal, { color: t.textPrimary }]}>{formatCurrency(projected)}</Text>
+                            </View>
+                            <View style={[styles.kpiItem, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.border }]}>
+                              <Text style={styles.kpiLabel}>Remaining Limit</Text>
+                              <Text style={[styles.kpiVal, { color: isOver ? '#ef4444' : '#10b981' }]}>{formatCurrency(avail)}</Text>
+                            </View>
+                          </View>
+
+                          {/* Progress bar track */}
+                          <View style={{ marginTop: 4 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <Text style={{ fontSize: 10, color: t.textSecondary }}>Pool Limit: {formatCurrency(limit)}</Text>
+                              <Text style={{ fontSize: 10, color: isOver ? '#ef4444' : t.textPrimary, fontWeight: 'bold' }}>
+                                {isOver ? 'Exceeds Limit' : `${projectedUtil.toFixed(1)}% Used`}
+                              </Text>
+                            </View>
+                            <View style={[styles.exposureTrackBar, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
+                              <View style={[styles.exposureBarCurrent, { width: `${currentUtil}%` }]} />
+                              {addedUtil > 0 && (
+                                <View style={[styles.exposureBarAdded, { width: `${addedUtil}%`, backgroundColor: isOver ? '#ef4444' : '#ee4d2d' }]} />
+                              )}
+                            </View>
+                            <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <View style={[styles.legendIndicatorDot, { backgroundColor: '#3b82f6' }]} />
+                                <Text style={{ fontSize: 8, color: t.textSecondary }}>Current outstanding</Text>
+                              </View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <View style={[styles.legendIndicatorDot, { backgroundColor: isOver ? '#ef4444' : '#ee4d2d' }]} />
+                                <Text style={{ fontSize: 8, color: t.textSecondary }}>Projected order</Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })()
+                  ) : (
+                    <Text style={{ color: t.textSecondary, fontStyle: 'italic', fontSize: 11 }}>Unable to load credit limit profile.</Text>
+                  )}
+                </View>
+              )}
+
+              {/* Installment Term & Calculator Options */}
+              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Installment Configuration</Text>
+                
+                {/* Promo vs Regular Method Selector */}
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, { color: t.textSecondary }]}>Interest Rate Scheme</Text>
+                  <View style={styles.toggleRow}>
+                    <TouchableOpacity
+                      style={[styles.toggleBtn, shopeePaymentMethod === 'promo' && styles.toggleBtnActive]}
+                      onPress={() => setShopeePaymentMethod('promo')}
+                    >
+                      <Text style={[styles.toggleBtnText, shopeePaymentMethod === 'promo' && styles.toggleBtnTextActive]}>Promo (0% Interest)</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.toggleBtn, shopeePaymentMethod === 'regular' && styles.toggleBtnActive]}
+                      onPress={() => setShopeePaymentMethod('regular')}
+                    >
+                      <Text style={[styles.toggleBtnText, shopeePaymentMethod === 'regular' && styles.toggleBtnTextActive]}>Regular SPayLater</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Term Selector (1, 3, 6, 12 Months) */}
+                <View style={[styles.inputContainer, { marginTop: 12 }]}>
+                  <Text style={[styles.inputLabel, { color: t.textSecondary }]}>Installment Months (Term)</Text>
+                  <View style={styles.toggleRow}>
+                    {['1', '3', '6', '12'].map((m) => (
+                      <TouchableOpacity
+                        key={m}
+                        style={[styles.toggleBtnMini, shopeeMonths === m && styles.toggleBtnActive]}
+                        onPress={() => setShopeeMonths(m)}
+                      >
+                        <Text style={[styles.toggleBtnText, shopeeMonths === m && styles.toggleBtnTextActive]}>{m} Mo</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Date Fields side-by-side using the imported DatePicker */}
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                  <DatePicker
+                    label="Order Date"
+                    value={shopeeOrderDate}
+                    onChange={(val) => setShopeeOrderDate(val)}
+                  />
+                  <DatePicker
+                    label="First Payment"
+                    value={shopeeFirstPaymentDate}
+                    onChange={(val) => setShopeeFirstPaymentDate(val)}
+                  />
+                </View>
+              </View>
+
+              {/* Interest Amortization Summary Calculations */}
+              {(() => {
+                const termNum = parseInt(shopeeMonths, 10);
+                const interestDetails = getShopeeInterestDetails(selectedImport.amount, termNum, shopeePaymentMethod);
+                return (
+                  <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                    <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Financial Preview</Text>
+                    
+                    <View style={styles.financialRow}>
+                      <Text style={[styles.financialLabel, { color: t.textSecondary }]}>Base Order Amount</Text>
+                      <Text style={[styles.financialVal, { color: t.textPrimary }]}>{formatCurrency(selectedImport.amount)}</Text>
+                    </View>
+                    <View style={styles.financialRow}>
+                      <Text style={[styles.financialLabel, { color: t.textSecondary }]}>Interest Rate Charged</Text>
+                      <Text style={[styles.financialVal, { color: t.textPrimary }]}>{(interestDetails.interestRate * 100).toFixed(1)}%</Text>
+                    </View>
+                    <View style={styles.financialRow}>
+                      <Text style={[styles.financialLabel, { color: t.textSecondary }]}>Interest Amount</Text>
+                      <Text style={[styles.financialVal, { color: t.textPrimary }]}>{formatCurrency(interestDetails.interestAmount)}</Text>
+                    </View>
+                    <View style={[styles.financialRow, { borderTopWidth: 1, borderTopColor: t.border, paddingTop: 8, marginTop: 4 }]}>
+                      <Text style={[styles.financialLabelBold, { color: t.textPrimary }]}>Total Installment Amount</Text>
+                      <Text style={[styles.financialValBold, { color: t.textPrimary }]}>{formatCurrency(interestDetails.totalAmount)}</Text>
+                    </View>
+                    <View style={[styles.financialRow, { marginTop: 4 }]}>
+                      <Text style={[styles.financialLabelBold, { color: '#ee4d2d' }]}>Monthly Amortization</Text>
+                      <Text style={[styles.financialValBold, { color: '#ee4d2d' }]}>{formatCurrency(interestDetails.monthlyPayment)} / mo</Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {/* Approve & Assign Submission button */}
+              <View style={styles.standardActionsCol}>
+                <TouchableOpacity
+                  style={[styles.mainActionBtn, { backgroundColor: '#ee4d2d', opacity: !shopeeClientId || actionLoading ? 0.6 : 1 }]}
+                  onPress={handleApproveShopeeImportSubmit}
+                  disabled={actionLoading || !shopeeClientId}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <CheckCircle size={16} color="#fff" />
+                      <Text style={styles.mainActionText}>Approve & Apply Installment</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -4071,7 +4632,281 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(148, 163, 184, 0.08)',
     borderWidth: 1.5,
     borderColor: 'rgba(148, 163, 184, 0.15)',
+    alignItems: 'center',
+  },
+  // Tab Badge style for imports count
+  tabBadge: {
+    backgroundColor: '#ee4d2d',
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginLeft: 6,
+    minWidth: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontFamily: 'Outfit-Bold',
+  },
+  // Polling indicator
+  pollIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  pollIndicatorText: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // Shopee import card
+  shopeeCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+    gap: 12,
+    marginBottom: 8,
+  },
+  shopeeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  shopeeIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  shopeeItemName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  shopeeOrderIdText: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  shopeeDateText: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  shopeeAmount: {
+    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+  },
+  shopeeSourceBadge: {
+    backgroundColor: 'rgba(238, 77, 45, 0.08)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  shopeeSourceBadgeText: {
+    color: '#ee4d2d',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  shopeeCardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    borderTopWidth: 1,
+    paddingTop: 12,
+    marginTop: 4,
+  },
+  shopeeActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  shopeeActionText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  // Modal Inputs & Picker UI
+  inputContainer: {
+    flexDirection: 'column',
+    gap: 6,
+    width: '100%',
+  },
+  inputLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  modalTextInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontWeight: '600',
+    minHeight: 44,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+  toggleBtn: {
+    flex: 1,
+    minWidth: 120,
+    borderWidth: 1.5,
+    borderColor: 'rgba(148, 163, 184, 0.2)',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  toggleBtnMini: {
+    flex: 1,
+    minWidth: 60,
+    borderWidth: 1.5,
+    borderColor: 'rgba(148, 163, 184, 0.2)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  toggleBtnActive: {
+    borderColor: '#ee4d2d',
+    backgroundColor: 'rgba(238, 77, 45, 0.08)',
+  },
+  toggleBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#64748b',
+  },
+  toggleBtnTextActive: {
+    color: '#ee4d2d',
+  },
+  // Searchable rail client selector
+  clientRailCard: {
+    width: 90,
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  clientRailAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clientRailAvatarText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  clientRailName: {
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+  },
+  selectedClientCallout: {
+    marginTop: 10,
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  selectedClientText: {
+    fontSize: 11,
+  },
+  shopeeWarningText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  // KPI details inside modal
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  kpiItem: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kpiLabel: {
+    fontSize: 8,
+    color: '#94a3b8',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  kpiVal: {
+    fontSize: 11,
+    fontFamily: 'Outfit-Bold',
+  },
+  // Credit Exposure Progress Bar UI
+  exposureTrackBar: {
+    height: 8,
+    borderRadius: 4,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  exposureBarCurrent: {
+    height: '100%',
+    backgroundColor: '#3b82f6',
+  },
+  exposureBarAdded: {
+    height: '100%',
+  },
+  legendIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  // Financial calculator preview table inside modal
+  financialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  financialLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  financialVal: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  financialLabelBold: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  financialValBold: {
+    fontSize: 13,
+    fontFamily: 'Outfit-Bold',
   },
 });
