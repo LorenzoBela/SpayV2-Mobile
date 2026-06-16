@@ -45,7 +45,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { ReportsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
-import { parseUtcDate } from '../../utils/date';
+import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 
 export default function ReportsScreen() {
   const navigation = useNavigation<any>();
@@ -400,17 +400,19 @@ export default function ReportsScreen() {
     const monthsArray: string[] = [];
     const trendsMap = new Map<string, { totalAmount: number; totalPaid: number; orderCount: number; monthName: string }>();
 
+    const nowParts = getUtc8DateParts(new Date());
     for (let i = 11; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const monthName = d.toLocaleDateString('en-US', { month: 'short' });
+      const utcTime = Date.UTC(nowParts.year, nowParts.month - i, 1);
+      const d = new Date(utcTime);
+      const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const monthName = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
       monthsArray.push(monthKey);
       trendsMap.set(monthKey, { totalAmount: 0, totalPaid: 0, orderCount: 0, monthName });
     }
 
     rawOrders.forEach((o) => {
-      const monthKey = `${o.orderDate.getFullYear()}-${String(o.orderDate.getMonth() + 1).padStart(2, '0')}`;
+      const parts = getUtc8DateParts(o.orderDate);
+      const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
       if (trendsMap.has(monthKey)) {
         const current = trendsMap.get(monthKey)!;
         trendsMap.set(monthKey, {
@@ -423,7 +425,8 @@ export default function ReportsScreen() {
 
     rawPayments.forEach((p) => {
       if (p.isPaid && p.paymentDate) {
-        const monthKey = `${p.paymentDate.getFullYear()}-${String(p.paymentDate.getMonth() + 1).padStart(2, '0')}`;
+        const parts = getUtc8DateParts(p.paymentDate);
+        const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
         if (trendsMap.has(monthKey)) {
           const current = trendsMap.get(monthKey)!;
           trendsMap.set(monthKey, {
@@ -482,11 +485,12 @@ export default function ReportsScreen() {
     const forecastMonths: Array<{ monthName: string; projected: number; upperBound: number; lowerBound: number }> = [];
     const seasonalFactors = [1.0, 0.9, 1.0, 1.1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.2, 1.3];
 
+    const forecastNowParts = getUtc8DateParts(now);
     for (let i = 0; i < 6; i++) {
-      const d = new Date();
-      d.setMonth(now.getMonth() + i);
-      const monthName = d.toLocaleDateString('en-US', { month: 'short' });
-      const monthIdx = d.getMonth();
+      const utcTime = Date.UTC(forecastNowParts.year, forecastNowParts.month + i, 1);
+      const d = new Date(utcTime);
+      const monthName = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+      const monthIdx = d.getUTCMonth();
 
       const predicted = slope * (nVal + i) + intercept;
       const factor = seasonalFactors[monthIdx];
@@ -751,11 +755,12 @@ export default function ReportsScreen() {
     const monthsCount = Math.max(1, metrics.monthsToPayoff);
     const monthlyPayoff = metrics.pendingAmount / monthsCount;
 
+    const payoffNowParts = getUtc8DateParts(new Date());
     for (let i = 1; i <= monthsCount; i++) {
       runningDebt = Math.max(0, runningDebt - monthlyPayoff);
-      const d = new Date();
-      d.setMonth(d.getMonth() + i);
-      const monthLabel = d.toLocaleDateString('en-US', { month: 'short' });
+      const utcTime = Date.UTC(payoffNowParts.year, payoffNowParts.month + i, 1);
+      const d = new Date(utcTime);
+      const monthLabel = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
       curve.push({
         month: monthLabel,
         spent: Math.round(runningDebt),
@@ -1691,7 +1696,7 @@ export default function ReportsScreen() {
                             {o.itemName}
                           </Text>
                           <Text style={[styles.recentItemDate, { color: t.textSecondary }]}>
-                            {new Date(o.orderDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                            {parseUtcDate(o.orderDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                           </Text>
                         </View>
                       </View>
@@ -2200,7 +2205,7 @@ export default function ReportsScreen() {
                     <View>
                       <Text style={[styles.modalCategoryName, { color: t.textPrimary }]}>{cat.category}</Text>
                       <Text style={[styles.modalCategoryDesc, { color: t.textSecondary }]}>
-                        Purchased {cat.orderCount} orders • First: {new Date(cat.firstPurchase).toLocaleDateString('en-PH')}
+                        Purchased {cat.orderCount} orders • First: {parseUtcDate(cat.firstPurchase).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}
                       </Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
@@ -2275,7 +2280,7 @@ export default function ReportsScreen() {
                         {formatCurrency(p.amountDue)}
                       </Text>
                       <Text style={[styles.tdDate, { color: t.textSecondary, flex: 1.2 }]} numberOfLines={1}>
-                        {new Date(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                        {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                       </Text>
                       <View style={{ flex: 1, alignItems: 'flex-end' }}>
                         <View style={[styles.miniStatusBadge, { backgroundColor: statusBg }]}>

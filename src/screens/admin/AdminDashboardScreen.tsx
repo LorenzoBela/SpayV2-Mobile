@@ -420,7 +420,7 @@ export default function AdminDashboardScreen() {
       return;
     }
 
-    const targetDate = new Date(nextBillingSchedule.earliestDueDate);
+    const targetDate = parseUtcDate(nextBillingSchedule.earliestDueDate);
 
     const calc = () => {
       const diff = targetDate.getTime() - Date.now();

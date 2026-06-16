@@ -47,6 +47,7 @@ import { fetchAdminClients, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
+import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 
 
 const formatCurrency = (val: number | string) => {
@@ -57,12 +58,13 @@ const formatCurrency = (val: number | string) => {
 };
 
 function formatDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'N/A';
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
@@ -156,14 +158,15 @@ export default function AdminClientsScreen() {
     clientOrders.forEach(order => {
       if (order.payments && Array.isArray(order.payments)) {
         order.payments.forEach((payment: any) => {
-          const d = new Date(payment.due_date);
+          const d = parseUtcDate(payment.due_date);
           if (Number.isNaN(d.getTime())) return;
           
-          const year = d.getFullYear();
-          const month = d.getMonth();
+          const parts = getUtc8DateParts(d);
+          const year = parts.year;
+          const month = parts.month;
           
           const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-          const monthName = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          const monthName = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Manila' });
 
           if (!monthlyBreakdownMap[monthKey]) {
             monthlyBreakdownMap[monthKey] = {

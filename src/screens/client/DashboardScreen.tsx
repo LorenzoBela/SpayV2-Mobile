@@ -44,10 +44,9 @@ import PremiumLoader from '../../components/PremiumLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import HeaderActions, { HeaderWeatherTime } from '../../components/HeaderActions';
 import { useResponsiveLayout } from '../../utils/responsive';
-import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
+import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DateParts } from '../../utils/date';
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
-import dayjs from 'dayjs';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 
@@ -649,11 +648,12 @@ export default function DashboardScreen() {
     // Build last 6 months trend
     const monthsArray = [];
     const trendsMap = new Map();
+    const nowParts = getUtc8DateParts(new Date());
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      const utcTime = Date.UTC(nowParts.year, nowParts.month - i, 1);
+      const d = new Date(utcTime);
+      const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
       monthsArray.push(monthKey);
       
       let totalSpent = 0;
@@ -850,19 +850,20 @@ export default function DashboardScreen() {
       // 5. Monthly trends (last 6 months)
       const monthsArray = [];
       const trendsMap = new Map();
+      const nowParts = getUtc8DateParts(new Date());
       
       for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setMonth(d.getMonth() - i);
-        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        const utcTime = Date.UTC(nowParts.year, nowParts.month - i, 1);
+        const d = new Date(utcTime);
+        const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
         monthsArray.push(monthKey);
         trendsMap.set(monthKey, { totalSpent: 0, orderCount: 0, monthName });
       }
 
       dbOrders.forEach(order => {
-        const orderDate = parseUtcDate(order.order_date);
-        const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`;
+        const parts = getUtc8DateParts(parseUtcDate(order.order_date));
+        const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
         if (trendsMap.has(monthKey)) {
           const current = trendsMap.get(monthKey);
           trendsMap.set(monthKey, {
@@ -1104,7 +1105,7 @@ export default function DashboardScreen() {
                   </Text>
                   <View style={styles.breakdownItemRight}>
                     <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
-                      Due {new Date(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                     </Text>
                     <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>{formatCurrency(p.amount)}</Text>
                   </View>
@@ -1305,7 +1306,7 @@ export default function DashboardScreen() {
                   <View style={styles.orderLeft}>
                     <Text style={[styles.orderName, { color: t.textPrimary }]}>{order.itemName}</Text>
                     <Text style={[styles.orderSub, { color: t.textSecondary }]}>
-                      {dayjs(order.orderDate).format('MMM D, YYYY')} • {order.installmentMonths} Mos
+                      {parseUtcDate(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })} • {order.installmentMonths} Mos
                     </Text>
                   </View>
                   <View style={styles.orderRight}>

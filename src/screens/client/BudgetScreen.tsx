@@ -41,6 +41,7 @@ import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 
 
 interface BudgetCategory {
@@ -199,8 +200,9 @@ export default function BudgetScreen() {
       dbPayments
         .filter(p => !p.is_paid)
         .forEach(p => {
-          const date = new Date(p.due_date);
-          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          const date = parseUtcDate(p.due_date);
+          const parts = getUtc8DateParts(date);
+          const key = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
           unpaidMap[key] = (unpaidMap[key] || 0) + parseFloat(p.amount_due);
         });
       setUnpaidByMonth(unpaidMap);
@@ -219,9 +221,10 @@ export default function BudgetScreen() {
         .map(p => {
           const order = ordersMap.get(p.order_id);
           const itemName = order ? order.item_name : 'Purchase Order';
-          const date = p.payment_date ? new Date(p.payment_date) : new Date(p.due_date);
+          const date = p.payment_date ? parseUtcDate(p.payment_date) : parseUtcDate(p.due_date);
           const category = order ? getCategory(order.item_name) : 'Other';
-          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          const parts = getUtc8DateParts(date);
+          const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
           return {
             amount: parseFloat(p.amount_due),
             category,
@@ -270,7 +273,7 @@ export default function BudgetScreen() {
           goalType: g.goal_type,
           targetAmount: parseFloat(g.target_amount),
           currentAmount: parseFloat(g.current_amount),
-          targetDate: g.target_date ? new Date(g.target_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
+          targetDate: g.target_date ? parseUtcDate(g.target_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }) : null,
           category: g.category || 'General',
 
           status: g.status || 'active',
@@ -281,9 +284,9 @@ export default function BudgetScreen() {
       // 5. Build 6-Month Spending Trend
       const trendPoints: TrendPoint[] = [];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date(currentYear, currentMonth - i, 1);
-        const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const mLabel = d.toLocaleDateString('en-US', { month: 'short' });
+        const d = new Date(Date.UTC(currentYear, currentMonth - i, 1));
+        const mKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        const mLabel = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
         const spending = paidPayments
           .filter(p => p.monthKey === mKey)
           .reduce((sum, p) => sum + p.amount, 0);
@@ -303,7 +306,7 @@ export default function BudgetScreen() {
           id: idx.toString(),
           description: p.itemName,
           category: p.category,
-          date: p.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          date: p.date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }),
           amount: p.amount,
         }));
       setRecentTransactions(recentTx);
@@ -354,9 +357,9 @@ export default function BudgetScreen() {
     const startMonth = now.getMonth();
 
     for (let i = 0; i < 6; i++) {
-      const d = new Date(startYear, startMonth + i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const mLabel = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      const d = new Date(Date.UTC(startYear, startMonth + i, 1));
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const mLabel = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
       const currentOrdersVal = unpaidByMonth[key] || 0;
       const plannedVal = plannedPurchases.reduce((sum, purchase) => {

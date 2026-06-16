@@ -278,3 +278,27 @@ export const sendAdminAnnouncement = async (title: string, body: string, target:
     return { success: false, error: error?.message || 'Failed to send announcement.' };
   }
 };
+
+export const triggerNotificationScheduler = async () => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const apiUrl = getApiUrl();
+
+    const response = await fetch(`${apiUrl}/api/notifications/scheduler`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result?.error || `Server returned status ${response.status}`);
+    }
+    return result;
+  } catch (error: any) {
+    console.error('[adminService] Error triggering notification scheduler:', error);
+    return { success: false, error: error?.message || 'Failed to trigger scheduler.' };
+  }
+};

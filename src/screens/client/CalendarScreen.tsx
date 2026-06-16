@@ -33,6 +33,7 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
+import { parseUtcDate, createUtc8Date } from '../../utils/date';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
@@ -508,11 +509,15 @@ export default function CalendarScreen() {
 
   const selectedDayEvents = selectedDateKey ? eventsByDate.get(selectedDateKey) || [] : [];
   const selectedDateLabel = selectedDateKey
-    ? new Date(`${selectedDateKey}T00:00:00`).toLocaleDateString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
+    ? (() => {
+        const [yr, mo, dy] = selectedDateKey.split('-').map(Number);
+        return createUtc8Date(yr, mo - 1, dy).toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          timeZone: 'Asia/Manila',
+        });
+      })()
     : null;
 
   const maxTrendAmount = Math.max(...monthlyTrends.map((trend) => trend.totalAmount), 1);
@@ -580,7 +585,8 @@ export default function CalendarScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');
 
-      const proposedDate = new Date(`${rescheduleDate}T00:00:00`);
+      const [yr, mo, dy] = rescheduleDate.split('-').map(Number);
+      const proposedDate = createUtc8Date(yr, mo - 1, dy);
 
       // Check if there is already a pending reschedule request
       const { data: existingRequest } = await supabase
@@ -607,7 +613,7 @@ export default function CalendarScreen() {
           await supabase.from('payment_logs').insert({
             payment_id: reschedulePayment.id,
             action_type: 'payment_reschedule_updated',
-            action_description: `Client updated pending reschedule request for ${reschedulePayment.itemName} (Month ${reschedulePayment.monthNumber}). Requested change to ${proposedDate.toLocaleDateString('en-PH')}.`,
+            action_description: `Client updated pending reschedule request for ${reschedulePayment.itemName} (Month ${reschedulePayment.monthNumber}). Requested change to ${proposedDate.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}.`,
             performed_by_id: user.id,
             performed_at: new Date().toISOString(),
             old_values: JSON.stringify({ new_due_date: reschedulePayment.dueDate }),
@@ -635,7 +641,7 @@ export default function CalendarScreen() {
           await supabase.from('payment_logs').insert({
             payment_id: reschedulePayment.id,
             action_type: 'payment_reschedule_requested',
-            action_description: `Client requested reschedule for ${reschedulePayment.itemName} (Month ${reschedulePayment.monthNumber}). Proposed due date: ${proposedDate.toLocaleDateString('en-PH')}.`,
+            action_description: `Client requested reschedule for ${reschedulePayment.itemName} (Month ${reschedulePayment.monthNumber}). Proposed due date: ${proposedDate.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}.`,
             performed_by_id: user.id,
             performed_at: new Date().toISOString(),
             old_values: JSON.stringify({ due_date: reschedulePayment.dueDate }),
@@ -669,17 +675,18 @@ export default function CalendarScreen() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-PH', {
+    return parseUtcDate(dateStr).toLocaleDateString('en-PH', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      timeZone: 'Asia/Manila',
     });
   };
 
   const formatMonthKey = (key: string) => {
     const [yr, mo] = key.split('-');
-    const d = new Date(parseInt(yr, 10), parseInt(mo, 10) - 1, 1);
-    return d.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
+    const d = createUtc8Date(parseInt(yr, 10), parseInt(mo, 10) - 1, 1);
+    return d.toLocaleDateString('en-PH', { month: 'short', year: 'numeric', timeZone: 'Asia/Manila' });
   };
 
   const statusStyles = {

@@ -34,13 +34,21 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Copy,
+  User,
+  ExternalLink,
+  Database,
+  Key,
+  FileText,
 } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { getNotifications, markNotificationsRead, clearNotifications, sendAdminAnnouncement } from '../../services/adminService';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseUtcDate } from '../../utils/date';
 
 type NotificationCategory = 'ALL' | 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -99,7 +107,7 @@ const formatCurrency = (val: number | string) => {
 };
 
 function formatRelativeDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'Unknown date';
   return date.toLocaleDateString('en-PH', {
     month: 'short',
@@ -107,6 +115,7 @@ function formatRelativeDate(value: string) {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'Asia/Manila',
   });
 }
 
@@ -133,6 +142,71 @@ export default function AdminNotificationsScreen() {
 
   // Detail Modal states
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
+  const [copiedFieldKey, setCopiedFieldKey] = useState<string | null>(null);
+
+  const handleCopyValue = async (key: string, value: string) => {
+    try {
+      await Clipboard.setStringAsync(value);
+      setCopiedFieldKey(key);
+      setTimeout(() => {
+        setCopiedFieldKey(null);
+      }, 2000);
+    } catch (err) {
+      console.warn('Failed to copy text:', err);
+    }
+  };
+
+  const handleCopyAllPayload = async (data: any) => {
+    try {
+      const jsonStr = JSON.stringify(data, null, 2);
+      await Clipboard.setStringAsync(jsonStr);
+      PremiumAlert.alert('Copied', 'Entire payload JSON copied to clipboard.');
+    } catch (err) {
+      console.warn('Failed to copy JSON payload:', err);
+    }
+  };
+
+  const formatPayloadDate = (value: string) => {
+    const date = parseUtcDate(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Asia/Manila',
+    });
+  };
+
+  const partitionedPayload = useMemo(() => {
+    if (!selectedItem || !selectedItem.data) return null;
+    
+    const financialKeys: string[] = [];
+    const contextKeys: string[] = [];
+    const technicalKeys: string[] = [];
+    
+    Object.keys(selectedItem.data).forEach(key => {
+      const value = selectedItem.data[key];
+      if (typeof value === 'object' && value !== null) return;
+      
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('amount') || lowerKey === 'duedate') {
+        financialKeys.push(key);
+      } else if (
+        lowerKey.endsWith('id') || 
+        lowerKey.includes('channel') || 
+        lowerKey.includes('token') || 
+        lowerKey.includes('uuid')
+      ) {
+        technicalKeys.push(key);
+      } else {
+        contextKeys.push(key);
+      }
+    });
+    
+    return { financialKeys, contextKeys, technicalKeys };
+  }, [selectedItem]);
 
   const { data: notificationsData, isLoading: loading, refetch } = useQuery({
     queryKey: ['admin-notifications'],
@@ -596,35 +670,149 @@ export default function AdminNotificationsScreen() {
                     <Text style={[styles.modalTitle, { color: t.textPrimary }]}>{selectedItem.title}</Text>
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setSelectedItem(null)} style={styles.modalCloseBtn}>
-                  <X size={18} color={t.textSecondary} />
+                <TouchableOpacity onPress={() => setSelectedItem(null)} style={styles.modalCloseBtn} activeOpacity={0.7}>
+                  <X size={16} color={t.textSecondary} />
                 </TouchableOpacity>
               </View>
 
               {/* Message */}
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <View style={[styles.modalMessageCard, { backgroundColor: t.inputBg }]}>
+                <View style={[styles.modalMessageCard, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.04)' : '#f8fafc', borderLeftColor: t.accent }]}>
                   <Text style={[styles.modalMessageText, { color: t.textPrimary }]}>{selectedItem.body}</Text>
                 </View>
 
-                {/* Metadata details if applicable */}
+                {/* Metadata Details (Receipt Visual style) */}
                 {selectedItem.data && (
-                  <View style={[styles.payloadCard, { borderColor: t.divider }]}>
-                    <Text style={[styles.payloadTitle, { color: t.textPrimary }]}>Associated Payloads</Text>
-                    {Object.keys(selectedItem.data).map(key => {
-                      const value = selectedItem.data[key];
-                      if (typeof value === 'object' && value !== null) return null;
-                      return (
-                        <View key={key} style={styles.payloadRow}>
-                          <Text style={[styles.payloadKey, { color: t.textSecondary }]}>{key}</Text>
-                          <Text style={[styles.payloadValue, { color: t.textPrimary }]}>
-                            {key.toLowerCase().includes('amount') ? formatCurrency(value) : String(value)}
-                          </Text>
+                  <View style={styles.payloadDocketContainer}>
+                    {/* 1. Financial Highlights Block */}
+                    {partitionedPayload && partitionedPayload.financialKeys.length > 0 && (
+                      <View style={[styles.payloadSectionCard, styles.financialCard, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.06)' : 'rgba(238, 77, 45, 0.03)', borderColor: 'rgba(238, 77, 45, 0.15)' }]}>
+                        {partitionedPayload.financialKeys.map(key => {
+                          const val = selectedItem.data[key];
+                          const isAmount = key.toLowerCase().includes('amount');
+                          return (
+                            <View key={key} style={styles.financialRow}>
+                              {isAmount ? (
+                                <View style={styles.financialAmountContainer}>
+                                  <CreditCard size={14} color={t.accent} style={{ marginRight: 6 }} />
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.payloadLabelMini, { color: t.textSecondary }]}>
+                                      {key}
+                                    </Text>
+                                    <Text style={[styles.financialAmountText, { color: t.accent }]}>
+                                      {formatCurrency(val)}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ) : (
+                                <View style={styles.financialDateContainer}>
+                                  <Clock size={12} color={t.textSecondary} style={{ marginRight: 6 }} />
+                                  <Text style={[styles.payloadLabelMini, { color: t.textSecondary }]}>
+                                    {key}:{' '}
+                                  </Text>
+                                  <Text style={[styles.financialDateText, { color: t.textPrimary }]}>
+                                    {formatPayloadDate(String(val))}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {/* 2. Context & Details Grid */}
+                    {partitionedPayload && partitionedPayload.contextKeys.length > 0 && (
+                      <View style={[styles.payloadSectionCard, { borderColor: t.divider }]}>
+                        <Text style={[styles.payloadSectionHeader, { color: t.textPrimary }]}>Context & Details</Text>
+                        <View style={styles.gridContainer}>
+                          {partitionedPayload.contextKeys.map((key, idx) => {
+                            const val = selectedItem.data[key];
+                            const isName = key.toLowerCase() === 'name';
+                            const isScreen = key.toLowerCase() === 'screen';
+                            
+                            let IconComp = FileText;
+                            if (isName) IconComp = User;
+                            else if (isScreen) IconComp = ExternalLink;
+                            
+                            return (
+                              <View key={key} style={[styles.gridItem, { borderTopWidth: idx > 1 ? 1 : 0, borderTopColor: t.divider }]}>
+                                <View style={styles.gridItemHeader}>
+                                  <IconComp size={10} color={t.textMuted} style={{ marginRight: 4 }} />
+                                  <Text style={[styles.payloadLabelMini, { color: t.textSecondary }]}>{key}</Text>
+                                </View>
+                                <Text style={[styles.gridValueText, { color: t.textPrimary }]} numberOfLines={1}>
+                                  {String(val)}
+                                </Text>
+                              </View>
+                            );
+                          })}
                         </View>
-                      );
-                    })}
+                      </View>
+                    )}
+
+                    {/* 3. Technical Context (Monospace & Copy Actions) */}
+                    {partitionedPayload && partitionedPayload.technicalKeys.length > 0 && (
+                      <View style={[styles.payloadSectionCard, styles.technicalCard, { backgroundColor: isDarkMode ? '#0f1422' : '#f8fafc', borderColor: t.divider }]}>
+                        <View style={styles.technicalCardHeader}>
+                          <Database size={11} color={t.textMuted} style={{ marginRight: 6 }} />
+                          <Text style={[styles.payloadSectionHeader, { color: t.textPrimary, marginBottom: 0 }]}>System Metadata</Text>
+                        </View>
+                        <View style={styles.techList}>
+                          {partitionedPayload.technicalKeys.map((key) => {
+                            const val = String(selectedItem.data[key]);
+                            const isCopied = copiedFieldKey === key;
+                            return (
+                              <View key={key} style={styles.techRow}>
+                                <View style={styles.techRowLeft}>
+                                  <Key size={10} color={t.textMuted} style={{ marginRight: 6, marginTop: 2 }} />
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={[styles.payloadLabelMini, { color: t.textSecondary }]}>{key}</Text>
+                                    <Text style={[styles.techValueText, { color: t.textPrimary }]} numberOfLines={1} ellipsizeMode="middle">
+                                      {val}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <TouchableOpacity
+                                  onPress={() => handleCopyValue(key, val)}
+                                  style={[styles.techCopyBtn, { backgroundColor: isCopied ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.05)' }]}
+                                  activeOpacity={0.7}
+                                >
+                                  {isCopied ? (
+                                    <Check size={10} color="#22c55e" />
+                                  ) : (
+                                    <Copy size={10} color={t.textSecondary} />
+                                  )}
+                                </TouchableOpacity>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 )}
+
+                {/* Bottom Actions inside the modal */}
+                <View style={styles.modalActionsRow}>
+                  {selectedItem.data && (
+                    <TouchableOpacity
+                      onPress={() => handleCopyAllPayload(selectedItem.data)}
+                      style={[styles.modalActionBtn, styles.modalActionSecondary, { borderColor: t.divider }]}
+                      activeOpacity={0.8}
+                    >
+                      <Database size={13} color={t.textPrimary} style={{ marginRight: 6 }} />
+                      <Text style={[styles.modalActionText, { color: t.textPrimary }]}>Copy JSON</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => setSelectedItem(null)}
+                    style={[styles.modalActionBtn, styles.modalActionPrimary, { backgroundColor: t.accent }]}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.modalActionText, { color: '#ffffff' }]}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
 
                 <View style={styles.modalFooterSpacer} />
               </ScrollView>
@@ -913,7 +1101,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.6)',
+    backgroundColor: 'rgba(7, 10, 18, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -921,16 +1109,17 @@ const styles = StyleSheet.create({
   modalBox: {
     width: '100%',
     maxWidth: 380,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1.5,
-    maxHeight: '80%',
+    maxHeight: '85%',
     overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
   },
   modalHeaderLeft: {
@@ -940,66 +1129,179 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   modalIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalHeaderText: {
     flex: 1,
-    marginLeft: 10,
+    marginLeft: 12,
   },
   modalCategory: {
     color: '#ee4d2d',
     fontSize: 9,
-    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
   modalTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginTop: 1,
+    fontSize: 15,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 2,
+    letterSpacing: -0.2,
   },
   modalCloseBtn: {
-    padding: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: {
-    padding: 16,
+    padding: 20,
   },
   modalMessageCard: {
-    borderRadius: 12,
+    borderRadius: 14,
+    borderLeftWidth: 4,
     padding: 14,
     marginBottom: 16,
   },
   modalMessageText: {
     fontSize: 13,
+    fontFamily: 'Jakarta-Medium',
     lineHeight: 18,
   },
-  payloadCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    gap: 8,
+  payloadDocketContainer: {
+    gap: 12,
+    marginBottom: 20,
   },
-  payloadTitle: {
-    fontSize: 11,
-    fontWeight: 'bold',
+  payloadSectionCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+  },
+  payloadSectionHeader: {
+    fontSize: 10,
+    fontFamily: 'Outfit-Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  financialCard: {
+    borderWidth: 1,
+  },
+  financialRow: {
+    gap: 6,
+  },
+  financialAmountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  financialAmountText: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 2,
+  },
+  financialDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  financialDateText: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  gridItem: {
+    width: '50%',
+    paddingVertical: 8,
+    paddingRight: 8,
+  },
+  gridItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 2,
   },
-  payloadRow: {
+  gridValueText: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
+  },
+  technicalCard: {
+    borderWidth: 1,
+  },
+  technicalCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  techList: {
+    gap: 8,
+  },
+  techRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 4,
   },
-  payloadKey: {
-    fontSize: 10,
-    fontWeight: 'bold',
+  techRowLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginRight: 10,
   },
-  payloadValue: {
+  techValueText: {
     fontSize: 10,
-    fontWeight: '600',
+    fontFamily: 'Jakarta-Regular',
+    marginTop: 2,
+  },
+  techCopyBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  modalActionBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  modalActionPrimary: {
+    elevation: 2,
+    shadowColor: '#ee4d2d',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
+  modalActionSecondary: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  modalActionText: {
+    fontSize: 12,
+    fontFamily: 'Outfit-Bold',
+  },
+  payloadLabelMini: {
+    fontSize: 9,
+    fontFamily: 'Outfit-SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   modalFooterSpacer: {
-    height: 24,
+    height: 32,
   },
 });

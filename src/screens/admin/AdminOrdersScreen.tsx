@@ -45,13 +45,12 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
-import { parseUtcDate } from '../../utils/date';
+import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 import { fetchAdminOrders, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
-import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
 import { PremiumAlert } from '../../services/PremiumAlertService';
@@ -65,12 +64,13 @@ const formatCurrency = (val: number | string) => {
 };
 
 function formatDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'N/A';
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
@@ -98,7 +98,10 @@ export default function AdminOrdersScreen() {
   const [itemName, setItemName] = useState('');
   const [amount, setAmount] = useState('');
   const [installmentMonths, setInstallmentMonths] = useState('6');
-  const [purchaseDate, setPurchaseDate] = useState(() => dayjs().format('YYYY-MM-DD'));
+  const [purchaseDate, setPurchaseDate] = useState(() => {
+    const parts = getUtc8DateParts(new Date());
+    return `${parts.year}-${String(parts.month + 1).padStart(2, '0')}-${String(parts.date).padStart(2, '0')}`;
+  });
   const [firstPaymentDate, setFirstPaymentDate] = useState('');
   const [remarks, setRemarks] = useState('');
   const [clientSearchQuery, setClientSearchQuery] = useState('');
@@ -118,7 +121,10 @@ export default function AdminOrdersScreen() {
         itemName: '',
         amount: '',
         months: '6',
-        purchaseDate: dayjs().format('YYYY-MM-DD'),
+        purchaseDate: (() => {
+          const parts = getUtc8DateParts(new Date());
+          return `${parts.year}-${String(parts.month + 1).padStart(2, '0')}-${String(parts.date).padStart(2, '0')}`;
+        })(),
         firstPaymentDate: '',
         remarks: '',
       }
@@ -375,10 +381,16 @@ export default function AdminOrdersScreen() {
     setEditItemName(order.item_name || '');
     setEditAmount(order.amount.toString());
     setEditMonths((order.installment_months || 6).toString());
-    setEditPurchaseDate(dayjs(order.order_date).format('YYYY-MM-DD'));
+    const oDateParts = getUtc8DateParts(parseUtcDate(order.order_date));
+    setEditPurchaseDate(`${oDateParts.year}-${String(oDateParts.month + 1).padStart(2, '0')}-${String(oDateParts.date).padStart(2, '0')}`);
     
     const firstPayment = order.payments.find((p: any) => p.month_number === 1);
-    setEditFirstPaymentDate(firstPayment ? dayjs(firstPayment.due_date).format('YYYY-MM-DD') : '');
+    if (firstPayment) {
+      const pDateParts = getUtc8DateParts(parseUtcDate(firstPayment.due_date));
+      setEditFirstPaymentDate(`${pDateParts.year}-${String(pDateParts.month + 1).padStart(2, '0')}-${String(pDateParts.date).padStart(2, '0')}`);
+    } else {
+      setEditFirstPaymentDate('');
+    }
     setEditRemarks(order.remarks || '');
     setEditClientId(order.user_id);
     

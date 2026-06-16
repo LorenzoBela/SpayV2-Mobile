@@ -29,7 +29,6 @@ import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForUser } from '../../utils/authProfile';
 import PremiumLoader from '../../components/PremiumLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
-import dayjs from 'dayjs';
 
 interface RoleSelectionScreenProps {
   onSelectRole: (role: 'admin' | 'client') => void;
@@ -65,7 +64,7 @@ function useEntryAnimation(delay = 0, duration = 300) {
 
 export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSelectionScreenProps) {
   const layout = useResponsiveLayout();
-  const [currentTime, setCurrentTime] = useState(dayjs());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [userName, setUserName] = useState('Administrator');
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +72,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 
   // Live clock
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(dayjs()), 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -186,7 +185,14 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
             </View>
 
             <View style={styles.clockWidget}>
-              <Text style={styles.timeText}>{currentTime.format('h:mm A')}</Text>
+              <Text style={styles.timeText}>
+                {currentTime.toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true,
+                  timeZone: 'Asia/Manila',
+                })}
+              </Text>
               <View style={styles.weatherRow}>
                 <CloudSun size={12} color="#ee4d2d" />
                 <Text style={styles.weatherText}>29°C • Manila</Text>

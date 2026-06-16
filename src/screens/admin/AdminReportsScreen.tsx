@@ -61,6 +61,7 @@ import * as Sharing from 'expo-sharing';
 import Svg, { Circle, Text as SvgText, Path, Rect, Defs, LinearGradient, Stop, G } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -300,14 +301,14 @@ export default function AdminReportsScreen() {
     selectedClientData.orders.forEach((o: any) => {
       o.payments.forEach((p: any) => {
         if (p.isPaid && p.paymentDate) {
-          const due = new Date(p.dueDate);
-          const pay = new Date(p.paymentDate);
+          const due = parseUtcDate(p.dueDate);
+          const pay = parseUtcDate(p.paymentDate);
           if (pay > due) {
             totalLateDays += Math.ceil((pay.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
             latePaymentsCount++;
           }
-        } else if (!p.isPaid && new Date(p.dueDate) < new Date()) {
-          const due = new Date(p.dueDate);
+        } else if (!p.isPaid && parseUtcDate(p.dueDate) < new Date()) {
+          const due = parseUtcDate(p.dueDate);
           const now = new Date();
           totalLateDays += Math.ceil((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
           latePaymentsCount++;
@@ -330,8 +331,8 @@ export default function AdminReportsScreen() {
     if (!selectedClientData || !selectedClientData.orders) return [];
     const monthlySpend: Record<string, number> = {};
     selectedClientData.orders.forEach((o: any) => {
-      const date = new Date(o.orderDate);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const parts = getUtc8DateParts(parseUtcDate(o.orderDate));
+      const key = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
       monthlySpend[key] = (monthlySpend[key] || 0) + o.amount;
     });
 
@@ -339,8 +340,8 @@ export default function AdminReportsScreen() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, val]) => {
         const [year, month] = key.split('-');
-        const date = new Date(Number(year), Number(month) - 1, 1);
-        const monthLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
+        const monthLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
         return {
           month: monthLabel,
           amount: Math.round(val)
@@ -2062,7 +2063,7 @@ export default function AdminReportsScreen() {
                     <View style={styles.profileDetailRow}>
                       <Text style={[styles.profileDetailLabel, { color: t.textSecondary }]}>Joined:</Text>
                       <Text style={[styles.profileDetailValue, { color: t.textPrimary }]}>
-                        {new Date(selectedClientData.profile.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {parseUtcDate(selectedClientData.profile.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                       </Text>
                     </View>
                     <View style={styles.profileDetailRow}>
@@ -2470,7 +2471,7 @@ export default function AdminReportsScreen() {
                               <View style={{ flex: 1 }}>
                                 <Text style={[styles.agreementCardTitle, { color: t.textPrimary }]}>{order.itemName}</Text>
                                 <Text style={[styles.agreementCardSub, { color: t.textSecondary }]}>
-                                  Purchased: {new Date(order.orderDate).toLocaleDateString()}
+                                  Purchased: {parseUtcDate(order.orderDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                                 </Text>
                               </View>
                               <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -2510,7 +2511,7 @@ export default function AdminReportsScreen() {
                             {isExpanded && (
                               <View style={styles.expandedBreakdownGrid}>
                                 {order.payments.map((p: any) => {
-                                  const isOverdue = !p.isPaid && new Date(p.dueDate) < new Date();
+                                  const isOverdue = !p.isPaid && parseUtcDate(p.dueDate) < new Date();
                                   return (
                                     <View
                                       key={p.id}
@@ -2531,10 +2532,10 @@ export default function AdminReportsScreen() {
                                         </Text>
                                       </View>
                                       <View style={{ gap: 2 }}>
-                                        <Text style={styles.paymentMiniDate}>Due: {new Date(p.dueDate).toLocaleDateString()}</Text>
+                                        <Text style={styles.paymentMiniDate}>Due: {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}</Text>
                                         {p.isPaid && p.paymentDate && (
                                           <Text style={[styles.paymentMiniPaidDate, { color: '#10b981' }]}>
-                                            Paid: {new Date(p.paymentDate).toLocaleDateString()}
+                                            Paid: {parseUtcDate(p.paymentDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                                           </Text>
                                         )}
                                         {isOverdue && <Text style={styles.paymentMiniLate}>LATE</Text>}
@@ -3100,7 +3101,7 @@ export default function AdminReportsScreen() {
                                       {p.item_name}
                                     </Text>
                                     <Text style={styles.invoiceItemSub}>
-                                      Due: {new Date(p.due_date).toLocaleDateString()} • Month {p.month_number}/{p.installment_months}
+                                      Due: {parseUtcDate(p.due_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })} • Month {p.month_number}/{p.installment_months}
                                     </Text>
                                   </View>
                                   <Text style={[styles.invoiceItemVal, { color: t.textPrimary }]}>

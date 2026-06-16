@@ -2,7 +2,6 @@ import React, { ReactNode, useContext, useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Bell, Calendar, CloudSun, Moon, Sun } from 'lucide-react-native';
-import dayjs from 'dayjs';
 
 import { ThemeContext } from '../navigation/navigationTypes';
 import { useNotifications } from '../hooks/useNotifications';
@@ -15,12 +14,12 @@ interface HeaderActionsProps {
 
 export function HeaderWeatherTime() {
   const { isDarkMode } = useContext(ThemeContext);
-  const [currentTime, setCurrentTime] = useState(() => dayjs());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const weatherInfo = { temp: '31°C', text: 'Sunny' };
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(dayjs());
+      setCurrentTime(new Date());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -30,6 +29,21 @@ export function HeaderWeatherTime() {
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     border: isDarkMode ? '#222d42' : '#e2e8f0',
   };
+
+  const dateText = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'Asia/Manila',
+  });
+
+  const timeText = currentTime.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Manila',
+  });
 
   return (
     <View style={[styles.weatherTimeBar, { borderTopColor: t.border }]}>
@@ -42,11 +56,11 @@ export function HeaderWeatherTime() {
       <View style={styles.dateTimeRow}>
         <Calendar size={10} color={t.textSecondary} />
         <Text style={[styles.dateText, { color: t.textSecondary }]}>
-          {currentTime.format('ddd, MMM D')}
+          {dateText}
         </Text>
         <Text style={[styles.detailsSeparator, { color: t.textSecondary }]}>•</Text>
         <Text style={[styles.timeText, { color: t.textPrimary }]}>
-          {currentTime.format('h:mm:ss A')}
+          {timeText}
         </Text>
       </View>
     </View>
@@ -61,15 +75,6 @@ export default function HeaderActions({
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { unreadCount } = useNotifications();
-  const [currentTime, setCurrentTime] = useState(() => dayjs());
-
-  useEffect(() => {
-    if (!showWeatherTime) return;
-    const timer = setInterval(() => {
-      setCurrentTime(dayjs());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [showWeatherTime]);
 
   const t = {
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',

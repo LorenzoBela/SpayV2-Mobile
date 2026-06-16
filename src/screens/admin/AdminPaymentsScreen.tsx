@@ -60,14 +60,13 @@ import {
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
-import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
+import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DateParts } from '../../utils/date';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminPayments, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
-import dayjs from 'dayjs';
 import AdminHeader from '../../components/AdminHeader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 
@@ -81,22 +80,24 @@ const formatCurrency = (val: number | string) => {
 };
 
 function formatDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'N/A';
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
 function formatRelativeDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   if (Number.isNaN(date.getTime())) return 'Unknown date';
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'Asia/Manila',
   });
 }
 
@@ -346,7 +347,7 @@ export default function AdminPaymentsScreen() {
     const now = Date.now();
     const list = paymentsData?.payments || [];
     return list.map((p: any) => {
-      const isOverdue = !p.isPaid && new Date(p.dueDate).getTime() < now;
+      const isOverdue = !p.isPaid && parseUtcDate(p.dueDate).getTime() < now;
       return {
         id: p.id,
         order_id: p.orderId,
@@ -576,9 +577,16 @@ export default function AdminPaymentsScreen() {
     setShopeeClientSearch('');
     setShopeeMonths('3');
     setShopeePaymentMethod('promo');
-    const todayStr = dayjs(imp.createdAt || undefined).format('YYYY-MM-DD');
+    const parts = getUtc8DateParts(parseUtcDate(imp.createdAt || undefined));
+    const todayStr = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}-${String(parts.date).padStart(2, '0')}`;
     setShopeeOrderDate(todayStr);
-    const nextMonth5th = dayjs(todayStr).add(1, 'month').date(5).format('YYYY-MM-DD');
+    let nextMonth = parts.month + 1;
+    let nextYear = parts.year;
+    if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear += 1;
+    }
+    const nextMonth5th = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-05`;
     setShopeeFirstPaymentDate(nextMonth5th);
     setSelectedClientAnalytics(null);
     setIsReviewOpen(true);
@@ -643,7 +651,7 @@ export default function AdminPaymentsScreen() {
   const processedPayments = useMemo(() => {
     const now = Date.now();
     return rawPayments.map((p: any) => {
-      const isOverdue = !p.is_paid && new Date(p.due_date).getTime() < now;
+      const isOverdue = !p.is_paid && parseUtcDate(p.due_date).getTime() < now;
       return {
         id: p.id,
         order_id: p.order_id,
@@ -688,11 +696,7 @@ export default function AdminPaymentsScreen() {
         ? monthPayments.map(p => p.due_date).sort((a, b) => parseUtcDate(a).getTime() - parseUtcDate(b).getTime())[0]
         : null;
         
-      const [yearStr, monthStr] = monthKey.split('-');
-      const monthName = new Date(Number(yearStr), Number(monthStr) - 1, 1).toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      });
+      const monthName = formatBillingMonthKey(monthKey);
       
       const clientBillingMap = new Map<string, any>();
       monthPayments.forEach(payment => {
@@ -2322,7 +2326,15 @@ export default function AdminPaymentsScreen() {
                           Amount: <Text style={{ color: t.accent, fontWeight: 'bold' }}>{log.amountDue ? formatCurrency(log.amountDue) : 'N/A'}</Text>
                         </Text>
                         <Text style={styles.logMetaText}>
-                          By {log.performerName} • {dayjs(log.performed_at).format('MMM D, YYYY h:mm A')}
+                          By {log.performerName} • {parseUtcDate(log.performed_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                            timeZone: 'Asia/Manila',
+                          })}
                         </Text>
                       </View>
                     </View>

@@ -47,6 +47,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useNotifications } from '../../hooks/useNotifications';
+import { parseUtcDate } from '../../utils/date';
 
 const CATEGORY_THEMES: Record<
   NotificationCategory,
@@ -96,7 +97,7 @@ const TABS: Array<{ id: NotificationCategory; label: string }> = [
 ];
 
 function formatTime(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
   if (!Number.isFinite(diffMinutes) || diffMinutes < 1) return 'Just now';
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
@@ -106,13 +107,14 @@ function formatTime(value: string) {
 }
 
 function formatFullDate(value: string) {
-  const date = new Date(value);
+  const date = parseUtcDate(value);
   return date.toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Asia/Manila',
   });
 }
 

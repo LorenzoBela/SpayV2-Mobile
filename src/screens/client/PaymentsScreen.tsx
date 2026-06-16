@@ -799,7 +799,7 @@ export default function PaymentsScreen() {
                       BILLING CYCLE OVERVIEW
                     </Text>
                     <Text style={[styles.countdownTitleText, { color: t.textPrimary }]}>
-                      Due {new Date(nextPaymentCountdown.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      Due {parseUtcDate(nextPaymentCountdown.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                     </Text>
                   </View>
                 </View>
@@ -872,7 +872,7 @@ export default function PaymentsScreen() {
                     </Text>
                     <View style={styles.breakdownItemRight}>
                       <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
-                        Due {new Date(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                        Due {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                       </Text>
                       <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
                         {formatCurrency(p.amount)}
@@ -1106,7 +1106,7 @@ export default function PaymentsScreen() {
                               <Clock size={13} color={t.textSecondary} />
                               <Text style={[styles.dateText, { color: t.textSecondary }]}>
                                 {item.isPaid
-                                  ? `Paid: ${new Date(item.paymentDate || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                                  ? `Paid: ${parseUtcDate(item.paymentDate || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}`
                                   : `Due: ${item.dueDate}`}
                               </Text>
                               {isOffline && !item.isPaid && (

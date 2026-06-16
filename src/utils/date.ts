@@ -8,13 +8,22 @@
 export function parseUtcDate(value: Date | string | number): Date {
   if (value instanceof Date) return value;
   if (typeof value === 'number') return new Date(value);
-  const s = String(value).trim();
-  // Already has timezone info (Z, +HH:MM, -HH:MM) — parse as-is
-  if (/Z$|[+-]\d{2}:\d{2}$|[+-]\d{4}$/.test(s)) {
+  if (!value) return new Date();
+
+  let s = String(value).trim();
+  
+  // Replace space with 'T' to standardize on ISO 8601 format
+  s = s.replace(' ', 'T');
+
+  // Check if the string already has timezone info (Z, +HH:MM, +HH, +HHMM, -HH:MM, -HH, -HHMM)
+  const hasTimezone = /Z$|[+-]\d{2}(?::?\d{2})?$/.test(s);
+  
+  if (hasTimezone) {
     return new Date(s);
   }
-  // Bare timestamp from Supabase — treat as UTC
-  return new Date(s.replace(' ', 'T') + 'Z');
+  
+  // Bare timestamp — treat as UTC by appending 'Z'
+  return new Date(s + 'Z');
 }
 
 export function getUtc8DateParts(date: Date | string | number = new Date()) {

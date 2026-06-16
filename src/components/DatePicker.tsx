@@ -10,7 +10,7 @@ import {
 import { Calendar } from 'react-native-calendars';
 import { Calendar as CalendarIcon, X } from 'lucide-react-native';
 import { ThemeContext } from '../navigation/navigationTypes';
-import dayjs from 'dayjs';
+import { createUtc8Date } from '../utils/date';
 
 interface DatePickerProps {
   value: string; // Format: YYYY-MM-DD
@@ -40,7 +40,17 @@ export default function DatePicker({
   };
   const [modalVisible, setModalVisible] = useState(false);
 
-  const displayValue = value ? dayjs(value).format('MMM DD, YYYY') : placeholder;
+  const displayValue = value
+    ? (() => {
+        const [yr, mo, dy] = value.split('-').map(Number);
+        return createUtc8Date(yr, mo - 1, dy).toLocaleDateString('en-US', {
+          month: 'short',
+          day: '2-digit',
+          year: 'numeric',
+          timeZone: 'Asia/Manila',
+        });
+      })()
+    : placeholder;
 
   return (
     <View style={styles.container}>
