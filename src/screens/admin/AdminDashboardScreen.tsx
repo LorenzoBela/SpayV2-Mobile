@@ -60,6 +60,8 @@ import {
   CheckCircle2,
   Check,
 } from 'lucide-react-native';
+import Svg, { Path, Circle, Rect, Line, Text as SvgText, G } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useNavigation } from '@react-navigation/native';
@@ -304,8 +306,9 @@ export default function AdminDashboardScreen() {
 
   // Parity additions states
   const [operationsTab, setOperationsTab] = useState<'orders' | 'timeline'>('orders');
-  const [trendsTab, setTrendsTab] = useState<'categories' | 'installments'>('categories');
+  const [trendsTab, setTrendsTab] = useState<'categories' | 'installments' | 'cashflow'>('categories');
   const [rankingToggle, setRankingToggle] = useState<'spenders' | 'delinquents' | 'signups'>('spenders');
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(6); // Default to current month index
 
   const inflows = dashboardData?.inflows || {
     thisWeekExpected: 0,
@@ -432,6 +435,115 @@ export default function AdminDashboardScreen() {
       },
     }));
   }, [dashboardData?.allPayments]);
+
+  // Cashflow Trends and forecasting chart computations
+  const chartData = useMemo(() => {
+    if (!allPaymentsList || allPaymentsList.length === 0) return [];
+
+    const today = new Date();
+    const threeMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+    
+    const pastPayments = allPaymentsList.filter((p: any) => {
+      const d = p.dueDate;
+      return d >= threeMonthsAgo && d < today;
+    });
+    
+    const pastExpected = pastPayments.reduce((sum: number, p: any) => sum + p.amountDue, 0);
+    const pastCollected = pastPayments.filter((p: any) => p.isPaid).reduce((sum: number, p: any) => sum + p.amountDue, 0);
+    const efficiency = pastExpected > 0 ? (pastCollected / pastExpected) : (stats.collectionEfficiency / 100 || 0.9);
+
+    const months = [];
+    for (let i = -6; i <= 5; i++) {
+      const targetDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth();
+      
+      const monthStart = new Date(year, month, 1);
+      const nextMonthStart = new Date(year, month + 1, 1);
+      
+      const monthPayments = allPaymentsList.filter((p: any) => {
+        const d = p.dueDate;
+        return d >= monthStart && d < nextMonthStart;
+      });
+
+      const expected = monthPayments.reduce((sum: number, p: any) => sum + p.amountDue, 0);
+      const collected = monthPayments.filter((p: any) => p.isPaid).reduce((sum: number, p: any) => sum + p.amountDue, 0);
+      
+      const isFuture = monthStart >= new Date(today.getFullYear(), today.getMonth(), 1);
+      const projected = isFuture ? expected * efficiency : collected;
+
+      const monthLabel = targetDate.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+      months.push({
+        monthKey,
+        monthLabel,
+        expected,
+        collected,
+        projected,
+        isFuture,
+        efficiency: expected > 0 ? (collected / expected) * 100 : 100
+      });
+    }
+
+    return months;
+  }, [allPaymentsList, stats.collectionEfficiency]);
+
+  const svgCoords = useMemo(() => {
+    if (chartData.length === 0) return null;
+
+    const width = 340;
+    const height = 135;
+    const paddingLeft = 45;
+    const paddingRight = 15;
+    const paddingTop = 10;
+    const paddingBottom = 20;
+
+    const chartWidth = width - paddingLeft - paddingRight;
+    const chartHeight = height - paddingTop - paddingBottom;
+
+    const maxAmount = Math.max(...chartData.map(d => Math.max(d.expected, d.collected, d.projected)), 10000);
+
+    const points = chartData.map((d, idx) => {
+      const x = paddingLeft + (idx / 11) * chartWidth;
+      const yExpected = paddingTop + (1 - d.expected / maxAmount) * chartHeight;
+      const yActual = paddingTop + (1 - (d.isFuture ? d.projected : d.collected) / maxAmount) * chartHeight;
+      return {
+        x,
+        yExpected,
+        yActual,
+        monthLabel: d.monthLabel,
+        isFuture: d.isFuture,
+        expected: d.expected,
+        actual: d.isFuture ? d.projected : d.collected,
+        efficiency: d.efficiency
+      };
+    });
+
+    const expectedPath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yExpected}`).join(' ');
+    const collectedPath = points.slice(0, 6).map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yActual}`).join(' ');
+    const projectedPath = points.slice(5).map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yActual}`).join(' ');
+
+    const ticksCount = 4;
+    const yTicks = Array.from({ length: ticksCount + 1 }, (_, idx) => (maxAmount / ticksCount) * idx);
+
+    return {
+      points,
+      expectedPath,
+      collectedPath,
+      projectedPath,
+      yTicks,
+      width,
+      height,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingBottom,
+      maxAmount,
+      chartHeight,
+      chartWidth
+    };
+  }, [chartData]);
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -948,54 +1060,7 @@ export default function AdminDashboardScreen() {
           subtitle="Aggregate platform-wide visualization of orders placed and payment settlements over the past year."
         />
 
-        {/* Expected Cash Inflows Card */}
-        <View style={[styles.inflowsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <Text style={[styles.inflowsTitle, { color: t.textPrimary }]}>Expected Cash Inflows</Text>
 
-          <View style={styles.inflowsList}>
-            <View style={styles.inflowRow}>
-              <View style={styles.inflowLabelContainer}>
-                <View style={[styles.bulletPoint, { backgroundColor: '#3b82f6' }]} />
-                <Text style={[styles.inflowLabel, { color: t.textSecondary }]}>This Week expected</Text>
-              </View>
-              <Text style={[styles.inflowValue, { color: t.textPrimary }]}>{formatCurrency(inflows.thisWeekExpected)}</Text>
-            </View>
-
-            <View style={styles.inflowRow}>
-              <View style={styles.inflowLabelContainer}>
-                <View style={[styles.bulletPoint, { backgroundColor: '#10b981' }]} />
-                <Text style={[styles.inflowLabel, { color: t.textSecondary }]}>Next Week expected</Text>
-              </View>
-              <Text style={[styles.inflowValue, { color: t.textPrimary }]}>{formatCurrency(inflows.nextWeekExpected)}</Text>
-            </View>
-
-            <View style={[styles.inflowRow, styles.inflowRowBorder, { borderBottomColor: t.border }]}>
-              <View style={styles.inflowLabelContainer}>
-                <View style={[styles.bulletPoint, { backgroundColor: '#ee4d2d' }]} />
-                <Text style={[styles.inflowLabel, { color: t.textSecondary }]}>Next Month expected</Text>
-              </View>
-              <Text style={[styles.inflowValue, { color: t.textPrimary }]}>{formatCurrency(inflows.nextMonthExpected)}</Text>
-            </View>
-          </View>
-
-          {/* Next pending deadline highlight */}
-          <View style={[styles.deadlineHighlightBox, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
-            <View style={styles.deadlineHeader}>
-              <Clock size={14} color="#ef4444" />
-              <Text style={styles.deadlineLabel}>NEXT PENDING DEADLINE</Text>
-            </View>
-            {inflows.nextDeadline ? (
-              <View style={styles.deadlineBody}>
-                <Text style={[styles.deadlineDate, { color: t.textPrimary }]}>{formatRelativeDate(inflows.nextDeadline)}</Text>
-                <Text style={styles.deadlineAmount}>
-                  Expect collection of <Text style={{ fontWeight: 'bold', color: t.textPrimary }}>{formatCurrency(inflows.nextDeadlineAmount)}</Text>
-                </Text>
-              </View>
-            ) : (
-              <Text style={[styles.emptyText, { color: t.textSecondary, paddingVertical: 4 }]}>Clear queue: no pending deadlines.</Text>
-            )}
-          </View>
-        </View>
 
         {/* Rankings & Leaderboards Card */}
         <View style={[styles.rankingsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
@@ -1255,11 +1320,23 @@ export default function AdminDashboardScreen() {
                   Terms
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.tabButton,
+                  trendsTab === 'cashflow' && { backgroundColor: isDarkMode ? '#1e293b' : '#0f172a' }
+                ]}
+                onPress={() => setTrendsTab('cashflow')}
+              >
+                <TrendingUp size={14} color={trendsTab === 'cashflow' ? '#fff' : t.textSecondary} />
+                <Text style={[styles.tabButtonText, { color: trendsTab === 'cashflow' ? '#fff' : t.textSecondary }]}>
+                  Cashflow
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
           <View style={{ marginTop: 8 }}>
-            {trendsTab === 'categories' ? (
+            {trendsTab === 'categories' && (
               <View style={styles.trendsContainer}>
                 {productCategories.length > 0 ? (
                   productCategories.map((c: any, idx: number) => {
@@ -1288,7 +1365,9 @@ export default function AdminDashboardScreen() {
                   <Text style={[styles.emptyText, { color: t.textSecondary }]}>No category statistics.</Text>
                 )}
               </View>
-            ) : (
+            )}
+
+            {trendsTab === 'installments' && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.tableContainer}>
                   <View style={[styles.tableHeaderRow, { borderBottomColor: t.border }]}>
@@ -1319,6 +1398,191 @@ export default function AdminDashboardScreen() {
                   )}
                 </View>
               </ScrollView>
+            )}
+
+            {trendsTab === 'cashflow' && (
+              <View style={styles.trendsContainer}>
+                {svgCoords ? (
+                  <View style={{ alignItems: 'center' }}>
+                    {/* Legend */}
+                    <View style={[styles.legendContainer, { marginBottom: 12, width: '100%' }]}>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
+                        <Text style={[styles.legendText, { color: t.textSecondary }]}>Collected</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#f97316' }]} />
+                        <Text style={[styles.legendText, { color: t.textSecondary }]}>Projected (Forecast)</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: isDarkMode ? '#475569' : '#cbd5e1' }]} />
+                        <Text style={[styles.legendText, { color: t.textSecondary }]}>Expected Inflow</Text>
+                      </View>
+                    </View>
+
+                    {/* SVG Chart */}
+                    <View style={styles.chartSvgContainer}>
+                      <Svg width={svgCoords.width} height={svgCoords.height}>
+                        <G>
+                          {/* Y Axis Grid Lines & Labels */}
+                          {svgCoords.yTicks.map((tickVal, index) => {
+                            const y = svgCoords.paddingTop + (1 - tickVal / svgCoords.maxAmount) * svgCoords.chartHeight;
+                            return (
+                              <G key={index}>
+                                <Line
+                                  x1={svgCoords.paddingLeft}
+                                  y1={y}
+                                  x2={svgCoords.width - svgCoords.paddingRight}
+                                  y2={y}
+                                  stroke={isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'}
+                                  strokeDasharray="2, 2"
+                                />
+                                <SvgText
+                                  x={svgCoords.paddingLeft - 8}
+                                  y={y + 3}
+                                  fontSize="7"
+                                  fontWeight="600"
+                                  fill={t.textSecondary}
+                                  textAnchor="end"
+                                >
+                                  {tickVal >= 1000 ? `${(tickVal / 1000).toFixed(0)}k` : tickVal}
+                                </SvgText>
+                              </G>
+                            );
+                          })}
+
+                          {/* X Axis Line */}
+                          <Line
+                            x1={svgCoords.paddingLeft}
+                            y1={svgCoords.height - svgCoords.paddingBottom}
+                            x2={svgCoords.width - svgCoords.paddingRight}
+                            y2={svgCoords.height - svgCoords.paddingBottom}
+                            stroke={t.border}
+                            strokeWidth="1"
+                          />
+
+                          {/* Expected collections path (Dashed grey line) */}
+                          {svgCoords.expectedPath && (
+                            <Path
+                              d={svgCoords.expectedPath}
+                              fill="none"
+                              stroke={isDarkMode ? '#475569' : '#cbd5e1'}
+                              strokeWidth="1.5"
+                              strokeDasharray="4, 4"
+                            />
+                          )}
+
+                          {/* Collected path (Solid green line) */}
+                          {svgCoords.collectedPath && (
+                            <Path
+                              d={svgCoords.collectedPath}
+                              fill="none"
+                              stroke="#10b981"
+                              strokeWidth="2.5"
+                            />
+                          )}
+
+                          {/* Projected path (Dashed orange line) */}
+                          {svgCoords.projectedPath && (
+                            <Path
+                              d={svgCoords.projectedPath}
+                              fill="none"
+                              stroke="#f97316"
+                              strokeWidth="2.5"
+                              strokeDasharray="4, 4"
+                            />
+                          )}
+
+                          {/* Points and X Labels */}
+                          {svgCoords.points.map((p, idx) => {
+                            const showLabel = idx % 2 === 0;
+
+                            return (
+                              <G key={idx}>
+                                {/* X Label */}
+                                {showLabel && (
+                                  <SvgText
+                                    x={p.x}
+                                    y={svgCoords.height - 4}
+                                    fontSize="7"
+                                    fontWeight="600"
+                                    fill={t.textSecondary}
+                                    textAnchor="middle"
+                                  >
+                                    {p.monthLabel}
+                                  </SvgText>
+                                )}
+
+                                {/* Dot for Actual/Projected */}
+                                <Circle
+                                  cx={p.x}
+                                  cy={p.yActual}
+                                  r="3"
+                                  fill={p.isFuture ? '#f97316' : '#10b981'}
+                                />
+
+                                {/* Subtle hollow dot for Expected */}
+                                <Circle
+                                  cx={p.x}
+                                  cy={p.yExpected}
+                                  r="2"
+                                  fill="none"
+                                  stroke={isDarkMode ? '#94a3b8' : '#64748b'}
+                                  strokeWidth="1"
+                                />
+                              </G>
+                            );
+                          })}
+                        </G>
+                      </Svg>
+                    </View>
+
+                    {/* Details Cards for Selected / Current Month */}
+                    {(() => {
+                      const today = new Date();
+                      const mLabel = today.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                      const currentPoint = svgCoords.points.find(p => p.monthLabel === mLabel) || svgCoords.points[5];
+
+                      if (!currentPoint) return null;
+
+                      return (
+                        <View style={[styles.detailBox, { width: '100%', backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.3)' : '#f8fafc', borderColor: t.cardBorder }]}>
+                          <View style={styles.detailHeader}>
+                            <TrendingUp size={12} color={t.accent} />
+                            <Text style={[styles.detailTitle, { color: t.textPrimary }]}>
+                              {currentPoint.monthLabel} Cashflow Status
+                            </Text>
+                          </View>
+                          <View style={styles.detailGrid}>
+                            <View style={styles.detailCol}>
+                              <Text style={styles.detailLabel}>EXPECTED INFLOW</Text>
+                              <Text style={[styles.detailValue, { color: t.textPrimary }]}>
+                                {formatCurrency(currentPoint.expected)}
+                              </Text>
+                            </View>
+                            <View style={styles.detailCol}>
+                              <Text style={styles.detailLabel}>
+                                {currentPoint.isFuture ? 'PROJECTED' : 'COLLECTED'}
+                              </Text>
+                              <Text style={[styles.detailValue, { color: currentPoint.isFuture ? '#f97316' : '#10b981' }]}>
+                                {formatCurrency(currentPoint.actual)}
+                              </Text>
+                            </View>
+                            <View style={styles.detailCol}>
+                              <Text style={styles.detailLabel}>EFFICIENCY</Text>
+                              <Text style={[styles.detailValue, { color: currentPoint.efficiency >= 90 ? '#10b981' : currentPoint.efficiency >= 70 ? '#f59e0b' : '#ef4444' }]}>
+                                {currentPoint.efficiency.toFixed(1)}%
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })()}
+                  </View>
+                ) : (
+                  <Text style={[styles.emptyText, { color: t.textSecondary }]}>No cashflow coordinates computed.</Text>
+                )}
+              </View>
             )}
           </View>
         </View>
@@ -2334,24 +2598,25 @@ const styles = StyleSheet.create({
   },
   tabButtonsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
+    flexWrap: 'wrap',
   },
   tabButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
   },
   tabButtonActive: {
     // dynamically sets color
   },
   tabButtonText: {
-    fontSize: 11,
+    fontSize: 9.5,
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   tableContainer: {
     flexDirection: 'column',
@@ -3447,5 +3712,92 @@ const styles = StyleSheet.create({
   addOrderBtnText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    paddingBottom: 10,
+    marginBottom: 4,
+  },
+  chartHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartTitleContainer: {
+    flex: 1,
+  },
+  chartTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  chartSubtitle: {
+    fontSize: 9,
+    marginTop: 2,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  legendText: {
+    fontSize: 8,
+    fontWeight: '600',
+  },
+  chartSvgContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
+  },
+  detailBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    gap: 8,
+    marginTop: 6,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailTitle: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  detailGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  detailCol: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 8,
+    color: '#64748b',
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  detailValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontFamily: 'Outfit-Bold',
+    marginTop: 2,
   },
 });

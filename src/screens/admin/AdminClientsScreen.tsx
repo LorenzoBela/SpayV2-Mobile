@@ -43,6 +43,7 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import AdminHeader from '../../components/AdminHeader';
 import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminClients, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -68,6 +69,62 @@ function formatDate(value: string) {
   });
 }
 
+function TrustTierBadge({ tier, score, isDarkMode }: { tier?: string; score?: number; isDarkMode: boolean }) {
+  if (!tier) return null;
+
+  const getTierStyles = () => {
+    switch (tier.toUpperCase()) {
+      case 'GOLD':
+        return {
+          bg: isDarkMode ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+          border: 'rgba(245, 158, 11, 0.3)',
+          text: '#d97706',
+          label: 'Gold',
+        };
+      case 'SILVER':
+        return {
+          bg: isDarkMode ? 'rgba(148, 163, 184, 0.12)' : 'rgba(148, 163, 184, 0.08)',
+          border: 'rgba(148, 163, 184, 0.3)',
+          text: isDarkMode ? '#cbd5e1' : '#475569',
+          label: 'Silver',
+        };
+      case 'BRONZE':
+      default:
+        return {
+          bg: isDarkMode ? 'rgba(234, 88, 12, 0.12)' : 'rgba(234, 88, 12, 0.08)',
+          border: 'rgba(234, 88, 12, 0.3)',
+          text: '#ea580c',
+          label: 'Bronze',
+        };
+    }
+  };
+
+  const s = getTierStyles();
+
+  return (
+    <View style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 99,
+      borderWidth: 1,
+      backgroundColor: s.bg,
+      borderColor: s.border,
+      marginLeft: 6,
+    }}>
+      <Text style={{
+        fontSize: 8,
+        fontWeight: 'bold',
+        color: s.text,
+        textTransform: 'uppercase',
+      }}>
+        {s.label} {score !== undefined ? `(${score})` : ''}
+      </Text>
+    </View>
+  );
+}
+
 export default function AdminClientsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
@@ -81,6 +138,103 @@ export default function AdminClientsScreen() {
   // Details Modal state
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  const heatmapOrders = useMemo(() => {
+    if (!selectedClient || !selectedClient.orders) return [];
+    return selectedClient.orders.map((o: any) => ({
+      id: o.id,
+      itemName: o.item_name || o.itemName,
+      amount: Number(o.amount),
+      orderDate: o.order_date || o.orderDate
+    }));
+  }, [selectedClient]);
+
+  const heatmapPayments = useMemo(() => {
+    if (!selectedClient || !selectedClient.orders) return [];
+    return selectedClient.orders.flatMap((o: any) => 
+      (o.payments || []).map((p: any) => ({
+        id: p.id,
+        paymentDate: p.payment_date || p.paymentDate || null,
+        dueDate: p.due_date || p.dueDate,
+        amountDue: Number(p.amount_due || p.amountDue),
+        isPaid: p.is_paid || p.isPaid,
+        monthNumber: p.month_number || p.monthNumber,
+        order: {
+          itemName: o.item_name || o.itemName
+        }
+      }))
+    );
+  }, [selectedClient]);
+
+  const ganttTimeline = useMemo(() => {
+    if (!selectedClient || !selectedClient.orders || selectedClient.orders.length === 0) {
+      return { months: [], minTime: 0, maxTime: 0, totalDuration: 1 };
+    }
+
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+
+    selectedClient.orders.forEach((order: any) => {
+      const orderTime = parseUtcDate(order.order_date || order.orderDate).getTime();
+      if (!isNaN(orderTime) && orderTime < minTime) minTime = orderTime;
+
+      if (order.payments && Array.isArray(order.payments)) {
+        order.payments.forEach((p: any) => {
+          const dueTime = parseUtcDate(p.due_date || p.dueDate).getTime();
+          if (!isNaN(dueTime)) {
+            if (dueTime < minTime) minTime = dueTime;
+            if (dueTime > maxTime) maxTime = dueTime;
+          }
+        });
+      }
+    });
+
+    if (maxTime <= minTime || minTime === Infinity || maxTime === -Infinity) {
+      const now = new Date();
+      minTime = now.getTime();
+      maxTime = now.getTime() + 30 * 24 * 60 * 60 * 1000 * 6;
+    }
+
+    const minDate = new Date(minTime);
+    const startDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    
+    const maxDate = new Date(maxTime);
+    const endDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 1, 0);
+
+    const startVal = startDate.getTime();
+    const endVal = endDate.getTime();
+    const totalDuration = endVal - startVal;
+
+    const months: { monthKey: string; label: string; offsetPercent: number; widthPercent: number }[] = [];
+    let current = new Date(startDate);
+    
+    while (current <= endDate) {
+      const mStart = new Date(current.getFullYear(), current.getMonth(), 1).getTime();
+      const mEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0).getTime();
+      
+      const offsetPercent = ((mStart - startVal) / totalDuration) * 100;
+      const widthPercent = ((mEnd - mStart) / totalDuration) * 100;
+
+      const label = current.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'Asia/Manila' });
+      const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+
+      months.push({
+        monthKey,
+        label,
+        offsetPercent,
+        widthPercent
+      });
+
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    return {
+      months,
+      minTime: startVal,
+      maxTime: endVal,
+      totalDuration
+    };
+  }, [selectedClient]);
 
   // Action Modals
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -465,7 +619,12 @@ export default function AdminClientsScreen() {
                       source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
                       style={styles.clientGridAvatar}
                     />
-                    <Text style={[styles.clientGridName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                      <Text style={[styles.clientGridName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+                      <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
+                    </View>
                     <Text style={styles.clientGridEmail} numberOfLines={1}>{client.email}</Text>
                     
                     <View style={[styles.clientGridDivider, { backgroundColor: t.border }]} />
@@ -499,7 +658,10 @@ export default function AdminClientsScreen() {
                         style={styles.clientListAvatar}
                       />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.clientName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Text style={[styles.clientName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+                          <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
+                        </View>
                         <Text style={styles.clientEmail} numberOfLines={1}>{client.email}</Text>
                       </View>
                     </View>
@@ -588,7 +750,10 @@ export default function AdminClientsScreen() {
                 </View>
 
                 <View style={styles.detailsHeroMeta}>
-                  <Text style={[styles.detailsHeroName, { color: t.textPrimary }]} numberOfLines={1}>{selectedClient.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Text style={[styles.detailsHeroName, { color: t.textPrimary }]} numberOfLines={1}>{selectedClient.name}</Text>
+                    <TrustTierBadge tier={selectedClient.trustTier} score={selectedClient.trustScore} isDarkMode={isDarkMode} />
+                  </View>
                   <View style={styles.detailsHeroSubRow}>
                     <View style={[styles.modalRoleBadge, { backgroundColor: t.accentLight, marginTop: 0 }]}>
                       <Text style={[styles.modalRoleBadgeText, { color: t.accent }]}>
@@ -648,6 +813,160 @@ export default function AdminClientsScreen() {
                   </View>
                 </View>
               </View>
+
+              {/* Client Activity Heatmap */}
+              <ActivityHeatmap
+                allOrders={heatmapOrders}
+                allPayments={heatmapPayments}
+                title="Repayment Activity Heatmap"
+                subtitle="Visual activity history of order placements and payment settlements."
+              />
+
+              {/* Gantt Timeline Visual Card */}
+              {ganttTimeline.months.length > 0 && (
+                <View style={[styles.ganttCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                     <List size={16} color={t.accent} />
+                     <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>
+                       Repayment Gantt Timeline
+                     </Text>
+                  </View>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.ganttScroll}>
+                    <View style={{ width: 620, paddingBottom: 10 }}>
+                      {/* Timeline Header (Months) */}
+                      <View style={[styles.ganttHeaderRow, { borderBottomColor: t.border }]}>
+                        <Text style={[styles.ganttHeaderLabel, { width: 90, color: t.textSecondary }]}>Plan</Text>
+                        <View style={{ flex: 1, height: 20, position: 'relative' }}>
+                          {ganttTimeline.months.map((m) => (
+                            <Text
+                              key={m.monthKey}
+                              style={[styles.ganttMonthLabel, {
+                                position: 'absolute',
+                                left: `${m.offsetPercent}%`,
+                                width: `${m.widthPercent}%`,
+                                color: t.textSecondary,
+                                borderLeftWidth: 1,
+                                borderLeftColor: t.border,
+                                paddingLeft: 4,
+                              }]}
+                            >
+                              {m.label}
+                            </Text>
+                          ))}
+                        </View>
+                      </View>
+
+                      {/* Timeline Rows */}
+                      <View style={{ gap: 12, marginTop: 8 }}>
+                        {selectedClient.orders.map((order: any) => {
+                          const orderStart = parseUtcDate(order.order_date || order.orderDate).getTime();
+                          const lastPayment = (order.payments || []).reduce((latest: number, p: any) => {
+                            const pTime = parseUtcDate(p.due_date || p.dueDate).getTime();
+                            return pTime > latest ? pTime : latest;
+                          }, orderStart);
+
+                          const leftPercent = Math.max(0, ((orderStart - ganttTimeline.minTime) / ganttTimeline.totalDuration) * 100);
+                          const rightPercent = Math.max(0, ((lastPayment - ganttTimeline.minTime) / ganttTimeline.totalDuration) * 100);
+                          const barWidthPercent = Math.max(2, rightPercent - leftPercent);
+
+                          return (
+                            <View key={order.id} style={styles.ganttRow}>
+                              {/* Order Label */}
+                              <TouchableOpacity 
+                                style={{ width: 90, marginRight: 8 }}
+                                onPress={() => toggleOrderExpand(order.id)}
+                              >
+                                <Text style={[styles.ganttOrderText, { color: t.textPrimary }]} numberOfLines={1}>
+                                  {order.item_name || order.itemName}
+                                </Text>
+                              </TouchableOpacity>
+
+                              {/* Track */}
+                              <View style={{ flex: 1, height: 24, justifyContent: 'center', position: 'relative' }}>
+                                {/* Grid Lines in background */}
+                                {ganttTimeline.months.map((m) => (
+                                  <View
+                                    key={`grid-${m.monthKey}`}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${m.offsetPercent}%`,
+                                      top: 0,
+                                      bottom: 0,
+                                      borderLeftWidth: 1,
+                                      borderLeftColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+                                      borderStyle: 'dashed',
+                                    }}
+                                  />
+                                ))}
+
+                                {/* Order span bar */}
+                                <View
+                                  style={{
+                                    position: 'absolute',
+                                    left: `${leftPercent}%`,
+                                    width: `${barWidthPercent}%`,
+                                    height: 6,
+                                    borderRadius: 99,
+                                    backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                                  }}
+                                />
+
+                                {/* Payment Milestone Dots */}
+                                {(order.payments || []).map((p: any) => {
+                                  const pTime = parseUtcDate(p.due_date || p.dueDate).getTime();
+                                  const dotLeftPercent = ((pTime - ganttTimeline.minTime) / ganttTimeline.totalDuration) * 100;
+                                  const isOverdue = !p.is_paid && new Date(p.due_date || p.dueDate) < new Date();
+
+                                  let dotColor = '#94a3b8';
+                                  if (p.is_paid || p.isPaid) {
+                                    dotColor = '#10b981';
+                                  } else if (isOverdue) {
+                                    dotColor = '#ef4444';
+                                  } else {
+                                    dotColor = '#f59e0b';
+                                  }
+
+                                  return (
+                                    <TouchableOpacity
+                                      key={p.id}
+                                      onPress={() => {
+                                        toggleOrderExpand(order.id);
+                                        PremiumAlert.alert(
+                                          `${order.item_name || order.itemName}`,
+                                          `Term ${p.month_number || p.monthNumber} installment of ${formatCurrency(p.amount_due || p.amountDue)} is ${p.is_paid ? 'Paid' : isOverdue ? 'Overdue' : 'Outstanding'}.\nDue: ${formatDate(p.due_date || p.dueDate)}`
+                                        );
+                                      }}
+                                      style={{
+                                        position: 'absolute',
+                                        left: `${dotLeftPercent}%`,
+                                        marginLeft: -5,
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: 5,
+                                        backgroundColor: dotColor,
+                                        borderWidth: 1.5,
+                                        borderColor: t.cardBg,
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  {/* Legend */}
+                  <View style={styles.ganttLegend}>
+                    <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#10b981' }]} /><Text style={styles.legendLabelText}>Settled</Text></View>
+                    <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#f59e0b' }]} /><Text style={styles.legendLabelText}>Outstanding</Text></View>
+                    <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} /><Text style={styles.legendLabelText}>Overdue</Text></View>
+                  </View>
+                </View>
+              )}
 
               {/* Monthly Repayment Breakdown */}
               <View style={[styles.monthlyBreakdownCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
@@ -2041,5 +2360,61 @@ const styles = StyleSheet.create({
   monthlyPaginationInfo: {
     fontSize: 10,
     fontWeight: '600',
+  },
+  ganttCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+    marginBottom: 16,
+  },
+  ganttScroll: {
+    marginTop: 8,
+  },
+  ganttHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    paddingBottom: 6,
+  },
+  ganttHeaderLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  ganttMonthLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+  },
+  ganttRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 24,
+  },
+  ganttOrderText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  ganttLegend: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+    paddingTop: 8,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendLabelText: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: '#64748b',
   },
 });
