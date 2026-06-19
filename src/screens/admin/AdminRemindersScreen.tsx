@@ -637,7 +637,7 @@ export default function AdminRemindersScreen() {
 
   const eligibleCount = useMemo(() => {
     const nowMs = timeNow.getTime();
-    const intervalMs = 56 * 60 * 60 * 1000;
+    const intervalMs = 42 * 60 * 60 * 1000;
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
     return reminderTargets.filter((t: any) => {
       const isWithinHorizon = parseUtcDate(t.dueDate).getTime() <= horizonMs;
@@ -652,7 +652,8 @@ export default function AdminRemindersScreen() {
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
     return reminderTargets.filter((t: any) => {
       const isWithinHorizon = parseUtcDate(t.dueDate).getTime() <= horizonMs;
-      const isThrottleOk = !t.lastSentAt || (nowMs - parseUtcDate(t.lastSentAt).getTime()) > intervalMs;
+      const lastFcm = t.lastFcmSentAt || null;
+      const isThrottleOk = !lastFcm || (nowMs - parseUtcDate(lastFcm).getTime()) > intervalMs;
       return isWithinHorizon && isThrottleOk;
     }).length;
   }, [reminderTargets, timeNow]);
@@ -719,9 +720,9 @@ export default function AdminRemindersScreen() {
     });
   };
 
-  const adEmailTimeLeft = useMemo(() => getTimeLeft(lastAdEmailSentAt, 33.6), [lastAdEmailSentAt, timeNow]);
+  const adEmailTimeLeft = useMemo(() => getTimeLeft(lastAdEmailSentAt, 24), [lastAdEmailSentAt, timeNow]);
   const adFcmTimeLeft = useMemo(() => getTimeLeft(lastAdFcmSentAt, 3), [lastAdFcmSentAt, timeNow]);
-  const reminderEmailTimeLeft = useMemo(() => getTimeLeft(lastReminderEmailSentAt, 56), [lastReminderEmailSentAt, timeNow]);
+  const reminderEmailTimeLeft = useMemo(() => getTimeLeft(lastReminderEmailSentAt, 42), [lastReminderEmailSentAt, timeNow]);
   const reminderFcmTimeLeft = useMemo(() => getTimeLeft(lastReminderFcmSentAt, 4), [lastReminderFcmSentAt, timeNow]);
 
   const emailAdClients = useMemo(() => {
@@ -758,7 +759,7 @@ export default function AdminRemindersScreen() {
 
   const emailReminderClients = useMemo(() => {
     const nowMs = timeNow.getTime();
-    const throttleMs = 56 * 60 * 60 * 1000;
+    const throttleMs = 42 * 60 * 60 * 1000;
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
 
     return allClients.map((client: any) => {
@@ -846,7 +847,7 @@ export default function AdminRemindersScreen() {
       }
 
       const sentTimes = dueTargets
-        .map((t: any) => t.lastSentAt ? parseUtcDate(t.lastSentAt).getTime() : 0)
+        .map((t: any) => t.lastFcmSentAt ? parseUtcDate(t.lastFcmSentAt).getTime() : 0)
         .filter((t: any) => t > 0);
       const lastSentMs = sentTimes.length > 0 ? Math.max(...sentTimes) : 0;
       
@@ -926,7 +927,7 @@ export default function AdminRemindersScreen() {
             </View>
             
             <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>Cooldown (33.6h):</Text>
+              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>Cooldown (24h):</Text>
               {adEmailTimeLeft ? (
                 <View style={styles.countdownRow}>
                   <FlipCard value={adEmailTimeLeft.hours} label="HR" />
@@ -1004,7 +1005,7 @@ export default function AdminRemindersScreen() {
             </View>
             
             <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>{reminderEmailTimeLeft ? 'Cooldown (56h):' : 'Eligible Now'}</Text>
+              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>{reminderEmailTimeLeft ? 'Cooldown (42h):' : 'Eligible Now'}</Text>
               {reminderEmailTimeLeft ? (
                 <View style={styles.countdownRow}>
                   <FlipCard value={reminderEmailTimeLeft.hours} label="HR" />
