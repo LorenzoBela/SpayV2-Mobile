@@ -1,6 +1,6 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useContext, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -71,6 +71,7 @@ import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import PremiumLoader from '../../components/PremiumLoader';
 import AdminHeader from '../../components/AdminHeader';
 import DatePicker from '../../components/DatePicker';
+import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminDashboardData, callAdminApi } from '../../services/adminService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -405,6 +406,32 @@ export default function AdminDashboardScreen() {
     undefined,
     [['admin-dashboard']]
   );
+
+  // Heatmap data derived from dashboard REST API (cached in Redis)
+  const allOrdersList = useMemo(() => {
+    const orders = dashboardData?.allOrders || [];
+    return orders.map((o: any) => ({
+      id: o.id,
+      itemName: o.itemName,
+      amount: Number(o.amount),
+      orderDate: parseUtcDate(o.orderDate),
+    }));
+  }, [dashboardData?.allOrders]);
+
+  const allPaymentsList = useMemo(() => {
+    const payments = dashboardData?.allPayments || [];
+    return payments.map((p: any) => ({
+      id: p.id,
+      dueDate: parseUtcDate(p.dueDate),
+      amountDue: Number(p.amountDue),
+      isPaid: p.isPaid,
+      paymentDate: p.paymentDate ? parseUtcDate(p.paymentDate) : null,
+      monthNumber: p.monthNumber,
+      order: {
+        itemName: p.order?.itemName || 'Payment Settlement',
+      },
+    }));
+  }, [dashboardData?.allPayments]);
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -912,6 +939,14 @@ export default function AdminDashboardScreen() {
             </View>
           </View>
         </View>
+
+        {/* Platform Activity Heatmap */}
+        <ActivityHeatmap
+          allOrders={allOrdersList}
+          allPayments={allPaymentsList}
+          title="Platform Transaction Heatmap"
+          subtitle="Aggregate platform-wide visualization of orders placed and payment settlements over the past year."
+        />
 
         {/* Expected Cash Inflows Card */}
         <View style={[styles.inflowsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>

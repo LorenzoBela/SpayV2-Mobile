@@ -48,6 +48,7 @@ import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DatePar
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
+import ActivityHeatmap from '../../components/ActivityHeatmap';
 
 
 // Interfaces
@@ -541,6 +542,68 @@ export default function DashboardScreen() {
   const [spendingCategories, setSpendingCategories] = useState<SpendingCategory[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
 
+  // Heatmap data states
+  const [allOrdersList, setAllOrdersList] = useState<any[]>([]);
+  const [allPaymentsList, setAllPaymentsList] = useState<any[]>([]);
+
+  // Generate realistic demo activity data for the heatmap matching the web implementation
+  const { heatmapOrders, heatmapPayments } = React.useMemo(() => {
+    if (!isDemo) {
+      return { heatmapOrders: allOrdersList, heatmapPayments: allPaymentsList };
+    }
+    const demoOrders: any[] = [];
+    const demoPayments: any[] = [];
+    const now = new Date();
+    const itemNames = [
+      'iPhone 15 Pro Max', 'AirPods Pro 2', 'MacBook Air M3', 'Dell UltraSharp Monitor',
+      'Mechanical Keyboard', 'Ergonomic Desk Chair', 'Nespresso Coffee Maker', 'Sony WH-1000XM5',
+      'iPad Pro', 'Gym Member Pass', 'Nike Zoom Running Shoes', 'Leather Wallet'
+    ];
+    
+    for (let i = 0; i < 28; i++) {
+      const daysAgo = Math.floor(Math.random() * 455) + 15;
+      const orderDate = new Date(now);
+      orderDate.setDate(now.getDate() - daysAgo);
+      
+      const itemName = itemNames[i % itemNames.length];
+      const amount = Math.floor(Math.random() * 12 + 1) * 3000;
+      const orderId = `demo-o-${i}`;
+      
+      demoOrders.push({
+        id: orderId,
+        itemName,
+        amount,
+        orderDate,
+      });
+      
+      const term = [3, 6, 12][i % 3];
+      const paymentAmount = amount / term;
+      for (let m = 1; m <= term; m++) {
+        const dueDate = new Date(orderDate);
+        dueDate.setMonth(orderDate.getMonth() + m);
+        
+        const isPaid = dueDate < now;
+        const paymentDate = isPaid ? new Date(dueDate) : null;
+        if (paymentDate) {
+          const offset = Math.floor(Math.random() * 5) - 3;
+          paymentDate.setDate(dueDate.getDate() + offset);
+        }
+        
+        demoPayments.push({
+          id: `demo-p-${i}-${m}`,
+          paymentDate,
+          dueDate,
+          amountDue: paymentAmount,
+          isPaid,
+          order: {
+            itemName,
+          },
+        });
+      }
+    }
+    return { heatmapOrders: demoOrders, heatmapPayments: demoPayments };
+  }, [isDemo, allOrdersList, allPaymentsList]);
+
   // System Loading / Transitions
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -740,6 +803,27 @@ export default function DashboardScreen() {
           installmentMonths: order?.installment_months || 0,
         };
       });
+
+      setAllOrdersList(dbOrders.map(o => ({
+        id: o.id,
+        itemName: o.item_name,
+        amount: parseFloat(o.amount),
+        orderDate: parseUtcDate(o.order_date),
+      })));
+      setAllPaymentsList(dbPayments.map(p => {
+        const order = ordersMap.get(p.order_id);
+        return {
+          id: p.id,
+          dueDate: parseUtcDate(p.due_date),
+          amountDue: parseFloat(p.amount_due),
+          isPaid: p.is_paid,
+          paymentDate: p.payment_date ? parseUtcDate(p.payment_date) : null,
+          monthNumber: p.month_number,
+          order: {
+            itemName: order?.item_name || 'Purchase Order',
+          },
+        };
+      }));
 
       const unpaidAmount = allPayments.reduce((sum, p) => p.isPaid ? sum : sum + p.amountDue, 0);
 
@@ -1282,6 +1366,12 @@ export default function DashboardScreen() {
             )}
           </View>
         </View>
+
+        {/* Activity Heatmap Grid */}
+        <ActivityHeatmap
+          allOrders={heatmapOrders}
+          allPayments={heatmapPayments}
+        />
 
         {/* 6. Recent Orders list */}
         <View style={[styles.dashboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
