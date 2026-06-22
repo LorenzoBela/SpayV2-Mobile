@@ -27,6 +27,10 @@ import {
   Info,
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Sun,
   Moon,
   LayoutGrid,
@@ -191,6 +195,18 @@ export default function OrdersScreen() {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+
+  // Calculate sliding window for pagination page numbers (max 5 pages)
+  const maxPageButtons = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxPageButtons / 2));
+  let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+  if (endPage - startPage + 1 < maxPageButtons) {
+    startPage = Math.max(1, endPage - maxPageButtons + 1);
+  }
+  const pageNumbers = [];
+  for (let i = startPage; i <= endPage; i++) {
+    pageNumbers.push(i);
+  }
 
   const orderToPay = orders.find(o => o.id === payingOrderId);
   const unpaidInstallments = orderToPay?.payments.filter(p => !p.isPaid) || [];
@@ -706,21 +722,33 @@ export default function OrdersScreen() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <View style={styles.paginationContainer}>
+            <View style={styles.paginationRowContainer}>
               <TouchableOpacity
-                onPress={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                onPress={() => setCurrentPage(1)}
                 disabled={currentPage === 1}
                 style={[
-                  styles.pageBtn,
+                  styles.pageIconBtn,
                   { borderColor: t.cardBorder, backgroundColor: t.cardBg },
                   currentPage === 1 && { opacity: 0.4 }
                 ]}
               >
-                <Text style={[styles.pageBtnText, { color: t.textPrimary }]}>Prev</Text>
+                <ChevronsLeft size={16} color={currentPage === 1 ? t.textSecondary : t.textPrimary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                style={[
+                  styles.pageIconBtn,
+                  { borderColor: t.cardBorder, backgroundColor: t.cardBg },
+                  currentPage === 1 && { opacity: 0.4 }
+                ]}
+              >
+                <ChevronLeft size={16} color={currentPage === 1 ? t.textSecondary : t.textPrimary} />
               </TouchableOpacity>
 
               <View style={styles.pageNumbersContainer}>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                {pageNumbers.map(page => {
                   const isCurrent = page === currentPage;
                   return (
                     <TouchableOpacity
@@ -728,7 +756,8 @@ export default function OrdersScreen() {
                       onPress={() => setCurrentPage(page)}
                       style={[
                         styles.pageNumberBtn,
-                        isCurrent && { backgroundColor: t.accent }
+                        { borderColor: t.cardBorder },
+                        isCurrent ? { backgroundColor: t.accent, borderColor: t.accent } : { backgroundColor: t.cardBg, borderWidth: 1 }
                       ]}
                     >
                       <Text
@@ -748,12 +777,24 @@ export default function OrdersScreen() {
                 onPress={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
                 style={[
-                  styles.pageBtn,
+                  styles.pageIconBtn,
                   { borderColor: t.cardBorder, backgroundColor: t.cardBg },
                   currentPage === totalPages && { opacity: 0.4 }
                 ]}
               >
-                <Text style={[styles.pageBtnText, { color: t.textPrimary }]}>Next</Text>
+                <ChevronRight size={16} color={currentPage === totalPages ? t.textSecondary : t.textPrimary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                style={[
+                  styles.pageIconBtn,
+                  { borderColor: t.cardBorder, backgroundColor: t.cardBg },
+                  currentPage === totalPages && { opacity: 0.4 }
+                ]}
+              >
+                <ChevronsRight size={16} color={currentPage === totalPages ? t.textSecondary : t.textPrimary} />
               </TouchableOpacity>
             </View>
           )}
@@ -1380,38 +1421,36 @@ const styles = StyleSheet.create({
   listScheduleExpansion: {
     marginTop: 2,
   },
-  paginationContainer: {
+  paginationRowContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 12,
     paddingVertical: 12,
+    gap: 6,
   },
-  pageBtn: {
+  pageIconBtn: {
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minWidth: 60,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  pageBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
   },
   pageNumbersContainer: {
     flexDirection: 'row',
     gap: 6,
   },
   pageNumberBtn: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   pageNumberText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
+    fontFamily: 'Jakarta-Bold',
   },
 });

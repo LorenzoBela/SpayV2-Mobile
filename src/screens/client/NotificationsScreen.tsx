@@ -24,7 +24,10 @@ import {
   Moon,
   X,
   ExternalLink,
+  ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -129,6 +132,13 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Reset page when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   // Dynamic theme colors
   const t = useMemo(
@@ -203,6 +213,25 @@ export default function NotificationsScreen() {
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read_at).length, [items]);
   const visibleItems = useMemo(() => items.filter((item) => item.category === activeTab), [items, activeTab]);
+
+  const totalPages = Math.ceil(visibleItems.length / itemsPerPage);
+  const paginatedItems = useMemo(() => {
+    return visibleItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [visibleItems, currentPage, itemsPerPage]);
+
+  const pageNumbers = useMemo(() => {
+    const maxPageButtons = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxPageButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxPageButtons - 1);
+    if (endPage - startPage + 1 < maxPageButtons) {
+      startPage = Math.max(1, endPage - maxPageButtons + 1);
+    }
+    const pages = [];
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -459,7 +488,7 @@ export default function NotificationsScreen() {
       ) : (
         <View style={[styles.listContainer, layout.centeredContentStyle]}>
           <FlashList
-            data={visibleItems}
+            data={paginatedItems}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             refreshControl={
@@ -486,6 +515,85 @@ export default function NotificationsScreen() {
                   No notifications found under {CATEGORY_THEMES[activeTab].label.toLowerCase()}.
                 </Text>
               </MotiView>
+            }
+            ListFooterComponent={
+              totalPages > 1 ? (
+                <View style={styles.paginationRowContainer}>
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    style={[
+                      styles.pageIconBtn,
+                      { borderColor: t.cardBorder, backgroundColor: t.cardBg },
+                      currentPage === 1 && { opacity: 0.4 }
+                    ]}
+                  >
+                    <ChevronsLeft size={16} color={currentPage === 1 ? t.textSecondary : t.textPrimary} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    style={[
+                      styles.pageIconBtn,
+                      { borderColor: t.cardBorder, backgroundColor: t.cardBg },
+                      currentPage === 1 && { opacity: 0.4 }
+                    ]}
+                  >
+                    <ChevronLeft size={16} color={currentPage === 1 ? t.textSecondary : t.textPrimary} />
+                  </TouchableOpacity>
+
+                  <View style={styles.pageNumbersContainer}>
+                    {pageNumbers.map(page => {
+                      const isCurrent = page === currentPage;
+                      return (
+                        <TouchableOpacity
+                          key={page}
+                          onPress={() => setCurrentPage(page)}
+                          style={[
+                            styles.pageNumberBtn,
+                            { borderColor: t.cardBorder },
+                            isCurrent ? { backgroundColor: CATEGORY_THEMES[activeTab].color, borderColor: CATEGORY_THEMES[activeTab].color } : { backgroundColor: t.cardBg, borderWidth: 1 }
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.pageNumberText,
+                              { color: isCurrent ? '#ffffff' : t.textSecondary }
+                            ]}
+                          >
+                            {page}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    style={[
+                      styles.pageIconBtn,
+                      { borderColor: t.cardBorder, backgroundColor: t.cardBg },
+                      currentPage === totalPages && { opacity: 0.4 }
+                    ]}
+                  >
+                    <ChevronRight size={16} color={currentPage === totalPages ? t.textSecondary : t.textPrimary} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    style={[
+                      styles.pageIconBtn,
+                      { borderColor: t.cardBorder, backgroundColor: t.cardBg },
+                      currentPage === totalPages && { opacity: 0.4 }
+                    ]}
+                  >
+                    <ChevronsRight size={16} color={currentPage === totalPages ? t.textSecondary : t.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+              ) : null
             }
           />
         </View>
@@ -949,6 +1057,38 @@ const styles = StyleSheet.create({
   modalDeleteBtnText: {
     color: '#ef4444',
     fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
+  },
+  paginationRowContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  pageIconBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pageNumbersContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  pageNumberBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pageNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
     fontFamily: 'Jakarta-Bold',
   },
 });
