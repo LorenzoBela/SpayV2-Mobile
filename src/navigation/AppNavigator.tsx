@@ -477,7 +477,9 @@ export default function AppNavigator() {
             ? 'Payments'
             : screen === 'Orders'
               ? 'Orders'
-              : 'Notifications';
+              : screen === 'Settings'
+                ? 'Settings'
+                : 'Notifications';
 
         navigationRef.current?.navigate('Main', { screen: target });
       }
