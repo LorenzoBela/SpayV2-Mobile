@@ -42,7 +42,7 @@ import {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 1000 * 60 * 60 * 24 * 30, // 30 days cache retention
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours cache retention/garbage collection time
       staleTime: 1000 * 60 * 5, // 5 minutes stale time
     },
   },
@@ -95,7 +95,7 @@ export default function App() {
         client={queryClient}
         persistOptions={{
           persister: clientPersister,
-          maxAge: 1000 * 60 * 60 * 24 * 30, // Match 30 days cache retention
+          maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
           dehydrateOptions: {
             shouldDehydrateQuery: () => true, // Persist all queries
           },

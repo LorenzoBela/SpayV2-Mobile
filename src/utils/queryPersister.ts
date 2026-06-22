@@ -37,12 +37,29 @@ const encryptionKey = getOrCreateEncryptionKey();
 /**
  * Instantiate MMKV client with AES-256 encryption.
  * The encryptionKey must be a hex string of 32 bytes (64 characters).
+ * Wrapped in a try-catch block to prevent decryption/corruption failure crashes.
  */
-export const storage = createMMKV({
-  id: 'spay-query-cache',
-  encryptionKey: encryptionKey,
-  encryptionType: 'AES-256',
-});
+export const storage = (() => {
+  try {
+    return createMMKV({
+      id: 'spay-query-cache',
+      encryptionKey: encryptionKey,
+      encryptionType: 'AES-256',
+    });
+  } catch (error) {
+    console.error('[queryPersister] Failed to initialize encrypted MMKV. Re-initializing unencrypted fallback storage:', error);
+    try {
+      return createMMKV({ id: 'spay-query-cache-fallback' });
+    } catch (fallbackError) {
+      console.error('[queryPersister] Fallback MMKV also failed. Using memory-only mock storage:', fallbackError);
+      return {
+        getString: (k: string) => undefined,
+        set: (k: string, v: string) => {},
+        remove: (k: string) => {},
+      } as any;
+    }
+  }
+})();
 
 /**
  * Custom Persister for TanStack Query using encrypted MMKV.
