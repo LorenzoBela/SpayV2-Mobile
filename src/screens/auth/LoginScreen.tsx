@@ -187,6 +187,33 @@ export default function LoginScreen() {
       }
 
       console.log('[Auth] Supabase authentication successful');
+
+      // Sync Google profile picture and name to Supabase user metadata
+      try {
+        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+        if (supabaseUser) {
+          const currentAvatar = supabaseUser.user_metadata?.avatar_url || supabaseUser.user_metadata?.picture;
+          const currentFullName = supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name;
+          
+          const targetPhoto = user?.photo || null;
+          const targetName = user?.name || null;
+          
+          if ((targetPhoto && currentAvatar !== targetPhoto) || (targetName && currentFullName !== targetName)) {
+            console.log('[Auth] Google profile info needs sync, updating Supabase user metadata...');
+            await supabase.auth.updateUser({
+              data: {
+                avatar_url: targetPhoto || currentAvatar,
+                picture: targetPhoto || currentAvatar,
+                full_name: targetName || currentFullName || '',
+              }
+            });
+            console.log('[Auth] Supabase user metadata updated successfully');
+          }
+        }
+      } catch (syncError) {
+        console.error('[Auth] Failed to sync Google profile data to Supabase:', syncError);
+      }
+
       await saveGoogleAccount(user);
     } catch (err) {
       console.error('[Auth] completeSupabaseSignIn catch block error:', err);
