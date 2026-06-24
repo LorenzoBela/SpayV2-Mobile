@@ -26,7 +26,7 @@ export function useRealtimeSync(
       // We check if it's connected and internet is reachable (if known)
       if (state.isConnected && state.isInternetReachable !== false) {
         console.log('[useRealtimeSync] Network status is ONLINE. Invalidating all active queries to ensure data consistency.');
-        queryClient.invalidateQueries();
+        queryClient.invalidateQueries({ type: 'active' });
         void syncWidgetData();
       }
     });

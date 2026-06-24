@@ -69,14 +69,43 @@ export const storage = (() => {
 export const clientPersister = createAsyncStoragePersister({
   storage: {
     getItem: (key) => {
-      const value = storage.getString(key);
-      return value === undefined ? null : value;
+      try {
+        const value = storage.getString(key);
+        return value === undefined ? null : value;
+      } catch (error) {
+        console.error('[queryPersister] Decryption or read failure in MMKV. Clearing cache to recover:', error);
+        try {
+          storage.clearAll();
+        } catch (clearError) {
+          console.error('[queryPersister] Failed to clear MMKV storage:', clearError);
+        }
+        return null;
+      }
     },
     setItem: (key, value) => {
-      storage.set(key, value);
+      try {
+        storage.set(key, value);
+      } catch (error) {
+        console.error('[queryPersister] Decryption or write failure in MMKV. Clearing cache to recover:', error);
+        try {
+          storage.clearAll();
+          storage.set(key, value);
+        } catch (recoveryError) {
+          console.error('[queryPersister] MMKV recovery write also failed:', recoveryError);
+        }
+      }
     },
     removeItem: (key) => {
-      storage.remove(key);
+      try {
+        storage.remove(key);
+      } catch (error) {
+        console.error('[queryPersister] Decryption or remove failure in MMKV. Clearing cache to recover:', error);
+        try {
+          storage.clearAll();
+        } catch (clearError) {
+          console.error('[queryPersister] Failed to clear MMKV storage during removal:', clearError);
+        }
+      }
     },
   },
   // Default throttleTime is 1000ms
