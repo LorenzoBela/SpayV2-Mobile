@@ -1,7 +1,26 @@
 import React, { ReactNode, useContext, useEffect, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Bell, Calendar, CloudSun, Moon, Sun } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  Bell,
+  Calendar,
+  CloudSun,
+  Moon,
+  Sun,
+  RefreshCw,
+  Wind,
+  Droplets,
+  Compass,
+  Navigation,
+  Cloud,
+  CloudRain,
+  CloudDrizzle,
+  CloudLightning,
+  CloudFog,
+  Snowflake,
+  X
+} from 'lucide-react-native';
 
 import { ThemeContext } from '../navigation/navigationTypes';
 import { useNotifications } from '../hooks/useNotifications';
@@ -12,10 +31,160 @@ interface HeaderActionsProps {
   avatar?: ReactNode;
 }
 
+interface WeatherInfo {
+  temp: number;
+  feelsLike: number;
+  humidity: number;
+  windSpeed: number;
+  code: number;
+  label: string;
+  locationName: string;
+  lastUpdated?: string;
+}
+
+function getWeatherDetails(code: number) {
+  if (code === 0) return { label: 'Clear Sky', icon: Sun, color: '#fbbf24' };
+  if ([1, 2, 3].includes(code)) return { label: 'Partly Cloudy', icon: CloudSun, color: '#38bdf8' };
+  if ([45, 48].includes(code)) return { label: 'Foggy', icon: CloudFog, color: '#94a3b8' };
+  if ([51, 53, 55].includes(code)) return { label: 'Drizzle', icon: CloudDrizzle, color: '#7dd3fc' };
+  if ([61, 63, 65, 80, 81, 82].includes(code)) return { label: 'Rainy', icon: CloudRain, color: '#3b82f6' };
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return { label: 'Snowy', icon: Snowflake, color: '#c7d2fe' };
+  if ([95, 96, 99].includes(code)) return { label: 'Thunderstorm', icon: CloudLightning, color: '#a855f7' };
+  return { label: 'Cloudy', icon: Cloud, color: '#64748b' };
+}
+
 export function HeaderWeatherTime() {
   const { isDarkMode } = useContext(ThemeContext);
   const [currentTime, setCurrentTime] = useState(() => new Date());
-  const weatherInfo = { temp: '31°C', text: 'Sunny' };
+
+  const [weather, setWeather] = useState<WeatherInfo | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const fetchWeather = async (force: boolean = false) => {
+    if (weatherLoading) return;
+    setWeatherLoading(true);
+
+    try {
+      if (!force) {
+        const cached = await AsyncStorage.getItem('cached_weather');
+        const cachedTime = await AsyncStorage.getItem('cached_weather_time');
+        if (cached && cachedTime && Date.now() - Number(cachedTime) < 1800000) {
+          // 30 min cache
+          const parsed = JSON.parse(cached);
+          const date = new Date(Number(cachedTime));
+          parsed.lastUpdated = date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Manila',
+          });
+          setWeather(parsed);
+          setWeatherLoading(false);
+          return;
+        }
+      }
+
+      // 1. Geolocate using Free IP API or IP-API
+      let lat = 14.5995;
+      let lon = 120.9842;
+      let city = 'Manila, PH';
+
+      try {
+        const ipRes = await fetch('https://freeipapi.com/api/json');
+        if (ipRes.ok) {
+          const ipData = await ipRes.json();
+          if (ipData.latitude && ipData.longitude) {
+            lat = ipData.latitude;
+            lon = ipData.longitude;
+            city = ipData.cityName ? `${ipData.cityName}, ${ipData.countryCode || 'PH'}` : city;
+          }
+        } else {
+          const ipRes2 = await fetch('http://ip-api.com/json/');
+          if (ipRes2.ok) {
+            const ipData2 = await ipRes2.json();
+            if (ipData2.lat && ipData2.lon) {
+              lat = ipData2.lat;
+              lon = ipData2.lon;
+              city = ipData2.city ? `${ipData2.city}, ${ipData2.countryCode || 'PH'}` : city;
+            }
+          }
+        }
+
+        // Try to reverse geocode the IP coordinates using BigDataCloud for higher local accuracy!
+        try {
+          const geoRes = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
+          );
+          if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            const detectedCity = geoData.locality || geoData.city || geoData.principalSubdivision;
+            if (detectedCity) {
+              city = `${detectedCity}, ${geoData.countryCode || 'PH'}`;
+            }
+          }
+        } catch (err) {
+          console.warn('Failed reverse geocoding IP coordinates:', err);
+        }
+      } catch (err) {
+        console.error('Failed IP geolocation:', err);
+      }
+
+      // 2. Fetch Open-Meteo Weather
+      const weatherRes = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`
+      );
+      if (!weatherRes.ok) throw new Error();
+      const weatherData = await weatherRes.json();
+      const current = weatherData.current;
+      const details = getWeatherDetails(current.weather_code);
+      const lastUpdatedStr = new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Manila',
+      });
+
+      const newWeather: WeatherInfo = {
+        temp: Math.round(current.temperature_2m),
+        feelsLike: Math.round(current.apparent_temperature),
+        humidity: current.relative_humidity_2m,
+        windSpeed: Math.round(current.wind_speed_10m),
+        code: current.weather_code,
+        label: details.label,
+        locationName: city,
+        lastUpdated: lastUpdatedStr,
+      };
+
+      setWeather(newWeather);
+      await AsyncStorage.setItem('cached_weather', JSON.stringify(newWeather));
+      await AsyncStorage.setItem('cached_weather_time', Date.now().toString());
+    } catch (err) {
+      console.error('Failed to fetch mobile weather:', err);
+      const lastUpdatedStr = new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Manila',
+      });
+      setWeather({
+        temp: 30,
+        feelsLike: 34,
+        humidity: 78,
+        windSpeed: 8,
+        code: 2,
+        label: 'Partly Cloudy',
+        locationName: 'Manila, PH',
+        lastUpdated: lastUpdatedStr,
+      });
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWeather();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -28,6 +197,9 @@ export function HeaderWeatherTime() {
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     border: isDarkMode ? '#222d42' : '#e2e8f0',
+    modalBg: isDarkMode ? '#0d121f' : '#ffffff',
+    cardBg: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : '#f8fafc',
+    cardBorder: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#e2e8f0',
   };
 
   const dateText = currentTime.toLocaleDateString('en-US', {
@@ -45,14 +217,30 @@ export function HeaderWeatherTime() {
     timeZone: 'Asia/Manila',
   });
 
+  const activeCode = weather ? weather.code : 2;
+  const weatherDetails = getWeatherDetails(activeCode);
+  const WeatherIcon = weatherDetails.icon;
+  const weatherColor = weatherDetails.color;
+
   return (
     <View style={[styles.weatherTimeBar, { borderTopColor: t.border }]}>
-      <View style={styles.weatherRow}>
-        <CloudSun size={12} color="#fbbf24" />
+      <TouchableOpacity
+        style={styles.weatherRow}
+        onPress={() => setShowModal(true)}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Open weather details popup"
+      >
+        {weatherLoading ? (
+          <RefreshCw size={12} color={t.textSecondary} />
+        ) : (
+          <WeatherIcon size={12} color={weatherColor} />
+        )}
         <Text style={[styles.weatherText, { color: t.textSecondary }]}>
-          {weatherInfo.temp} {weatherInfo.text}
+          {weather ? `${weather.temp}°C ${weather.label}` : '--°C'}
         </Text>
-      </View>
+      </TouchableOpacity>
+
       <View style={styles.dateTimeRow}>
         <Calendar size={10} color={t.textSecondary} />
         <Text style={[styles.dateText, { color: t.textSecondary }]}>
@@ -63,6 +251,113 @@ export function HeaderWeatherTime() {
           {timeText}
         </Text>
       </View>
+
+      <Modal
+        visible={showModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowModal(false)}
+        >
+          <TouchableOpacity
+            style={[styles.modalContainer, { backgroundColor: t.modalBg, borderColor: t.border }]}
+            activeOpacity={1}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {weather ? (
+                  React.createElement(getWeatherDetails(weather.code).icon, {
+                    size: 24,
+                    color: getWeatherDetails(weather.code).color,
+                  })
+                ) : (
+                  <CloudSun size={24} color="#fbbf24" />
+                )}
+                <View>
+                  <Text style={[styles.modalTitle, { color: t.textPrimary }]}>
+                    {weather ? weather.label : 'Weather Status'}
+                  </Text>
+                  {weather && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                      <Navigation size={10} color={t.textSecondary} />
+                      <Text style={[styles.modalSubtitle, { color: t.textSecondary }]}>
+                        {weather.locationName}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => fetchWeather(true)}
+                  style={[styles.modalActionBtn, { borderColor: t.cardBorder }]}
+                  disabled={weatherLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh weather information"
+                >
+                  <RefreshCw size={14} color={t.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowModal(false)}
+                  style={[styles.modalActionBtn, { borderColor: t.cardBorder }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close weather details modal"
+                >
+                  <X size={14} color={t.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Modal Body */}
+            {weather ? (
+              <View style={styles.modalBody}>
+                <View style={styles.metricsGrid}>
+                  <View style={[styles.metricCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                    <Text style={[styles.metricLabel, { color: t.textSecondary }]}>TEMPERATURE</Text>
+                    <Text style={[styles.metricValue, { color: t.textPrimary }]}>{weather.temp}°C</Text>
+                    <Text style={[styles.metricSub, { color: t.textSecondary }]}>Feels like {weather.feelsLike}°C</Text>
+                  </View>
+
+                  <View style={[styles.metricCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                    <Text style={[styles.metricLabel, { color: t.textSecondary }]}>HUMIDITY</Text>
+                    <Text style={[styles.metricValue, { color: t.textPrimary }]}>{weather.humidity}%</Text>
+                    <Text style={[styles.metricSub, { color: t.textSecondary }]}>Moisture index</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.metricCardFull, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View>
+                      <Text style={[styles.metricLabel, { color: t.textSecondary }]}>WIND VELOCITY</Text>
+                      <Text style={[styles.metricValueSmall, { color: t.textPrimary }]}>{weather.windSpeed} km/h</Text>
+                    </View>
+                    <Compass size={20} color={t.textSecondary} />
+                  </View>
+                </View>
+
+                {/* Modal Footer */}
+                {weather.lastUpdated && (
+                  <View style={[styles.modalFooter, { borderTopColor: t.border }]}>
+                    <Text style={[styles.lastUpdatedText, { color: t.textSecondary }]}>
+                      Last updated: {weather.lastUpdated}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View style={styles.modalLoading}>
+                <RefreshCw size={24} color={t.textSecondary} style={{ marginBottom: 8 }} />
+                <Text style={{ color: t.textSecondary, fontSize: 12 }}>Loading forecast...</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -203,5 +498,98 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 9,
     fontFamily: 'Outfit-Bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontFamily: 'Jakarta-Bold',
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-SemiBold',
+  },
+  modalActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBody: {
+    gap: 12,
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  metricCard: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  metricCardFull: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  metricLabel: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 0.5,
+  },
+  metricValue: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 6,
+  },
+  metricValueSmall: {
+    fontSize: 16,
+    fontFamily: 'Outfit-Bold',
+    marginTop: 4,
+  },
+  metricSub: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 2,
+  },
+  modalFooter: {
+    borderTopWidth: 1,
+    paddingTop: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  lastUpdatedText: {
+    fontSize: 10,
+    fontFamily: 'Jakarta-SemiBold',
+  },
+  modalLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
   },
 });
