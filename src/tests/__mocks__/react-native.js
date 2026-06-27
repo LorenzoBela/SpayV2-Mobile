@@ -1,0 +1,16 @@
+module.exports = {
+  Platform: { OS: 'ios', select: (obj) => obj.ios || obj.default },
+  StyleSheet: { create: (obj) => obj, flatten: (arr) => Object.assign({}, ...[].concat(arr)) },
+  Dimensions: { get: () => ({ width: 390, height: 844 }) },
+  useWindowDimensions: () => ({ width: 390, height: 844 }),
+  Animated: { View: 'Animated.View', Text: 'Animated.Text', Value: class { constructor(v) { this.value = v; } interpolate() { return 0; } }, timing: () => ({ start: () => {} }), parallel: () => ({ start: () => {} }) },
+  View: 'View',
+  Text: 'Text',
+  TouchableOpacity: 'TouchableOpacity',
+  Pressable: 'Pressable',
+  Modal: 'Modal',
+  ActivityIndicator: 'ActivityIndicator',
+  ScrollView: 'ScrollView',
+  Linking: { openURL: () => Promise.resolve() },
+  BackHandler: { addEventListener: () => ({ remove: () => {} }) },
+};

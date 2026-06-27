@@ -1,0 +1,17 @@
+module.exports = {
+  default: {},
+  applicationName: 'Spay',
+  applicationId: 'com.spay',
+  nativeApplicationVersion: '1.0.0',
+  nativeBuildVersion: '1',
+  manifest: {},
+  expoConfig: {},
+  cacheDirectory: 'file:///cache',
+  documentDirectory: 'file:///docs',
+  getContentUriAsync: () => Promise.resolve('content://uri'),
+  startActivityAsync: () => Promise.resolve(),
+  reloadAsync: () => Promise.resolve(),
+  checkForUpdateAsync: () => Promise.resolve({ isAvailable: false }),
+  fetchUpdateAsync: () => Promise.resolve(),
+  exitApp: () => {},
+};

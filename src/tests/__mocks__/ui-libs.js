@@ -1,0 +1,30 @@
+const React = require('react');
+module.exports = {
+  createShimmerPlaceholder: () => (props) => React.createElement('ShimmerPlaceholder', props, props.children),
+  LinearGradient: 'LinearGradient',
+  Ionicons: 'Ionicons',
+  MaterialIcons: 'MaterialIcons',
+  MaterialCommunityIcons: 'MaterialCommunityIcons',
+  FontAwesome: 'FontAwesome',
+  Svg: 'Svg',
+  Path: 'Path',
+  Circle: 'Circle',
+  Rect: 'Rect',
+  G: 'G',
+  Defs: 'Defs',
+  Stop: 'Stop',
+  BlurView: 'BlurView',
+  Gesture: {
+    Pan: () => ({
+      activeOffsetY: () => ({ failOffsetX: () => ({ onUpdate: () => ({ onEnd: () => ({}) }) }) }),
+    }),
+  },
+  GestureDetector: 'GestureDetector',
+  runOnJS: (fn) => fn,
+  useSharedValue: (init) => ({ value: init }),
+  useAnimatedStyle: () => ({}),
+  withTiming: (val) => val,
+  withSpring: (val) => val,
+  FadeIn: { duration: () => {} },
+  FadeOut: { duration: () => {} },
+};

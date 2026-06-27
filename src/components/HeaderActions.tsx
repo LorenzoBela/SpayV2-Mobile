@@ -2,6 +2,7 @@ import React, { ReactNode, useContext, useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import {
   Bell,
   Calendar,
@@ -93,49 +94,79 @@ export function HeaderWeatherTime() {
         }
       }
 
-      // 1. Geolocate using Free IP API or IP-API
+      // 1. Geolocate using Native GPS or IP Fallback
       let lat = 14.5995;
       let lon = 120.9842;
       let city = 'Manila, PH';
+      let nativeGeoSuccess = false;
 
+      // Attempt high-accuracy Native GPS Geolocation via expo-location
       try {
-        const ipRes = await fetch('https://freeipapi.com/api/json');
-        if (ipRes.ok) {
-          const ipData = await ipRes.json();
-          if (ipData.latitude && ipData.longitude) {
-            lat = ipData.latitude;
-            lon = ipData.longitude;
-            city = ipData.cityName ? `${ipData.cityName}, ${ipData.countryCode || 'PH'}` : city;
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const positionPromise = Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          const timeoutPromise = new Promise<Location.LocationObject | null>((resolve) =>
+            setTimeout(() => resolve(null), 6000)
+          );
+
+          let position = await Promise.race([positionPromise, timeoutPromise]);
+          if (!position) {
+            position = await Location.getLastKnownPositionAsync();
           }
-        } else {
-          const ipRes2 = await fetch('https://ipapi.co/json/');
-          if (ipRes2.ok) {
-            const ipData2 = await ipRes2.json();
-            if (ipData2.latitude && ipData2.longitude) {
-              lat = ipData2.latitude;
-              lon = ipData2.longitude;
-              city = ipData2.city ? `${ipData2.city}, ${ipData2.country_code || 'PH'}` : city;
-            }
+
+          if (position && position.coords) {
+            lat = position.coords.latitude;
+            lon = position.coords.longitude;
+            nativeGeoSuccess = true;
           }
         }
+      } catch (err) {
+        console.warn('Native expo-location failed/denied:', err);
+      }
 
-        // Try to reverse geocode the IP coordinates using BigDataCloud for higher local accuracy!
+      // Fallback to IP Geolocation if Native GPS is unavailable
+      if (!nativeGeoSuccess) {
         try {
-          const geoRes = await fetch(
-            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
-          );
-          if (geoRes.ok) {
-            const geoData = await geoRes.json();
-            const detectedCity = geoData.locality || geoData.city || geoData.principalSubdivision;
-            if (detectedCity) {
-              city = `${detectedCity}, ${geoData.countryCode || 'PH'}`;
+          const ipRes = await fetch('https://freeipapi.com/api/json');
+          if (ipRes.ok) {
+            const ipData = await ipRes.json();
+            if (ipData.latitude && ipData.longitude) {
+              lat = ipData.latitude;
+              lon = ipData.longitude;
+              city = ipData.cityName ? `${ipData.cityName}, ${ipData.countryCode || 'PH'}` : city;
+            }
+          } else {
+            const ipRes2 = await fetch('https://ipapi.co/json/');
+            if (ipRes2.ok) {
+              const ipData2 = await ipRes2.json();
+              if (ipData2.latitude && ipData2.longitude) {
+                lat = ipData2.latitude;
+                lon = ipData2.longitude;
+                city = ipData2.city ? `${ipData2.city}, ${ipData2.country_code || 'PH'}` : city;
+              }
             }
           }
         } catch (err) {
-          console.warn('Failed reverse geocoding IP coordinates:', err);
+          console.error('Failed IP geolocation fallback:', err);
+        }
+      }
+
+      // Reverse geocode active coordinates (GPS or IP) using BigDataCloud for exact local city parity
+      try {
+        const geoRes = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
+        );
+        if (geoRes.ok) {
+          const geoData = await geoRes.json();
+          const detectedCity = geoData.locality || geoData.city || geoData.principalSubdivision;
+          if (detectedCity) {
+            city = `${detectedCity}, ${geoData.countryCode || 'PH'}`;
+          }
         }
       } catch (err) {
-        console.error('Failed IP geolocation:', err);
+        console.warn('Failed reverse geocoding active coordinates:', err);
       }
 
       // 2. Fetch Open-Meteo Weather
