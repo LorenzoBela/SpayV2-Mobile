@@ -19,6 +19,7 @@ import {
   CloudLightning,
   CloudFog,
   Snowflake,
+  Thermometer,
   X
 } from 'lucide-react-native';
 
@@ -40,6 +41,8 @@ interface WeatherInfo {
   label: string;
   locationName: string;
   lastUpdated?: string;
+  rainChance?: number;
+  rainTime?: string;
 }
 
 function getWeatherDetails(code: number) {
@@ -71,17 +74,22 @@ export function HeaderWeatherTime() {
         const cachedTime = await AsyncStorage.getItem('cached_weather_time');
         if (cached && cachedTime && Date.now() - Number(cachedTime) < 1800000) {
           // 30 min cache
-          const parsed = JSON.parse(cached);
-          const date = new Date(Number(cachedTime));
-          parsed.lastUpdated = date.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'Asia/Manila',
-          });
-          setWeather(parsed);
-          setWeatherLoading(false);
-          return;
+          try {
+            const parsed = JSON.parse(cached);
+            if (parsed.rainChance !== undefined) {
+              const date = new Date(Number(cachedTime));
+              parsed.lastUpdated = date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+              });
+              setWeather(parsed);
+              setWeatherLoading(false);
+              return;
+            }
+          } catch (_) {
+            // ignore cache error
+          }
         }
       }
 
@@ -100,13 +108,13 @@ export function HeaderWeatherTime() {
             city = ipData.cityName ? `${ipData.cityName}, ${ipData.countryCode || 'PH'}` : city;
           }
         } else {
-          const ipRes2 = await fetch('http://ip-api.com/json/');
+          const ipRes2 = await fetch('https://ipapi.co/json/');
           if (ipRes2.ok) {
             const ipData2 = await ipRes2.json();
-            if (ipData2.lat && ipData2.lon) {
-              lat = ipData2.lat;
-              lon = ipData2.lon;
-              city = ipData2.city ? `${ipData2.city}, ${ipData2.countryCode || 'PH'}` : city;
+            if (ipData2.latitude && ipData2.longitude) {
+              lat = ipData2.latitude;
+              lon = ipData2.longitude;
+              city = ipData2.city ? `${ipData2.city}, ${ipData2.country_code || 'PH'}` : city;
             }
           }
         }
@@ -132,7 +140,7 @@ export function HeaderWeatherTime() {
 
       // 2. Fetch Open-Meteo Weather
       const weatherRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=precipitation_probability&forecast_days=2&timezone=auto`
       );
       if (!weatherRes.ok) throw new Error();
       const weatherData = await weatherRes.json();
@@ -142,8 +150,47 @@ export function HeaderWeatherTime() {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
-        timeZone: 'Asia/Manila',
       });
+
+      const nowTime = Date.now();
+      let maxProb = 0;
+      let maxProbTimeStr = '';
+      let firstRainTimeStr = '';
+
+      if (
+        weatherData.hourly &&
+        Array.isArray(weatherData.hourly.time) &&
+        Array.isArray(weatherData.hourly.precipitation_probability)
+      ) {
+        const times = weatherData.hourly.time as string[];
+        const probs = weatherData.hourly.precipitation_probability as number[];
+
+        for (let i = 0; i < times.length; i++) {
+          const hourTime = new Date(times[i]).getTime();
+          if (hourTime >= nowTime - 3600000 && hourTime <= nowTime + 24 * 3600000) {
+            const prob = probs[i] ?? 0;
+            if (prob > maxProb) {
+              maxProb = prob;
+              const d = new Date(times[i]);
+              maxProbTimeStr = d.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+              });
+            }
+            if (prob >= 35 && !firstRainTimeStr) {
+              const d = new Date(times[i]);
+              firstRainTimeStr = d.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+              });
+            }
+          }
+        }
+      }
+
+      const rainTime = firstRainTimeStr || maxProbTimeStr || '';
 
       const newWeather: WeatherInfo = {
         temp: Math.round(current.temperature_2m),
@@ -154,6 +201,8 @@ export function HeaderWeatherTime() {
         label: details.label,
         locationName: city,
         lastUpdated: lastUpdatedStr,
+        rainChance: maxProb,
+        rainTime,
       };
 
       setWeather(newWeather);
@@ -165,7 +214,6 @@ export function HeaderWeatherTime() {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
-        timeZone: 'Asia/Manila',
       });
       setWeather({
         temp: 30,
@@ -176,6 +224,8 @@ export function HeaderWeatherTime() {
         label: 'Partly Cloudy',
         locationName: 'Manila, PH',
         lastUpdated: lastUpdatedStr,
+        rainChance: 25,
+        rainTime: '4:00 PM',
       });
     } finally {
       setWeatherLoading(false);
@@ -206,7 +256,6 @@ export function HeaderWeatherTime() {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-    timeZone: 'Asia/Manila',
   });
 
   const timeText = currentTime.toLocaleTimeString('en-US', {
@@ -214,7 +263,6 @@ export function HeaderWeatherTime() {
     minute: '2-digit',
     second: '2-digit',
     hour12: true,
-    timeZone: 'Asia/Manila',
   });
 
   const activeCode = weather ? weather.code : 2;
@@ -237,7 +285,11 @@ export function HeaderWeatherTime() {
           <WeatherIcon size={12} color={weatherColor} />
         )}
         <Text style={[styles.weatherText, { color: t.textSecondary }]}>
-          {weather ? `${weather.temp}°C ${weather.label}` : '--°C'}
+          {weather
+            ? `${weather.temp}°C${
+                weather.rainChance !== undefined ? ` | 🌧️ ${weather.rainChance}%` : ` ${weather.label}`
+              }`
+            : '--°C'}
         </Text>
       </TouchableOpacity>
 
@@ -318,25 +370,43 @@ export function HeaderWeatherTime() {
               <View style={styles.modalBody}>
                 <View style={styles.metricsGrid}>
                   <View style={[styles.metricCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                    <Text style={[styles.metricLabel, { color: t.textSecondary }]}>TEMPERATURE</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.metricLabel, { color: t.textSecondary }]}>TEMPERATURE</Text>
+                      <Thermometer size={14} color="#fbbf24" />
+                    </View>
                     <Text style={[styles.metricValue, { color: t.textPrimary }]}>{weather.temp}°C</Text>
                     <Text style={[styles.metricSub, { color: t.textSecondary }]}>Feels like {weather.feelsLike}°C</Text>
                   </View>
 
                   <View style={[styles.metricCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                    <Text style={[styles.metricLabel, { color: t.textSecondary }]}>HUMIDITY</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.metricLabel, { color: t.textSecondary }]}>HUMIDITY</Text>
+                      <Droplets size={14} color="#38bdf8" />
+                    </View>
                     <Text style={[styles.metricValue, { color: t.textPrimary }]}>{weather.humidity}%</Text>
                     <Text style={[styles.metricSub, { color: t.textSecondary }]}>Moisture index</Text>
                   </View>
                 </View>
 
-                <View style={[styles.metricCardFull, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View>
-                      <Text style={[styles.metricLabel, { color: t.textSecondary }]}>WIND VELOCITY</Text>
-                      <Text style={[styles.metricValueSmall, { color: t.textPrimary }]}>{weather.windSpeed} km/h</Text>
+                <View style={styles.metricsGrid}>
+                  <View style={[styles.metricCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.metricLabel, { color: t.textSecondary }]}>RAIN CHANCE</Text>
+                      <CloudRain size={14} color="#3b82f6" />
                     </View>
-                    <Compass size={20} color={t.textSecondary} />
+                    <Text style={[styles.metricValue, { color: t.textPrimary }]}>{weather.rainChance ?? 0}%</Text>
+                    <Text style={[styles.metricSub, { color: t.textSecondary }]} numberOfLines={1}>
+                      {weather.rainTime ? `~${weather.rainTime}` : 'No rain expected'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.metricCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.metricLabel, { color: t.textSecondary }]}>WIND SPEED</Text>
+                      <Wind size={14} color={t.textSecondary} />
+                    </View>
+                    <Text style={[styles.metricValue, { color: t.textPrimary }]}>{weather.windSpeed} km/h</Text>
+                    <Text style={[styles.metricSub, { color: t.textSecondary }]}>Breeze index</Text>
                   </View>
                 </View>
 
@@ -552,11 +622,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
   },
-  metricCardFull: {
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
   metricLabel: {
     fontSize: 9,
     fontFamily: 'Jakarta-Bold',
@@ -566,11 +631,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: 'Outfit-Bold',
     marginTop: 6,
-  },
-  metricValueSmall: {
-    fontSize: 16,
-    fontFamily: 'Outfit-Bold',
-    marginTop: 4,
   },
   metricSub: {
     fontSize: 9,

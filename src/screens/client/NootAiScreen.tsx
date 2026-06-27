@@ -20,6 +20,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -318,8 +319,17 @@ export default function NootAiScreen() {
     initializeChat(name, 92);
   };
 
-  const initializeChat = (name: string, score: number) => {
-    const firstName = name.split(' ')[0];
+  const initializeChat = async (name: string, score: number) => {
+    try {
+      const saved = await AsyncStorage.getItem('@nootai_mobile_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })));
+          return;
+        }
+      }
+    } catch {}
     setMessages([
       {
         sender: 'ai',
@@ -332,6 +342,12 @@ export default function NootAiScreen() {
   useEffect(() => {
     fetchNootAiMetrics();
   }, []);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      AsyncStorage.setItem('@nootai_mobile_history', JSON.stringify(messages)).catch(() => {});
+    }
+  }, [messages]);
 
   // Sliding window rate limiter identical to web version
   const checkRateLimit = (): { isRateLimited: boolean; reason: string } => {
@@ -415,13 +431,18 @@ export default function NootAiScreen() {
       const token = session?.access_token;
       const apiUrl = getApiUrl();
 
+      const historyToSend = messages.slice(1).map(m => ({
+        role: m.sender === 'ai' ? 'model' : 'user',
+        text: m.text
+      }));
+
       const response = await fetch(`${apiUrl}/api/nootai`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, history: historyToSend }),
       });
 
       const data = await response.json();
@@ -473,6 +494,7 @@ export default function NootAiScreen() {
                 timestamp: new Date(),
               }
             ]);
+            AsyncStorage.removeItem('@nootai_mobile_history').catch(() => {});
           }
         }
       ]
