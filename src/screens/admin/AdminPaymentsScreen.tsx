@@ -429,6 +429,36 @@ export default function AdminPaymentsScreen() {
   const [selectedClientAnalytics, setSelectedClientAnalytics] = useState<any>(null);
   const [loadingClientAnalytics, setLoadingClientAnalytics] = useState(false);
 
+  // Bulk Shopee Review Modal States
+  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const [isBulkReviewOpen, setIsBulkReviewOpen] = useState(false);
+  const [bulkItemsConfig, setBulkItemsConfig] = useState<Record<string, {
+    clientId: string;
+    months: string;
+    paymentMethod: 'promo' | 'regular';
+    itemName: string;
+    orderDate: string;
+    firstPaymentDate: string;
+    category?: string;
+    subcategory?: string;
+  }>>({});
+  const [activeBulkItemId, setActiveBulkItemId] = useState<string | null>(null);
+
+  // Bulk defaults state (Column 1 equivalence)
+  const [batchDefaultClientId, setBatchDefaultClientId] = useState('');
+  const [batchDefaultClientSearch, setBatchDefaultClientSearch] = useState('');
+  const [batchDefaultMonths, setBatchDefaultMonths] = useState('3');
+  const [batchDefaultPaymentMethod, setBatchDefaultPaymentMethod] = useState<'promo' | 'regular'>('promo');
+  const [batchDefaultOrderDate, setBatchDefaultOrderDate] = useState('');
+  const [batchDefaultFirstPaymentDate, setBatchDefaultFirstPaymentDate] = useState('');
+
+  // Individual client search query map for the item overrides list
+  const [individualClientSearch, setIndividualClientSearch] = useState('');
+
+  // Cached credit analytics map for all selected/assigned clients
+  const [bulkClientAnalytics, setBulkClientAnalytics] = useState<Record<string, any>>({});
+
+
   // Bulk select state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkMode, setBulkMode] = useState(false);
@@ -630,6 +660,7 @@ export default function AdminPaymentsScreen() {
       setActionLoading(false);
     }
   };
+
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -1278,6 +1309,276 @@ export default function AdminPaymentsScreen() {
     if (!shopeeClientSearch) return clientsList;
     return clientsList.filter(c => c.name.toLowerCase().includes(shopeeClientSearch.toLowerCase()));
   }, [clientsList, shopeeClientSearch]);
+
+  // Reject Multiple Shopee Imports (Bulk)
+  const handleBulkRejectImports = () => {
+    if (selectedImportIds.length === 0) return;
+    PremiumAlert.alert(
+      'Bulk Reject Shopee Imports',
+      `Are you sure you want to reject and archive all ${selectedImportIds.length} selected Shopee order import requests? This will soft-delete/archive them for auditing.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject Requests',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const response = await callAdminApi('bulk-reject-shopee-imports', { notificationIds: selectedImportIds });
+              if (response.success) {
+                PremiumAlert.alert('Success', `Successfully rejected ${selectedImportIds.length} Shopee import requests.`);
+                setSelectedImportIds([]);
+                queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+              } else {
+                PremiumAlert.alert('Error', response.error || 'Failed to reject Shopee imports.');
+              }
+            } catch (e: any) {
+              PremiumAlert.alert('Error', e?.message || 'Unexpected network error.');
+            } finally {
+              setActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Open Bulk Review modal & initialize config for each item
+  const openBulkReviewModal = () => {
+    if (selectedImportIds.length === 0) return;
+
+    const initialConfig: Record<string, any> = {};
+    const parts = getUtc8DateParts(new Date());
+    const todayStr = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}-${String(parts.date).padStart(2, '0')}`;
+    
+    let nextMonth = parts.month + 1;
+    let nextYear = parts.year;
+    if (nextMonth > 11) {
+      nextMonth = 0;
+      nextYear += 1;
+    }
+    const nextMonth5th = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-05`;
+
+    selectedImportIds.forEach(id => {
+      const imp = shopeeImports.find((i: any) => i.notificationId === id);
+      initialConfig[id] = {
+        clientId: '',
+        months: '3',
+        paymentMethod: 'promo',
+        itemName: imp?.itemName || '',
+        orderDate: todayStr,
+        firstPaymentDate: nextMonth5th,
+        category: '',
+        subcategory: ''
+      };
+    });
+
+    setBulkItemsConfig(initialConfig);
+    setActiveBulkItemId(selectedImportIds[0]);
+
+    // Reset defaults
+    setBatchDefaultClientId('');
+    setBatchDefaultClientSearch('');
+    setBatchDefaultMonths('3');
+    setBatchDefaultPaymentMethod('promo');
+    setBatchDefaultOrderDate(todayStr);
+    setBatchDefaultFirstPaymentDate(nextMonth5th);
+    setIndividualClientSearch('');
+    
+    setIsBulkReviewOpen(true);
+  };
+
+  // Dynamically apply defaults to config
+  const applyBatchDefaults = (
+    clientId: string,
+    months: string,
+    method: 'promo' | 'regular',
+    orderDate: string,
+    firstPaymentDate: string
+  ) => {
+    setBulkItemsConfig(prev => {
+      const next = { ...prev };
+      selectedImportIds.forEach(id => {
+        next[id] = {
+          ...next[id],
+          clientId: clientId || next[id].clientId,
+          months: months || next[id].months,
+          paymentMethod: method || next[id].paymentMethod,
+          orderDate: orderDate || next[id].orderDate,
+          firstPaymentDate: firstPaymentDate || next[id].firstPaymentDate,
+        };
+      });
+      return next;
+    });
+  };
+
+  const fetchClientAnalyticsForId = async (clientId: string) => {
+    if (!clientId || bulkClientAnalytics[clientId]) return;
+    try {
+      const response = await callAdminApi('get-client-analytics', { clientId });
+      if (response?.success) {
+        setBulkClientAnalytics(prev => ({
+          ...prev,
+          [clientId]: response
+        }));
+      }
+    } catch (err) {
+      console.warn('[bulk-analytics] Failed to fetch for:', clientId, err);
+    }
+  };
+
+  const handleDefaultClientChange = (clientId: string) => {
+    setBatchDefaultClientId(clientId);
+    applyBatchDefaults(clientId, batchDefaultMonths, batchDefaultPaymentMethod, batchDefaultOrderDate, batchDefaultFirstPaymentDate);
+    if (clientId) {
+      fetchClientAnalyticsForId(clientId);
+    }
+  };
+
+  const handleDefaultMonthsChange = (months: string) => {
+    setBatchDefaultMonths(months);
+    applyBatchDefaults(batchDefaultClientId, months, batchDefaultPaymentMethod, batchDefaultOrderDate, batchDefaultFirstPaymentDate);
+  };
+
+  const handleDefaultPaymentMethodChange = (method: 'promo' | 'regular') => {
+    setBatchDefaultPaymentMethod(method);
+    applyBatchDefaults(batchDefaultClientId, batchDefaultMonths, method, batchDefaultOrderDate, batchDefaultFirstPaymentDate);
+  };
+
+  const handleDefaultOrderDateChange = (date: string) => {
+    setBatchDefaultOrderDate(date);
+    applyBatchDefaults(batchDefaultClientId, batchDefaultMonths, batchDefaultPaymentMethod, date, batchDefaultFirstPaymentDate);
+  };
+
+  const handleDefaultFirstPaymentDateChange = (date: string) => {
+    setBatchDefaultFirstPaymentDate(date);
+    applyBatchDefaults(batchDefaultClientId, batchDefaultMonths, batchDefaultPaymentMethod, batchDefaultOrderDate, date);
+  };
+
+  // Submit approved Shopee imports in bulk
+  const handleBulkApproveShopeeImportsSubmit = async () => {
+    const unassigned = selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId);
+    if (unassigned) {
+      PremiumAlert.alert('Validation Error', 'Please assign a client to all selected items before submitting.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const payloadItems = selectedImportIds.map(id => {
+        const imp = shopeeImports.find((i: any) => i.notificationId === id);
+        const cfg = bulkItemsConfig[id];
+        return {
+          notificationId: id,
+          finalItemName: cfg.itemName.trim() || imp?.itemName || 'Shopee Order',
+          finalAmount: imp?.amount || 0,
+          finalInstallmentMonths: parseInt(cfg.months, 10),
+          finalClientId: cfg.clientId,
+          paymentMethod: cfg.paymentMethod,
+          orderDate: cfg.orderDate || undefined,
+          firstPaymentDate: cfg.firstPaymentDate || undefined,
+          category: cfg.category || undefined,
+          subcategory: cfg.subcategory || undefined
+        };
+      });
+
+      const response = await callAdminApi('bulk-approve-shopee-imports', {
+        items: payloadItems
+      });
+
+      if (response.success) {
+        PremiumAlert.alert('Success', `Successfully approved and assigned ${selectedImportIds.length} Shopee order(s)!`);
+        setSelectedImportIds([]);
+        setIsBulkReviewOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+      } else {
+        PremiumAlert.alert('Error', response.error || 'Failed to bulk approve Shopee imports.');
+      }
+    } catch (err) {
+      console.error(err);
+      PremiumAlert.alert('Error', 'An unexpected error occurred during bulk processing.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Grouped Credit Exposure impact per unique client in the batch
+  const bulkExposureBreakdown = useMemo(() => {
+    const breakdownMap: Record<string, {
+      clientId: string;
+      clientName: string;
+      currentOutstanding: number;
+      creditLimit: number;
+      projectedNewOrdersTotal: number;
+    }> = {};
+
+    selectedImportIds.forEach(id => {
+      const cfg = bulkItemsConfig[id];
+      if (!cfg || !cfg.clientId) return;
+
+      const imp = shopeeImports.find((i: any) => i.notificationId === id);
+      if (!imp) return;
+
+      const client = clientsList.find(c => c.id === cfg.clientId);
+      const clientName = client?.name || 'Client';
+
+      const termNum = parseInt(cfg.months, 10);
+      const interestDetails = getShopeeInterestDetails(imp.amount, termNum, cfg.paymentMethod);
+      const orderAmount = interestDetails.totalAmount;
+
+      const analytics = bulkClientAnalytics[cfg.clientId];
+      const outstanding = analytics
+        ? (analytics.summary?.totalOutstanding || 0) + (analytics.summary?.totalOverdue || 0)
+        : 0;
+      const limit = analytics?.profile?.creditLimit || 50000;
+
+      if (!breakdownMap[cfg.clientId]) {
+        breakdownMap[cfg.clientId] = {
+          clientId: cfg.clientId,
+          clientName,
+          currentOutstanding: outstanding,
+          creditLimit: limit,
+          projectedNewOrdersTotal: 0
+        };
+      }
+      breakdownMap[cfg.clientId].projectedNewOrdersTotal += orderAmount;
+    });
+
+    return Object.values(breakdownMap);
+  }, [selectedImportIds, bulkItemsConfig, bulkClientAnalytics, shopeeImports, clientsList]);
+
+  // Overall financial summary for selected items
+  const bulkFinancialSummary = useMemo(() => {
+    let totalBaseAmount = 0;
+    let totalInterest = 0;
+    let totalAmountWithInterest = 0;
+    let totalMonthlyPayment = 0;
+
+    selectedImportIds.forEach(id => {
+      const cfg = bulkItemsConfig[id];
+      if (!cfg) return;
+
+      const imp = shopeeImports.find((i: any) => i.notificationId === id);
+      if (!imp) return;
+
+      const base = imp.amount;
+      const termNum = parseInt(cfg.months, 10);
+      const interestDetails = getShopeeInterestDetails(base, termNum, cfg.paymentMethod);
+
+      totalBaseAmount += base;
+      totalInterest += interestDetails.interestAmount;
+      totalAmountWithInterest += interestDetails.totalAmount;
+      totalMonthlyPayment += interestDetails.monthlyPayment;
+    });
+
+    return {
+      totalBaseAmount,
+      totalInterest,
+      totalAmountWithInterest,
+      totalMonthlyPayment
+    };
+  }, [selectedImportIds, bulkItemsConfig, shopeeImports]);
   const tabLabels: Record<PaymentSubTab, string> = {
     ledger: 'Ledger',
     breakdown: 'Breakdown',
@@ -2549,48 +2850,101 @@ export default function AdminPaymentsScreen() {
               </View>
             </View>
 
+            {/* Select All Toggle */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4, paddingHorizontal: 4 }}>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                onPress={() => {
+                  const allIds = filteredImports.map((i: any) => i.notificationId);
+                  const isAllSelected = allIds.every((id: string) => selectedImportIds.includes(id));
+                  if (isAllSelected) {
+                    setSelectedImportIds(prev => prev.filter(id => !allIds.includes(id)));
+                  } else {
+                    setSelectedImportIds(prev => Array.from(new Set([...prev, ...allIds])));
+                  }
+                }}
+              >
+                {filteredImports.length > 0 && filteredImports.map((i: any) => i.notificationId).every((id: string) => selectedImportIds.includes(id)) ? (
+                  <CheckSquare size={18} color="#ee4d2d" />
+                ) : (
+                  <Square size={18} color={t.textSecondary} />
+                )}
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: t.textPrimary }}>
+                  Select All Visible ({filteredImports.length})
+                </Text>
+              </TouchableOpacity>
+
+              {selectedImportIds.length > 0 && (
+                <TouchableOpacity onPress={() => setSelectedImportIds([])}>
+                  <Text style={{ fontSize: 12, color: t.textSecondary, fontWeight: '600' }}>Clear Selection</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             {/* Imports Cards List */}
             <View style={{ gap: 12, marginTop: 4 }}>
               {filteredImports.length > 0 ? (
-                filteredImports.map((imp: any) => (
-                  <View key={imp.notificationId} style={[styles.shopeeCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                    <View style={styles.shopeeCardHeader}>
-                      <View style={[styles.shopeeIconWrapper, { backgroundColor: 'rgba(238, 77, 45, 0.08)' }]}>
-                        <ShoppingBag size={18} color="#ee4d2d" />
-                      </View>
+                filteredImports.map((imp: any) => {
+                  const isChecked = selectedImportIds.includes(imp.notificationId);
+                  return (
+                    <View key={imp.notificationId} style={[styles.shopeeCard, { backgroundColor: t.cardBg, borderColor: isChecked ? '#ee4d2d' : t.cardBorder, flexDirection: 'row', alignItems: 'center', paddingLeft: 12 }]}>
+                      <TouchableOpacity
+                        style={{ paddingRight: 4, paddingVertical: 20 }}
+                        onPress={() => {
+                          setSelectedImportIds(prev =>
+                            prev.includes(imp.notificationId)
+                              ? prev.filter(id => id !== imp.notificationId)
+                              : [...prev, imp.notificationId]
+                          );
+                        }}
+                      >
+                        {isChecked ? (
+                          <CheckSquare size={20} color="#ee4d2d" />
+                        ) : (
+                          <Square size={20} color={t.textSecondary} />
+                        )}
+                      </TouchableOpacity>
+
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.shopeeItemName, { color: t.textPrimary }]} numberOfLines={1}>{imp.itemName}</Text>
-                        <Text style={styles.shopeeOrderIdText}>Order ID: {imp.shopeeOrderId}</Text>
-                        <Text style={styles.shopeeDateText}>Gathered on {formatDate(imp.createdAt)}</Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.shopeeAmount, { color: t.textPrimary }]}>{formatCurrency(imp.amount)}</Text>
-                        <View style={styles.shopeeSourceBadge}>
-                          <Text style={styles.shopeeSourceBadgeText}>EXTENSION</Text>
+                        <View style={[styles.shopeeCardHeader, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+                          <View style={[styles.shopeeIconWrapper, { backgroundColor: 'rgba(238, 77, 45, 0.08)' }]}>
+                            <ShoppingBag size={18} color="#ee4d2d" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.shopeeItemName, { color: t.textPrimary }]} numberOfLines={1}>{imp.itemName}</Text>
+                            <Text style={styles.shopeeOrderIdText}>Order ID: {imp.shopeeOrderId}</Text>
+                            <Text style={styles.shopeeDateText}>Gathered on {formatDate(imp.createdAt)}</Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
+                            <Text style={[styles.shopeeAmount, { color: t.textPrimary }]}>{formatCurrency(imp.amount)}</Text>
+                            <View style={styles.shopeeSourceBadge}>
+                              <Text style={styles.shopeeSourceBadgeText}>EXTENSION</Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={[styles.shopeeCardActions, { borderTopColor: t.border, marginTop: 8 }]}>
+                          <TouchableOpacity
+                            style={[styles.shopeeActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: '#ef4444' }]}
+                            onPress={() => handleRejectImport(imp.notificationId)}
+                            disabled={actionLoading}
+                          >
+                            <Trash2 size={12} color="#ef4444" />
+                            <Text style={[styles.shopeeActionText, { color: '#ef4444' }]}>Reject</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.shopeeActionBtn, { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' }]}
+                            onPress={() => openReviewModal(imp)}
+                            disabled={actionLoading}
+                          >
+                            <Pencil size={12} color="#ffffff" />
+                            <Text style={[styles.shopeeActionText, { color: '#ffffff' }]}>Review</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     </View>
-
-                    <View style={[styles.shopeeCardActions, { borderTopColor: t.border }]}>
-                      <TouchableOpacity
-                        style={[styles.shopeeActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.08)', borderColor: '#ef4444' }]}
-                        onPress={() => handleRejectImport(imp.notificationId)}
-                        disabled={actionLoading}
-                      >
-                        <Trash2 size={12} color="#ef4444" />
-                        <Text style={[styles.shopeeActionText, { color: '#ef4444' }]}>Reject</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.shopeeActionBtn, { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' }]}
-                        onPress={() => openReviewModal(imp)}
-                        disabled={actionLoading}
-                      >
-                        <Pencil size={12} color="#ffffff" />
-                        <Text style={[styles.shopeeActionText, { color: '#ffffff' }]}>Review</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
+                  );
+                })
               ) : (
                 <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                   <ShoppingBag size={36} color={t.textSecondary} style={{ opacity: 0.4, marginBottom: 8 }} />
@@ -2605,7 +2959,7 @@ export default function AdminPaymentsScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Floating Bulk Actions Bar */}
+      {/* Floating Bulk Actions Bar for Ledger */}
       {selectedIds.length > 0 && (
         <View style={[styles.floatingBulkBar, { backgroundColor: t.cardBg, borderTopColor: t.border }]}>
           <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedIds.length} Selected</Text>
@@ -2619,6 +2973,33 @@ export default function AdminPaymentsScreen() {
           </View>
         </View>
       )}
+
+      {/* Floating Bulk Actions Bar for Shopee Imports */}
+      {subTab === 'imports' && selectedImportIds.length > 0 && (
+        <View style={[styles.floatingBulkBar, { backgroundColor: t.cardBg, borderTopColor: t.border }]}>
+          <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedImportIds.length} Selected</Text>
+          <View style={styles.bulkBtnRow}>
+            <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => setSelectedImportIds([])}>
+              <Text style={styles.bulkCancelBtnText}>Deselect</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.bulkConfirmBtn, { backgroundColor: '#ef4444', paddingHorizontal: 12 }]}
+              onPress={handleBulkRejectImports}
+              disabled={actionLoading}
+            >
+              <Text style={styles.bulkConfirmBtnText}>Reject</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.bulkConfirmBtn, { backgroundColor: '#ee4d2d', paddingHorizontal: 12 }]}
+              onPress={openBulkReviewModal}
+              disabled={actionLoading}
+            >
+              <Text style={styles.bulkConfirmBtnText}>Review ({selectedImportIds.length})</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
 
       {/* Payment Details Modal */}
       {selectedPayment && (
@@ -3388,6 +3769,508 @@ export default function AdminPaymentsScreen() {
                     <>
                       <CheckCircle size={16} color="#fff" />
                       <Text style={styles.mainActionText}>Approve & Apply Installment</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
+
+      {/* Shopee Bulk Review & Assign Modal */}
+      {isBulkReviewOpen && (
+        <Modal visible={isBulkReviewOpen} animationType="slide" transparent={false}>
+          <SafeAreaView style={[styles.modalScrollContainer, { backgroundColor: t.bg }]} edges={['top', 'left', 'right', 'bottom']}>
+            <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
+
+            <View style={[styles.detailsHeroBanner, { backgroundColor: t.cardBg, borderBottomColor: t.border, borderBottomWidth: 1.5 }]}>
+              <View style={styles.detailsHeroTopRow}>
+                <View style={styles.detailsHeroTitleCluster}>
+                  <ShoppingBag size={18} color="#ee4d2d" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.detailsHeroEyebrow, { color: '#ee4d2d' }]}>SHOPEE BULK REVIEW</Text>
+                    <Text style={[styles.detailsHeroTitle, { color: t.textPrimary, fontSize: 14 }]} numberOfLines={1}>Assign & Term Setup ({selectedImportIds.length} items)</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[styles.detailsHeroCloseBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', borderColor: t.cardBorder }]}
+                  onPress={() => setIsBulkReviewOpen(false)}
+                  disabled={actionLoading}
+                >
+                  <X size={16} color={t.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              
+              {/* SECTION 1: Batch Defaults / Quick Apply */}
+              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <Sliders size={16} color="#ee4d2d" />
+                  <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>1. Quick Apply Defaults</Text>
+                </View>
+                <Text style={{ fontSize: 11, color: t.textSecondary, marginBottom: 12 }}>
+                  Applying any value here instantly defaults it on all selected items below.
+                </Text>
+
+                {/* Client Search & Horizontal list */}
+                <Text style={[styles.inputLabel, { color: t.textSecondary, marginBottom: 4 }]}>Default Client Profile</Text>
+                <View style={[styles.searchBox, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.border, marginBottom: 8 }]}>
+                  <Search size={14} color={t.textSecondary} />
+                  <TextInput
+                    style={[styles.searchInput, { color: t.textPrimary, fontSize: 12, height: 32 }]}
+                    placeholder="Search defaults client..."
+                    placeholderTextColor={t.textSecondary}
+                    value={batchDefaultClientSearch}
+                    onChangeText={setBatchDefaultClientSearch}
+                  />
+                  {batchDefaultClientSearch ? (
+                    <TouchableOpacity onPress={() => setBatchDefaultClientSearch('')}>
+                      <X size={12} color={t.textSecondary} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                {/* Default Client Horizontal List */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {(() => {
+                    const filtered = clientsList.filter(c => c.name.toLowerCase().includes(batchDefaultClientSearch.toLowerCase()));
+                    return filtered.length > 0 ? (
+                      filtered.map(c => {
+                        const isSelected = batchDefaultClientId === c.id;
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={[
+                              styles.clientRailCard,
+                              { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: isSelected ? '#ee4d2d' : t.border },
+                              isSelected && { borderWidth: 1.5 }
+                            ]}
+                            onPress={() => handleDefaultClientChange(isSelected ? '' : c.id)}
+                          >
+                            <View style={[styles.clientRailAvatar, { backgroundColor: isSelected ? t.accentLight : (isDarkMode ? '#1e293b' : '#f1f5f9') }]}>
+                              <Text style={[styles.clientRailAvatarText, { color: isSelected ? '#ee4d2d' : t.textPrimary }]}>
+                                {c.name.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={[styles.clientRailName, { color: t.textPrimary }]} numberOfLines={1}>
+                              {c.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })
+                    ) : (
+                      <Text style={[styles.emptyText, { marginVertical: 6 }]}>No clients match search.</Text>
+                    );
+                  })()}
+                </ScrollView>
+
+                {batchDefaultClientId ? (
+                  <View style={[styles.selectedClientCallout, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.border, marginTop: 8 }]}>
+                    <Text style={[styles.selectedClientText, { color: t.textPrimary }]}>
+                      Default: <Text style={{ fontWeight: 'bold' }}>{clientsList.find(c => c.id === batchDefaultClientId)?.name}</Text>
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* Term Defaults */}
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.inputLabel, { color: t.textSecondary }]}>Default Term</Text>
+                    <View style={styles.toggleRow}>
+                      {['1', '3', '6', '12'].map((m) => (
+                        <TouchableOpacity
+                          key={m}
+                          style={[styles.toggleBtnMini, { flex: 1, paddingVertical: 6 }, batchDefaultMonths === m && styles.toggleBtnActive]}
+                          onPress={() => handleDefaultMonthsChange(m)}
+                        >
+                          <Text style={[styles.toggleBtnText, { fontSize: 10 }, batchDefaultMonths === m && styles.toggleBtnTextActive]}>{m} Mo</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={{ width: 100 }}>
+                    <Text style={[styles.inputLabel, { color: t.textSecondary }]}>Default Rate</Text>
+                    <View style={styles.toggleRow}>
+                      <TouchableOpacity
+                        style={[styles.toggleBtnMini, { flex: 1, paddingVertical: 6 }, batchDefaultPaymentMethod === 'promo' && styles.toggleBtnActive]}
+                        onPress={() => handleDefaultPaymentMethodChange('promo')}
+                      >
+                        <Text style={[styles.toggleBtnText, { fontSize: 10 }, batchDefaultPaymentMethod === 'promo' && styles.toggleBtnTextActive]}>Promo</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.toggleBtnMini, { flex: 1, paddingVertical: 6 }, batchDefaultPaymentMethod === 'regular' && styles.toggleBtnActive]}
+                        onPress={() => handleDefaultPaymentMethodChange('regular')}
+                      >
+                        <Text style={[styles.toggleBtnText, { fontSize: 10 }, batchDefaultPaymentMethod === 'regular' && styles.toggleBtnTextActive]}>Reg</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Date Defaults */}
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                  <DatePicker
+                    label="Default Order Date"
+                    value={batchDefaultOrderDate}
+                    onChange={handleDefaultOrderDateChange}
+                  />
+                  <DatePicker
+                    label="Default First Payment"
+                    value={batchDefaultFirstPaymentDate}
+                    onChange={handleDefaultFirstPaymentDateChange}
+                  />
+                </View>
+              </View>
+
+              {/* SECTION 2: Per-Item Configuration Card List */}
+              <View style={{ gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
+                  <ListTodo size={16} color="#ee4d2d" />
+                  <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>2. Edit Individual Assignments</Text>
+                </View>
+
+                {selectedImportIds.map(id => {
+                  const imp = shopeeImports.find((i: any) => i.notificationId === id);
+                  if (!imp) return null;
+
+                  const cfg = bulkItemsConfig[id];
+                  if (!cfg) return null;
+
+                  const isActive = activeBulkItemId === id;
+                  const client = clientsList.find(c => c.id === cfg.clientId);
+
+                  return (
+                    <View key={id} style={[styles.shopeeCard, { backgroundColor: t.cardBg, borderColor: isActive ? '#ee4d2d' : t.cardBorder, padding: 12 }]}>
+                      {/* Header row to toggle accordion */}
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                        onPress={() => setActiveBulkItemId(isActive ? null : id)}
+                      >
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text style={[styles.shopeeItemName, { color: t.textPrimary, fontSize: 13 }]} numberOfLines={1}>
+                            {cfg.itemName || imp.itemName}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: t.textSecondary }}>
+                            Amt: {formatCurrency(imp.amount)} | Order ID: {imp.shopeeOrderId}
+                          </Text>
+                          {!isActive && (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, alignItems: 'center' }}>
+                              <Text style={{ fontSize: 9, paddingVertical: 1, paddingHorizontal: 4, borderRadius: 4, backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', color: t.textPrimary, fontWeight: 'bold' }}>
+                                👤 {client ? client.name : 'Unassigned'}
+                              </Text>
+                              <Text style={{ fontSize: 9, color: t.textSecondary }}>
+                                📅 {cfg.orderDate}
+                              </Text>
+                              <Text style={{ fontSize: 9, color: t.textSecondary }}>
+                                💳 {cfg.months} Mos ({cfg.paymentMethod === 'promo' ? 'Promo' : 'Reg'})
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          {client ? (
+                            <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 9, color: '#10b981', fontWeight: 'bold' }}>👤 {client.name}</Text>
+                            </View>
+                          ) : (
+                            <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 9, color: '#ef4444', fontWeight: 'bold' }}>Unassigned</Text>
+                            </View>
+                          )}
+                          {isActive ? <ChevronUp size={16} color={t.textSecondary} /> : <ChevronDown size={16} color={t.textSecondary} />}
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* Expandable Override Form */}
+                      {isActive && (
+                        <View style={{ borderTopWidth: 1, borderTopColor: t.border, marginTop: 10, paddingTop: 10, gap: 12 }}>
+                          {/* Item description */}
+                          <View style={styles.inputContainer}>
+                            <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>Item Description Override</Text>
+                            <TextInput
+                              style={[styles.modalTextInput, { color: t.textPrimary, borderColor: t.border, fontSize: 12, height: 32, paddingVertical: 0 }]}
+                              value={cfg.itemName}
+                              onChangeText={val => {
+                                setBulkItemsConfig(prev => ({
+                                  ...prev,
+                                  [id]: { ...prev[id], itemName: val }
+                                }));
+                              }}
+                              placeholder="Description"
+                              placeholderTextColor={t.textSecondary}
+                            />
+                          </View>
+
+                          {/* Client overrides */}
+                          <View style={styles.inputContainer}>
+                            <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>Assign Person Override</Text>
+                            <View style={[styles.searchBox, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.border, marginBottom: 6 }]}>
+                              <Search size={12} color={t.textSecondary} />
+                              <TextInput
+                                style={[styles.searchInput, { color: t.textPrimary, fontSize: 11, height: 28 }]}
+                                placeholder="Search override client..."
+                                placeholderTextColor={t.textSecondary}
+                                value={individualClientSearch}
+                                onChangeText={setIndividualClientSearch}
+                              />
+                              {individualClientSearch ? (
+                                <TouchableOpacity onPress={() => setIndividualClientSearch('')}>
+                                  <X size={10} color={t.textSecondary} />
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+                              {(() => {
+                                const filtered = clientsList.filter(c => c.name.toLowerCase().includes(individualClientSearch.toLowerCase()));
+                                return filtered.length > 0 ? (
+                                  filtered.map(c => {
+                                    const isSel = cfg.clientId === c.id;
+                                    return (
+                                      <TouchableOpacity
+                                        key={c.id}
+                                        style={[
+                                          styles.clientRailCard,
+                                          { height: 50, paddingHorizontal: 8, backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: isSel ? '#ee4d2d' : t.border },
+                                          isSel && { borderWidth: 1.5 }
+                                        ]}
+                                        onPress={() => {
+                                          setBulkItemsConfig(prev => ({
+                                            ...prev,
+                                            [id]: { ...prev[id], clientId: isSel ? '' : c.id }
+                                          }));
+                                          if (!isSel) {
+                                            fetchClientAnalyticsForId(c.id);
+                                          }
+                                        }}
+                                      >
+                                        <Text style={[styles.clientRailName, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>
+                                          {c.name}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })
+                                ) : (
+                                  <Text style={[styles.emptyText, { fontSize: 10 }]}>No clients.</Text>
+                                );
+                              })()}
+                            </ScrollView>
+                          </View>
+
+                          {/* Term & Method Overrides */}
+                          <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>Installment Term</Text>
+                              <View style={styles.toggleRow}>
+                                {['1', '3', '6', '12'].map((m) => (
+                                  <TouchableOpacity
+                                    key={m}
+                                    style={[styles.toggleBtnMini, { flex: 1, paddingVertical: 4 }, cfg.months === m && styles.toggleBtnActive]}
+                                    onPress={() => {
+                                      setBulkItemsConfig(prev => ({
+                                        ...prev,
+                                        [id]: { ...prev[id], months: m }
+                                      }));
+                                    }}
+                                  >
+                                    <Text style={[styles.toggleBtnText, { fontSize: 9 }, cfg.months === m && styles.toggleBtnTextActive]}>{m} Mo</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            </View>
+
+                            <View style={{ width: 90 }}>
+                              <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>Rate Mode</Text>
+                              <View style={styles.toggleRow}>
+                                <TouchableOpacity
+                                  style={[styles.toggleBtnMini, { flex: 1, paddingVertical: 4 }, cfg.paymentMethod === 'promo' && styles.toggleBtnActive]}
+                                  onPress={() => {
+                                    setBulkItemsConfig(prev => ({
+                                      ...prev,
+                                      [id]: { ...prev[id], paymentMethod: 'promo' }
+                                    }));
+                                  }}
+                                >
+                                  <Text style={[styles.toggleBtnText, { fontSize: 9 }, cfg.paymentMethod === 'promo' && styles.toggleBtnTextActive]}>Promo</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.toggleBtnMini, { flex: 1, paddingVertical: 4 }, cfg.paymentMethod === 'regular' && styles.toggleBtnActive]}
+                                  onPress={() => {
+                                    setBulkItemsConfig(prev => ({
+                                      ...prev,
+                                      [id]: { ...prev[id], paymentMethod: 'regular' }
+                                    }));
+                                  }}
+                                >
+                                  <Text style={[styles.toggleBtnText, { fontSize: 9 }, cfg.paymentMethod === 'regular' && styles.toggleBtnTextActive]}>Reg</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Date Overrides */}
+                          <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <DatePicker
+                              label="Order Date"
+                              value={cfg.orderDate}
+                              onChange={val => {
+                                setBulkItemsConfig(prev => ({
+                                  ...prev,
+                                  [id]: { ...prev[id], orderDate: val }
+                                }));
+                              }}
+                            />
+                            <DatePicker
+                              label="First Payment Date"
+                              value={cfg.firstPaymentDate}
+                              onChange={val => {
+                                setBulkItemsConfig(prev => ({
+                                  ...prev,
+                                  [id]: { ...prev[id], firstPaymentDate: val }
+                                }));
+                              }}
+                            />
+                          </View>
+
+                          {/* Category and Subcategory overrides */}
+                          <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>Category</Text>
+                              <TextInput
+                                style={[styles.modalTextInput, { color: t.textPrimary, borderColor: t.border, fontSize: 12, height: 32 }]}
+                                value={cfg.category}
+                                onChangeText={val => {
+                                  setBulkItemsConfig(prev => ({
+                                    ...prev,
+                                    [id]: { ...prev[id], category: val }
+                                  }));
+                                }}
+                                placeholder="e.g. Shopping"
+                                placeholderTextColor={t.textSecondary}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>Subcategory</Text>
+                              <TextInput
+                                style={[styles.modalTextInput, { color: t.textPrimary, borderColor: t.border, fontSize: 12, height: 32 }]}
+                                value={cfg.subcategory}
+                                onChangeText={val => {
+                                  setBulkItemsConfig(prev => ({
+                                    ...prev,
+                                    [id]: { ...prev[id], subcategory: val }
+                                  }));
+                                }}
+                                placeholder="e.g. Gadgets"
+                                placeholderTextColor={t.textSecondary}
+                              />
+                            </View>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* SECTION 3: Financial Summary & Exposure Breakdown */}
+              <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                  <TrendingUp size={16} color="#ee4d2d" />
+                  <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>3. Exposure & Financial Breakdown</Text>
+                </View>
+
+                {/* Overall Financial Totals */}
+                <View style={{ gap: 6, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: t.border }}>
+                  <View style={styles.financialRow}>
+                    <Text style={{ fontSize: 11, color: t.textSecondary }}>Total Base Amount</Text>
+                    <Text style={{ fontSize: 11, color: t.textPrimary, fontWeight: '600' }}>{formatCurrency(bulkFinancialSummary.totalBaseAmount)}</Text>
+                  </View>
+                  <View style={styles.financialRow}>
+                    <Text style={{ fontSize: 11, color: t.textSecondary }}>Total Interest</Text>
+                    <Text style={{ fontSize: 11, color: t.textPrimary, fontWeight: '600' }}>{formatCurrency(bulkFinancialSummary.totalInterest)}</Text>
+                  </View>
+                  <View style={[styles.financialRow, { marginTop: 2 }]}>
+                    <Text style={{ fontSize: 12, color: t.textPrimary, fontWeight: 'bold' }}>Total Installment Amount</Text>
+                    <Text style={{ fontSize: 12, color: t.textPrimary, fontWeight: 'bold' }}>{formatCurrency(bulkFinancialSummary.totalAmountWithInterest)}</Text>
+                  </View>
+                  <View style={[styles.financialRow, { marginTop: 2 }]}>
+                    <Text style={{ fontSize: 12, color: '#ee4d2d', fontWeight: 'bold' }}>Total Monthly Payment</Text>
+                    <Text style={{ fontSize: 12, color: '#ee4d2d', fontWeight: 'bold' }}>{formatCurrency(bulkFinancialSummary.totalMonthlyPayment)} / mo</Text>
+                  </View>
+                </View>
+
+                {/* Per-Client Credit Utilization indicators */}
+                <View style={{ marginTop: 12, gap: 14 }}>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: t.textPrimary }}>Client Credit Limit Impact</Text>
+                  
+                  {bulkExposureBreakdown.length > 0 ? (
+                    bulkExposureBreakdown.map(client => {
+                      const limit = client.creditLimit;
+                      const outstanding = client.currentOutstanding;
+                      const added = client.projectedNewOrdersTotal;
+                      const projected = outstanding + added;
+                      const isOver = projected > limit;
+                      const remaining = Math.max(0, limit - projected);
+
+                      const currentUtil = Math.min(100, (outstanding / limit) * 100);
+                      const projectedUtil = Math.min(100, (projected / limit) * 100);
+                      const addedUtil = Math.min(100 - currentUtil, Math.max(0, projectedUtil - currentUtil));
+
+                      return (
+                        <View key={client.clientId} style={{ gap: 4 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textPrimary }}>
+                              👤 {client.clientName}
+                            </Text>
+                            <Text style={{ fontSize: 10, color: isOver ? '#ef4444' : '#10b981', fontWeight: '700' }}>
+                              {isOver ? 'Exceeds Limit' : `Rem: ${formatCurrency(remaining)}`}
+                            </Text>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                            <Text style={{ fontSize: 9, color: t.textSecondary }}>
+                              Current: {formatCurrency(outstanding)} | Added: +{formatCurrency(added)}
+                            </Text>
+                            <Text style={{ fontSize: 9, color: t.textSecondary }}>
+                              Limit: {formatCurrency(limit)}
+                            </Text>
+                          </View>
+
+                          {/* Progress utilization bar */}
+                          <View style={[styles.exposureTrackBar, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0', height: 8 }]}>
+                            <View style={[styles.exposureBarCurrent, { width: `${currentUtil}%`, height: 8 }]} />
+                            {addedUtil > 0 && (
+                              <View style={[styles.exposureBarAdded, { width: `${addedUtil}%`, backgroundColor: isOver ? '#ef4444' : '#ee4d2d', height: 8 }]} />
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={{ fontSize: 11, fontStyle: 'italic', color: t.textSecondary, textAlign: 'center' }}>
+                      No clients assigned to selected items yet.
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Bulk Submit button */}
+              <View style={[styles.standardActionsCol, { marginBottom: 30 }]}>
+                <TouchableOpacity
+                  style={[styles.mainActionBtn, { backgroundColor: '#ee4d2d', opacity: selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId) || actionLoading ? 0.6 : 1 }]}
+                  onPress={handleBulkApproveShopeeImportsSubmit}
+                  disabled={actionLoading || selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId)}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <CheckCircle size={16} color="#fff" />
+                      <Text style={styles.mainActionText}>Approve & Apply All ({selectedImportIds.length} Items)</Text>
                     </>
                   )}
                 </TouchableOpacity>
