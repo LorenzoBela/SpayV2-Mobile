@@ -12,6 +12,9 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
+  Animated,
+  Easing,
+  Switch,
 } from 'react-native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -106,11 +109,16 @@ export default function AdminOrdersScreen() {
   const [remarks, setRemarks] = useState('');
   const [clientSearchQuery, setClientSearchQuery] = useState('');
 
+  const [isShared, setIsShared] = useState(false);
+  const [sharedParticipants, setSharedParticipants] = useState<string[]>([]);
+
   // Form states - Assign Order (Bulk mode additions)
   const [isBulkMode, setIsBulkMode] = useState(false);
-  const [bulkOrders, setBulkOrders] = useState<Array<{ id: string; clientId: string; itemName: string; amount: string; months: string; purchaseDate: string; firstPaymentDate: string; remarks: string }>>([]);
+  const [bulkOrders, setBulkOrders] = useState<Array<{ id: string; clientId: string; itemName: string; amount: string; months: string; purchaseDate: string; firstPaymentDate: string; remarks: string; isShared: boolean; participants: string[] }>>([]);
   const [clientSelectorActiveOrderId, setClientSelectorActiveOrderId] = useState<string | null>(null);
   const [bulkClientSearchQuery, setBulkClientSearchQuery] = useState('');
+  const [participantSelectorActiveOrderId, setParticipantSelectorActiveOrderId] = useState<string | null>(null);
+  const [participantSearchQuery, setParticipantSearchQuery] = useState('');
 
   const addBulkOrderRow = () => {
     setBulkOrders(prev => [
@@ -127,6 +135,8 @@ export default function AdminOrdersScreen() {
         })(),
         firstPaymentDate: '',
         remarks: '',
+        isShared: false,
+        participants: [],
       }
     ]);
   };
@@ -135,8 +145,14 @@ export default function AdminOrdersScreen() {
     setBulkOrders(prev => prev.filter(o => o.id !== id));
   };
 
-  const updateBulkOrderRow = (id: string, field: string, value: any) => {
-    setBulkOrders(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
+  const updateBulkOrderRow = (id: string, fieldOrUpdates: string | Record<string, any>, value?: any) => {
+    setBulkOrders(prev => prev.map(o => {
+      if (o.id !== id) return o;
+      if (typeof fieldOrUpdates === 'string') {
+        return { ...o, [fieldOrUpdates]: value };
+      }
+      return { ...o, ...fieldOrUpdates };
+    }));
   };
 
   const clearAssignForm = () => {
@@ -146,10 +162,14 @@ export default function AdminOrdersScreen() {
     setInstallmentMonths('6');
     setRemarks('');
     setFirstPaymentDate('');
+    setIsShared(false);
+    setSharedParticipants([]);
     setIsBulkMode(false);
     setBulkOrders([]);
     setClientSelectorActiveOrderId(null);
     setBulkClientSearchQuery('');
+    setParticipantSelectorActiveOrderId(null);
+    setParticipantSearchQuery('');
   };
 
   useEffect(() => {
@@ -167,6 +187,8 @@ export default function AdminOrdersScreen() {
   const [editFirstPaymentDate, setEditFirstPaymentDate] = useState('');
   const [editRemarks, setEditRemarks] = useState('');
   const [editClientId, setEditClientId] = useState('');
+  const [editIsShared, setEditIsShared] = useState(false);
+  const [editSharedParticipants, setEditSharedParticipants] = useState<string[]>([]);
 
   // Layout and Pagination states
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -212,6 +234,7 @@ export default function AdminOrdersScreen() {
       installment_months: o.installmentMonths,
       order_date: o.orderDate,
       is_paid: o.isPaid,
+      is_shared: o.isShared,
       remarks: o.remarks,
       user_id: o.userId,
       clientName: o.clientName,
@@ -322,6 +345,7 @@ export default function AdminOrdersScreen() {
             purchaseDate: o.purchaseDate,
             firstPaymentDate: o.firstPaymentDate || undefined,
             remarks: o.remarks || undefined,
+            participants: o.isShared ? o.participants : undefined,
           }))
         };
 
@@ -357,6 +381,7 @@ export default function AdminOrdersScreen() {
           purchaseDate,
           firstPaymentDate: firstPaymentDate || undefined,
           remarks: remarks || undefined,
+          participants: isShared ? sharedParticipants : undefined,
         });
 
         if (response.success) {
@@ -393,6 +418,8 @@ export default function AdminOrdersScreen() {
     }
     setEditRemarks(order.remarks || '');
     setEditClientId(order.user_id);
+    setEditIsShared(order.is_shared || false);
+    setEditSharedParticipants((order.participants || []).map((p: any) => p.user_id).filter((id: string) => id !== order.user_id));
     
     setIsEditOpen(true);
   };
@@ -407,11 +434,12 @@ export default function AdminOrdersScreen() {
     const amountChanged = parseFloat(editAmount) !== Number(selectedOrder.amount);
     const termsChanged = parseInt(editMonths, 10) !== selectedOrder.installment_months;
     const clientChanged = editClientId !== selectedOrder.user_id;
+    const sharedParticipantsChanged = editIsShared !== selectedOrder.is_shared || JSON.stringify(editSharedParticipants.sort()) !== JSON.stringify((selectedOrder.participants || []).map((p: any) => p.user_id).filter((id: string) => id !== selectedOrder.user_id).sort());
 
-    if (hasPaidPayments && (amountChanged || termsChanged || clientChanged)) {
+    if (hasPaidPayments && (amountChanged || termsChanged || clientChanged || sharedParticipantsChanged)) {
       PremiumAlert.alert(
         'Locked Fields',
-        'Cannot modify client, terms, or purchase amount because payment collections have already started for this order.'
+        'Cannot modify client, terms, purchase amount, or sharing participants because payment collections have already started for this order.'
       );
       return;
     }
@@ -427,6 +455,7 @@ export default function AdminOrdersScreen() {
         firstPaymentDate: editFirstPaymentDate || undefined,
         remarks: editRemarks || undefined,
         clientId: editClientId,
+        participants: editIsShared ? editSharedParticipants : undefined,
       });
 
       if (response.success) {
@@ -681,7 +710,11 @@ export default function AdminOrdersScreen() {
                   return (
                     <TouchableOpacity
                       key={order.id}
-                      style={[styles.orderGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                      style={[
+                        styles.orderGridCard, 
+                        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+                        order.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+                      ]}
                       onPress={() => {
                         setSelectedOrder(order);
                         setIsDetailsOpen(true);
@@ -691,7 +724,9 @@ export default function AdminOrdersScreen() {
                       <View style={styles.orderGridAvatarCircle}>
                         <ShoppingBag size={20} color="#fff" />
                       </View>
-                      <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>{order.item_name}</Text>
+                      <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                        {order.item_name} {order.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                      </Text>
                       <View style={[styles.clientRow, { justifyContent: 'center' }]}>
                         <User size={10} color={t.textSecondary} />
                         <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
@@ -723,7 +758,11 @@ export default function AdminOrdersScreen() {
                 return (
                   <TouchableOpacity
                     key={order.id}
-                    style={[styles.orderCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+                    style={[
+                      styles.orderCard, 
+                      { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+                      order.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+                    ]}
                     onPress={() => {
                       setSelectedOrder(order);
                       setIsDetailsOpen(true);
@@ -732,7 +771,9 @@ export default function AdminOrdersScreen() {
                   >
                     <View style={styles.orderCardHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.item_name}</Text>
+                        <Text style={[styles.orderItemName, { color: t.textPrimary }]}>
+                          {order.item_name} {order.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                        </Text>
                         <View style={styles.clientRow}>
                           <User size={12} color={t.textSecondary} />
                           <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
@@ -1062,6 +1103,40 @@ export default function AdminOrdersScreen() {
                       </Text>
                     </View>
 
+                    {/* Shared Order Toggle */}
+                    <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12 }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View>
+                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
+                          <Text style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>Split payments across clients</Text>
+                        </View>
+                        <Switch
+                          value={isShared}
+                          onValueChange={setIsShared}
+                          trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
+                          thumbColor={isShared ? '#ee4d2d' : '#f4f3f4'}
+                        />
+                      </View>
+                      
+                      {isShared && (
+                        <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 16 }}>
+                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({sharedParticipants.length})</Text>
+                          <TouchableOpacity
+                            style={[styles.inlineClientSelector, { marginTop: 8 }]}
+                            onPress={() => {
+                              setParticipantSelectorActiveOrderId('single');
+                              setBulkClientSearchQuery('');
+                            }}
+                          >
+                            <Text style={[styles.selectedClientName, { color: sharedParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
+                              {sharedParticipants.length > 0 ? `${sharedParticipants.length} selected` : 'Choose Participants...'}
+                            </Text>
+                            <ChevronDown size={14} color={t.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+
                     <View style={styles.formSectionHeader}>
                       <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
                       <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
@@ -1183,6 +1258,39 @@ export default function AdminOrdersScreen() {
                             </Text>
                             <ChevronDown size={14} color={t.textSecondary} />
                           </TouchableOpacity>
+                        </View>
+
+                        {/* Shared Order Toggle for Bulk */}
+                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View>
+                              <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
+                            </View>
+                            <Switch
+                              value={order.isShared || false}
+                              onValueChange={(val) => updateBulkOrderRow(order.id, { isShared: val, participants: val ? order.participants || [] : [] })}
+                              trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
+                              thumbColor={order.isShared ? '#ee4d2d' : '#f4f3f4'}
+                            />
+                          </View>
+
+                          {order.isShared && (
+                            <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 12 }}>
+                              <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({(order.participants || []).length})</Text>
+                              <TouchableOpacity
+                                style={[styles.inlineClientSelector, { marginTop: 8 }]}
+                                onPress={() => {
+                                  setParticipantSelectorActiveOrderId(order.id);
+                                  setBulkClientSearchQuery('');
+                                }}
+                              >
+                                <Text style={[styles.selectedClientName, { color: (order.participants || []).length > 0 ? t.textPrimary : t.textSecondary }]}>
+                                  {(order.participants || []).length > 0 ? `${(order.participants || []).length} selected` : 'Choose Participants...'}
+                                </Text>
+                                <ChevronDown size={14} color={t.textSecondary} />
+                              </TouchableOpacity>
+                            </View>
+                          )}
                         </View>
 
                         <View style={styles.inputGrid}>
@@ -1450,8 +1558,8 @@ export default function AdminOrdersScreen() {
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                         />
                         <View style={{ flex: 1, marginLeft: 14 }}>
-                          <Text style={[styles.clientListRowName, { color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>
-                          <Text style={[styles.clientListRowEmail, { color: t.textSecondary }]}>{client.email}</Text>
+                          <Text style={[{ fontSize: 14, color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>
+                          <Text style={[{ fontSize: 11, fontWeight: '500', marginTop: 1, color: t.textSecondary }]}>{client.email}</Text>
                         </View>
                         {isSelected ? (
                           <CheckCircle2 size={18} color={t.accent} />
@@ -1462,6 +1570,118 @@ export default function AdminOrdersScreen() {
                     );
                   })
                 }
+              </ScrollView>
+            </View>
+          </SwipeDismissModal>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Sub-modal to select participants for shared orders */}
+      <Modal visible={participantSelectorActiveOrderId !== null} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <SwipeDismissModal onDismiss={() => setParticipantSelectorActiveOrderId(null)}>
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, minHeight: 450 }]}>
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={styles.sheetIconBadge}>
+                    <Users size={16} color={t.accent} />
+                  </View>
+                  <View>
+                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Select Participants</Text>
+                    <Text style={[styles.sheetSubtitle, { color: t.textSecondary }]}>They will split the bill equally</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setParticipantSelectorActiveOrderId(null)}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', margin: 16, paddingHorizontal: 12, borderRadius: 8, height: 40, backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }}>
+                <Search size={18} color={t.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: t.textPrimary, flex: 1, marginLeft: 8 }]}
+                  placeholder="Search name or email"
+                  placeholderTextColor={t.textSecondary}
+                  value={bulkClientSearchQuery}
+                  onChangeText={setBulkClientSearchQuery}
+                  autoFocus={true}
+                />
+              </View>
+
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
+                {profiles
+                  .filter((c: any) =>
+                    !bulkClientSearchQuery ||
+                    c.name.toLowerCase().includes(bulkClientSearchQuery.toLowerCase()) ||
+                    c.email.toLowerCase().includes(bulkClientSearchQuery.toLowerCase())
+                  )
+                  .map((client: any) => {
+                    let isSelected = false;
+                    let isDisabled = false;
+
+                    if (participantSelectorActiveOrderId === 'single') {
+                      isSelected = sharedParticipants.includes(client.id);
+                      isDisabled = selectedClientId === client.id;
+                    } else if (participantSelectorActiveOrderId === 'edit') {
+                      isSelected = editSharedParticipants.includes(client.id);
+                      isDisabled = editClientId === client.id;
+                    } else if (participantSelectorActiveOrderId) {
+                      const order = bulkOrders.find(o => o.id === participantSelectorActiveOrderId);
+                      if (order) {
+                        isSelected = (order.participants || []).includes(client.id);
+                        isDisabled = order.clientId === client.id;
+                      }
+                    }
+
+                    return (
+                      <TouchableOpacity
+                        key={client.id}
+                        style={[
+                          { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+                          { borderColor: t.cardBorder },
+                          isSelected && { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.1)' : '#fff7ed' },
+                          isDisabled && { opacity: 0.5 }
+                        ]}
+                        disabled={isDisabled}
+                        onPress={() => {
+                          if (participantSelectorActiveOrderId === 'single') {
+                            if (isSelected) {
+                              setSharedParticipants(prev => prev.filter(id => id !== client.id));
+                            } else {
+                              setSharedParticipants(prev => [...prev, client.id]);
+                            }
+                          } else if (participantSelectorActiveOrderId === 'edit') {
+                            if (isSelected) {
+                              setEditSharedParticipants(prev => prev.filter(id => id !== client.id));
+                            } else {
+                              setEditSharedParticipants(prev => [...prev, client.id]);
+                            }
+                          } else {
+                            const order = bulkOrders.find(o => o.id === participantSelectorActiveOrderId);
+                            if (order) {
+                              const parts = order.participants || [];
+                              const newParts = isSelected ? parts.filter(id => id !== client.id) : [...parts, client.id];
+                              updateBulkOrderRow(order.id, { participants: newParts });
+                            }
+                          }
+                        }}
+                      >
+                        <Image
+                          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          style={styles.clientListAvatar}
+                        />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={[styles.clientListName, { color: t.textPrimary }]}>{client.name}</Text>
+                          <Text style={[styles.clientListEmail, { color: t.textSecondary }]}>{client.email}</Text>
+                          {isDisabled && <Text style={{ fontSize: 10, color: t.textSecondary, marginTop: 2 }}>Main client cannot be participant</Text>}
+                        </View>
+                        {isSelected && <Check size={20} color={t.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
               </ScrollView>
             </View>
           </SwipeDismissModal>
@@ -1536,6 +1756,52 @@ export default function AdminOrdersScreen() {
                             </TouchableOpacity>
                           ))}
                         </ScrollView>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Shared Order Toggle for Edit */}
+                {selectedOrder && (
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12, opacity: selectedOrder.payments.some((p: any) => p.is_paid) ? 0.65 : 1 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View>
+                        <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
+                        <Text style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>Split payments across clients</Text>
+                      </View>
+                      <Switch
+                        value={editIsShared}
+                        onValueChange={setEditIsShared}
+                        disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
+                        trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
+                        thumbColor={editIsShared ? '#ee4d2d' : '#f4f3f4'}
+                      />
+                    </View>
+                    
+                    {editIsShared && (
+                      <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 16 }}>
+                        <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({editSharedParticipants.length})</Text>
+                        
+                        {selectedOrder.payments.some((p: any) => p.is_paid) ? (
+                          <View style={{ marginTop: 8 }}>
+                            <Text style={[styles.selectedClientName, { color: t.textPrimary }]}>
+                              {editSharedParticipants.length} selected (Locked)
+                            </Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.inlineClientSelector, { marginTop: 8 }]}
+                            onPress={() => {
+                              setParticipantSelectorActiveOrderId('edit');
+                              setBulkClientSearchQuery('');
+                            }}
+                          >
+                            <Text style={[styles.selectedClientName, { color: editSharedParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
+                              {editSharedParticipants.length > 0 ? `${editSharedParticipants.length} selected` : 'Choose Participants...'}
+                            </Text>
+                            <ChevronDown size={14} color={t.textSecondary} />
+                          </TouchableOpacity>
+                        )}
                       </View>
                     )}
                   </View>
@@ -2889,5 +3155,25 @@ const styles = StyleSheet.create({
   addOrderBtnText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  sheetHeader: {
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+  },
+  sheetSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  clientListName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  clientListEmail: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

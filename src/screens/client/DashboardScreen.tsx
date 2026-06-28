@@ -33,6 +33,7 @@ import {
   Send,
   CreditCard,
   ShoppingBag,
+  Users,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -72,6 +73,7 @@ interface RecentOrder {
   installmentMonths: number;
   orderDate: string;
   isPaid: boolean;
+  isShared?: boolean;
 }
 
 interface FinancialMetrics {
@@ -134,6 +136,7 @@ function groupUnpaidBillingMonths(
     itemName: string;
     monthNumber?: number;
     installmentMonths?: number;
+    isShared?: boolean;
   }>,
 ) {
   const unpaidPaymentsByMonth = new Map<string, typeof payments>();
@@ -166,6 +169,7 @@ function groupUnpaidBillingMonths(
         itemName: payment.itemName,
         amount: payment.amountDue,
         dueDate: payment.dueDate.toISOString(),
+        isShared: payment.isShared,
       })),
     };
   });
@@ -758,25 +762,49 @@ export default function DashboardScreen() {
       const globalUnpaid = globalStats && globalStats[0] ? parseFloat(globalStats[0].unpaid_amount_total) : 65000.0;
       const globalAvailable = Math.max(0, globalLimit - globalUnpaid);
 
-      // Check orders
-      const { data: dbOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, item_name, amount, installment_months, order_date, is_paid')
-        .eq('user_id', profileId)
-        .order('order_date', { ascending: false });
+      // Check orders where user is owner or participant
+      const [ownedResult, participantResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared')
+          .eq('user_id', profileId),
+        supabase
+          .from('order_participants')
+          .select('order_id')
+          .eq('user_id', profileId)
+      ]);
 
-      if (ordersError) throw ordersError;
+      if (ownedResult.error) throw ownedResult.error;
+      if (participantResult.error) throw participantResult.error;
+
+      const ownedOrders = ownedResult.data || [];
+      const participantOrderIds = (participantResult.data || []).map(p => p.order_id);
+
+      // Fetch the actual orders for those participant IDs the user doesn't already own
+      const missingOrderIds = participantOrderIds.filter(id => !ownedOrders.some(o => o.id === id));
+      let participantOrders: any[] = [];
+      if (missingOrderIds.length > 0) {
+        const { data: partOrders, error: partOrdersErr } = await supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared')
+          .in('id', missingOrderIds);
+        if (partOrdersErr) throw partOrdersErr;
+        participantOrders = partOrders || [];
+      }
+
+      const dbOrders = [...ownedOrders, ...participantOrders].sort(
+        (a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
+      );
 
       // If empty transactions, fallback to high fidelity demo account parameters
-      if (!dbOrders || dbOrders.length === 0) {
+      if (dbOrders.length === 0) {
         setDemoData(profileName, profileEmail, photoUrl);
         return;
       }
 
-      // We have orders, load payments
       const orderIds = dbOrders.map(o => o.id);
-      let dbPayments: any[] = [];
-      
+
+      // Fetch all payments for those orders
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
         .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
@@ -784,40 +812,113 @@ export default function DashboardScreen() {
         .order('due_date', { ascending: true });
 
       if (paymentsError) throw paymentsError;
-      if (paymentsData) dbPayments = paymentsData;
+      const dbPayments = paymentsData || [];
+
+      // Fetch participants for split amount calculation
+      const { data: dbParticipants, error: participantsErr } = await supabase
+        .from('order_participants')
+        .select('id, order_id, user_id, split_amount, is_paid')
+        .in('order_id', orderIds);
+
+      if (participantsErr) throw participantsErr;
+
+      // Fetch client's own split payments for shared orders
+      const { data: myParticipantPayments, error: myPartPaymentsErr } = await supabase
+        .from('order_participant_payments')
+        .select(`
+          id,
+          payment_id,
+          amount_due,
+          is_paid,
+          paid_at,
+          participant:order_participants!inner (
+            id,
+            order_id,
+            user_id
+          )
+        `)
+        .eq('participant.user_id', profileId);
+
+      if (myPartPaymentsErr) throw myPartPaymentsErr;
 
       // Process in-memory mappings
       const ordersMap = new Map();
-      dbOrders.forEach(o => ordersMap.set(o.id, o));
+      dbOrders.forEach(o => {
+        const isShared = o.is_shared === true;
+        const myPartRecord = dbParticipants?.find(part => part.order_id === o.id && part.user_id === profileId);
+        const splitAmount = isShared && myPartRecord ? parseFloat(myPartRecord.split_amount) : parseFloat(o.amount);
+        const isOrderPaid = isShared ? (myPartRecord?.is_paid ?? false) : o.is_paid;
+
+        ordersMap.set(o.id, {
+          ...o,
+          amount: splitAmount,
+          is_paid: isOrderPaid
+        });
+      });
 
       const allPayments = dbPayments.map(p => {
         const order = ordersMap.get(p.order_id);
+        const isShared = order?.is_shared === true;
+
+        let isPaid = p.is_paid;
+        let amountDue = parseFloat(p.amount_due);
+        let paymentDate = p.payment_date ? parseUtcDate(p.payment_date) : null;
+
+        if (isShared) {
+          const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
+          if (mySplitPay) {
+            isPaid = mySplitPay.is_paid;
+            amountDue = parseFloat(mySplitPay.amount_due);
+            paymentDate = mySplitPay.paid_at ? parseUtcDate(mySplitPay.paid_at) : null;
+          }
+        }
+
         return {
           id: p.id,
           dueDate: parseUtcDate(p.due_date),
-          amountDue: parseFloat(p.amount_due),
-          isPaid: p.is_paid,
-          paymentDate: p.payment_date ? parseUtcDate(p.payment_date) : null,
+          amountDue,
+          isPaid,
+          paymentDate,
           itemName: order?.item_name || 'Purchase Order',
           monthNumber: p.month_number,
           installmentMonths: order?.installment_months || 0,
+          isShared: isShared,
         };
       });
 
-      setAllOrdersList(dbOrders.map(o => ({
-        id: o.id,
-        itemName: o.item_name,
-        amount: parseFloat(o.amount),
-        orderDate: parseUtcDate(o.order_date),
-      })));
+      setAllOrdersList(dbOrders.map(o => {
+        const order = ordersMap.get(o.id);
+        return {
+          id: o.id,
+          itemName: o.item_name,
+          amount: order?.amount || parseFloat(o.amount),
+          orderDate: parseUtcDate(o.order_date),
+        };
+      }));
+
       setAllPaymentsList(dbPayments.map(p => {
         const order = ordersMap.get(p.order_id);
+        const isShared = order?.is_shared === true;
+
+        let isPaid = p.is_paid;
+        let amountDue = parseFloat(p.amount_due);
+        let paymentDate = p.payment_date ? parseUtcDate(p.payment_date) : null;
+
+        if (isShared) {
+          const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
+          if (mySplitPay) {
+            isPaid = mySplitPay.is_paid;
+            amountDue = parseFloat(mySplitPay.amount_due);
+            paymentDate = mySplitPay.paid_at ? parseUtcDate(mySplitPay.paid_at) : null;
+          }
+        }
+
         return {
           id: p.id,
           dueDate: parseUtcDate(p.due_date),
-          amountDue: parseFloat(p.amount_due),
-          isPaid: p.is_paid,
-          paymentDate: p.payment_date ? parseUtcDate(p.payment_date) : null,
+          amountDue,
+          isPaid,
+          paymentDate,
           monthNumber: p.month_number,
           order: {
             itemName: order?.item_name || 'Purchase Order',
@@ -840,14 +941,18 @@ export default function DashboardScreen() {
       setSelectedMonthIndex(0);
 
       // Process recent orders
-      setRecentOrders(dbOrders.slice(0, 4).map(o => ({
-        id: o.id,
-        itemName: o.item_name,
-        amount: parseFloat(o.amount),
-        installmentMonths: o.installment_months,
-        orderDate: o.order_date,
-        isPaid: o.is_paid,
-      })));
+      setRecentOrders(dbOrders.slice(0, 4).map(o => {
+        const order = ordersMap.get(o.id);
+        return {
+          id: o.id,
+          itemName: o.item_name,
+          amount: order?.amount || parseFloat(o.amount),
+          installmentMonths: o.installment_months,
+          orderDate: o.order_date,
+          isPaid: order?.is_paid || o.is_paid,
+          isShared: o.is_shared === true
+        };
+      }));
 
       // 1. Calculate On-Time Rate & Health Score
       let totalCompletedCount = 0;
@@ -1149,6 +1254,12 @@ export default function DashboardScreen() {
                   <Text style={[styles.amountDueDesc, { color: t.textSecondary }]}>
                     Combined bill from {nextMonthlyPayment.paymentCount} active installment{nextMonthlyPayment.paymentCount > 1 ? 's' : ''}.
                   </Text>
+                  {nextMonthlyPayment.payments.some((p: any) => p.isShared) && (
+                     <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center' }}>
+                       <Users size={12} color="#ee4d2d" style={{ marginRight: 4 }}/>
+                       <Text style={{ color: '#ee4d2d', fontSize: 11, fontWeight: '600' }}>Includes shared group expenses</Text>
+                     </View>
+                  )}
                 </>
               ) : (
                 <>
@@ -1183,15 +1294,24 @@ export default function DashboardScreen() {
               <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>Personal Bill Breakdown</Text>
               <View style={[styles.breakdownDivider, { backgroundColor: t.divider }]} />
               {nextMonthlyPayment.payments.map((p: any, idx: number) => (
-                <View key={p.id || idx} style={styles.breakdownItem}>
-                  <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                    {p.itemName}
-                  </Text>
+                <View key={p.id || idx} style={[styles.breakdownItem, p.isShared && { borderLeftWidth: 2, borderLeftColor: '#ee4d2d', paddingLeft: 8 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                    <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                      {p.itemName}
+                    </Text>
+                    {p.isShared && (
+                      <View style={[styles.badge, { borderColor: '#ee4d2d', backgroundColor: 'transparent', marginLeft: 6 }]}>
+                        <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
+                      </View>
+                    )}
+                  </View>
                   <View style={styles.breakdownItemRight}>
                     <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
                       Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                     </Text>
-                    <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>{formatCurrency(p.amount)}</Text>
+                    <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
+                      {formatCurrency(p.amount)}{p.isShared ? ' (Your Split)' : ''}
+                    </Text>
                   </View>
                 </View>
               ))}
@@ -1394,13 +1514,22 @@ export default function DashboardScreen() {
               recentOrders.map((order, idx) => (
                 <View key={order.id || idx} style={[styles.orderItem, idx > 0 && { borderTopWidth: 1, borderColor: t.divider }]}>
                   <View style={styles.orderLeft}>
-                    <Text style={[styles.orderName, { color: t.textPrimary }]}>{order.itemName}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={[styles.orderName, { color: t.textPrimary, flexShrink: 1 }]} numberOfLines={1}>{order.itemName}</Text>
+                      {order.isShared && (
+                        <View style={[styles.badge, { borderColor: '#ee4d2d', backgroundColor: 'rgba(238,77,45,0.08)', marginLeft: 6, paddingVertical: 1, paddingHorizontal: 6 }]}>
+                          <Text style={[styles.badgeText, { color: '#ee4d2d', fontSize: 7, fontFamily: 'Jakarta-Bold' }]}>SHARED</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.orderSub, { color: t.textSecondary }]}>
                       {parseUtcDate(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })} • {order.installmentMonths} Mos
                     </Text>
                   </View>
                   <View style={styles.orderRight}>
-                    <Text style={[styles.orderAmount, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
+                    <Text style={[styles.orderAmount, { color: t.textPrimary }]}>
+                      {formatCurrency(order.amount)}{order.isShared ? ' (Your Split)' : ''}
+                    </Text>
                     <View 
                       style={[
                         styles.statusTag, 

@@ -10,6 +10,7 @@ import {
   RefreshControl,
   TextInput,
   Modal,
+  Switch,
   Platform,
   StatusBar,
   KeyboardAvoidingView,
@@ -31,6 +32,7 @@ import {
   Calendar,
   CreditCard,
   User,
+  Users,
   X,
   Check,
   CheckCircle,
@@ -358,6 +360,7 @@ export default function AdminPaymentsScreen() {
         proof_of_payment: p.proofOfPayment,
         isOverdue,
         itemName: p.itemName,
+        is_shared: p.isShared,
         totalMonths: p.totalMonths,
         clientName: p.clientName,
         clientEmail: p.clientEmail,
@@ -429,6 +432,11 @@ export default function AdminPaymentsScreen() {
   const [selectedClientAnalytics, setSelectedClientAnalytics] = useState<any>(null);
   const [loadingClientAnalytics, setLoadingClientAnalytics] = useState(false);
 
+  // Shopee Shared Order State
+  const [shopeeIsShared, setShopeeIsShared] = useState(false);
+  const [shopeeParticipants, setShopeeParticipants] = useState<string[]>([]);
+  const [shopeeParticipantSelectorActive, setShopeeParticipantSelectorActive] = useState<string | null>(null);
+
   // Bulk Shopee Review Modal States
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [isBulkReviewOpen, setIsBulkReviewOpen] = useState(false);
@@ -438,7 +446,9 @@ export default function AdminPaymentsScreen() {
     paymentMethod: 'promo' | 'regular';
     itemName: string;
     orderDate: string;
-    firstPaymentDate: string;
+    firstPaymentDate?: string;
+    isShared?: boolean;
+    participants?: string[];
     category?: string;
     subcategory?: string;
   }>>({});
@@ -643,6 +653,8 @@ export default function AdminPaymentsScreen() {
         notificationId: selectedImport.notificationId,
         orderDate: shopeeOrderDate || undefined,
         firstPaymentDate: shopeeFirstPaymentDate || undefined,
+        isShared: shopeeIsShared,
+        participants: shopeeIsShared ? shopeeParticipants : undefined,
       });
 
       if (response.success) {
@@ -692,6 +704,7 @@ export default function AdminPaymentsScreen() {
         is_paid: p.is_paid,
         proof_of_payment: p.proof_of_payment,
         isOverdue,
+        isShared: p.order?.is_shared === true,
         itemName: p.order?.item_name || 'Purchase Order',
         totalMonths: p.order?.installment_months || 0,
         clientName: p.order?.profile?.name || 'Unknown Client',
@@ -746,6 +759,7 @@ export default function AdminPaymentsScreen() {
           dueDate: payment.due_date,
           monthNumber: payment.month_number,
           installmentMonths: payment.totalMonths,
+          isShared: payment.isShared,
         });
         clientBillingMap.set(payment.clientId, clientData);
       });
@@ -759,6 +773,7 @@ export default function AdminPaymentsScreen() {
         totalDue: billingTotal,
         earliestDueDate: earliestDue,
         clients: billingClients,
+        payments: monthPayments,
       };
     });
   }, [processedPayments]);
@@ -768,6 +783,7 @@ export default function AdminPaymentsScreen() {
     totalDue: 0,
     earliestDueDate: null,
     clients: [],
+    payments: [],
   };
 
   // Countdown timer clock
@@ -1477,6 +1493,8 @@ export default function AdminPaymentsScreen() {
           paymentMethod: cfg.paymentMethod,
           orderDate: cfg.orderDate || undefined,
           firstPaymentDate: cfg.firstPaymentDate || undefined,
+          isShared: cfg.isShared || false,
+          participants: cfg.isShared ? cfg.participants || [] : undefined,
           category: cfg.category || undefined,
           subcategory: cfg.subcategory || undefined
         };
@@ -1686,6 +1704,12 @@ export default function AdminPaymentsScreen() {
                       : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
                   </Text>
                 </View>
+                {nextBillingSchedule.payments?.some((p: any) => p.isShared) && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, justifyContent: 'center' }}>
+                    <Users size={12} color="#ee4d2d" style={{ marginRight: 4 }} />
+                    <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>INCLUDES SHARED EXPENSES</Text>
+                  </View>
+                )}
               </View>
 
               {/* Divider line */}
@@ -2021,7 +2045,8 @@ export default function AdminPaymentsScreen() {
                           style={[
                             styles.paymentCard,
                             { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                            selected && { borderColor: t.accent, borderWidth: 1.5 }
+                            selected && { borderColor: t.accent, borderWidth: 1.5 },
+                            payment.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
                           ]}
                           onPress={() => {
                             if (bulkMode) {
@@ -2040,7 +2065,9 @@ export default function AdminPaymentsScreen() {
                               </TouchableOpacity>
                             )}
                             <View style={styles.paymentMainInfo}>
-                              <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>{payment.itemName}</Text>
+                              <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                                {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                              </Text>
                               <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
                               <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
                             </View>
@@ -2099,7 +2126,12 @@ export default function AdminPaymentsScreen() {
                         return (
                           <TouchableOpacity
                             key={payment.id}
-                            style={[styles.tableBodyRow, { borderBottomColor: t.border }, selected && { backgroundColor: t.accentLight }]}
+                            style={[
+                              styles.tableBodyRow, 
+                              { borderBottomColor: t.border }, 
+                              selected && { backgroundColor: t.accentLight },
+                              payment.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+                            ]}
                             onPress={() => {
                               if (bulkMode) {
                                 handleSelectToggle(payment.id);
@@ -2119,7 +2151,7 @@ export default function AdminPaymentsScreen() {
                               {payment.clientName}
                             </Text>
                             <Text style={[styles.tableCell, { width: 140, color: t.textPrimary }]} numberOfLines={1}>
-                              {payment.itemName}
+                              {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
                             </Text>
                             <Text style={[styles.tableCell, { width: 70, textAlign: 'center', color: t.textPrimary }]}>
                               {payment.month_number}/{payment.totalMonths}
@@ -2362,7 +2394,7 @@ export default function AdminPaymentsScreen() {
                                             )}
                                             <View style={{ flex: 1 }}>
                                               <Text style={[styles.miniPaymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                                                {p.itemName} (Term {p.month_number}/{p.totalMonths})
+                                                {p.itemName} {p.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>} (Term {p.month_number}/{p.totalMonths})
                                               </Text>
                                               <Text style={styles.dateLabelText}>Due: {formatDate(p.due_date)}</Text>
                                             </View>
@@ -2442,7 +2474,7 @@ export default function AdminPaymentsScreen() {
                               {payment.clientName}
                             </Text>
                             <Text style={[styles.tableCell, { width: 130, color: t.textPrimary }]} numberOfLines={1}>
-                              {payment.itemName}
+                              {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
                             </Text>
                             <Text style={[styles.tableCell, { width: 60, textAlign: 'center', color: t.textPrimary }]}>
                               {payment.month_number}/{payment.totalMonths}
@@ -3594,6 +3626,40 @@ export default function AdminPaymentsScreen() {
                 ) : (
                   <Text style={[styles.shopeeWarningText, { color: '#ef4444', marginTop: 8 }]}>* Please select a client to assign this order.</Text>
                 )}
+
+                {/* Shared Order Toggle */}
+                <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12 }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View>
+                      <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
+                      <Text style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>Split payments across clients</Text>
+                    </View>
+                    <Switch
+                      value={shopeeIsShared}
+                      onValueChange={setShopeeIsShared}
+                      trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
+                      thumbColor={shopeeIsShared ? '#ee4d2d' : '#f4f3f4'}
+                    />
+                  </View>
+                  
+                  {shopeeIsShared && (
+                    <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 16 }}>
+                      <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({shopeeParticipants.length})</Text>
+                      <TouchableOpacity
+                        style={{ marginTop: 8, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: t.border }}
+                        onPress={() => {
+                          setShopeeParticipantSelectorActive('single');
+                        }}
+                      >
+                        <Text style={[{ fontSize: 13 }, { color: shopeeParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
+                          {shopeeParticipants.length > 0 ? `${shopeeParticipants.length} selected` : 'Choose Participants...'}
+                        </Text>
+                        <ChevronDown size={14} color={t.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
               </View>
 
               {/* Client Credit Exposure Indicator */}
@@ -4061,6 +4127,43 @@ export default function AdminPaymentsScreen() {
                             </ScrollView>
                           </View>
 
+                          {/* Shared Order Toggle for Bulk Shopee Import */}
+                          <View style={{ marginTop: 12, marginBottom: 8, padding: 8, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderRadius: 8, borderColor: t.border, borderWidth: 1 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <View>
+                                <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>SHARED ORDER</Text>
+                              </View>
+                              <Switch
+                                value={cfg.isShared || false}
+                                onValueChange={(val) => {
+                                  setBulkItemsConfig(prev => ({
+                                    ...prev,
+                                    [id]: { ...prev[id], isShared: val, participants: val ? prev[id].participants || [] : [] }
+                                  }));
+                                }}
+                                trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
+                                thumbColor={cfg.isShared ? '#ee4d2d' : '#f4f3f4'}
+                              />
+                            </View>
+
+                            {cfg.isShared && (
+                              <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 8 }}>
+                                <Text style={[styles.inputLabel, { color: t.textSecondary, fontSize: 11 }]}>PARTICIPANTS ({(cfg.participants || []).length})</Text>
+                                <TouchableOpacity
+                                  style={[styles.modalTextInput, { borderColor: t.border, marginTop: 4, height: 32, justifyContent: 'center' }]}
+                                  onPress={() => {
+                                    setShopeeParticipantSelectorActive(id);
+                                    setShopeeClientSearch('');
+                                  }}
+                                >
+                                  <Text style={[{ color: (cfg.participants || []).length > 0 ? t.textPrimary : t.textSecondary, fontSize: 12 }]}>
+                                    {(cfg.participants || []).length > 0 ? `${(cfg.participants || []).length} selected` : 'Choose Participants...'}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+
                           {/* Term & Method Overrides */}
                           <View style={{ flexDirection: 'row', gap: 12 }}>
                             <View style={{ flex: 1 }}>
@@ -4114,9 +4217,9 @@ export default function AdminPaymentsScreen() {
 
                           {/* Date Overrides */}
                           <View style={{ flexDirection: 'row', gap: 12 }}>
-                            <DatePicker
-                              label="Order Date"
-                              value={cfg.orderDate}
+                              <DatePicker
+                                label="Order Date"
+                                value={cfg.orderDate || ''}
                               onChange={val => {
                                 setBulkItemsConfig(prev => ({
                                   ...prev,
@@ -4124,9 +4227,9 @@ export default function AdminPaymentsScreen() {
                                 }));
                               }}
                             />
-                            <DatePicker
-                              label="First Payment Date"
-                              value={cfg.firstPaymentDate}
+                              <DatePicker
+                                label="First Payment Date"
+                                value={cfg.firstPaymentDate || ''}
                               onChange={val => {
                                 setBulkItemsConfig(prev => ({
                                   ...prev,
@@ -4279,6 +4382,111 @@ export default function AdminPaymentsScreen() {
           </SafeAreaView>
         </Modal>
       )}
+
+      {/* Sub-modal to select participants for shared shopee orders */}
+      <Modal visible={shopeeParticipantSelectorActive !== null} animationType="slide" transparent={true}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <SwipeDismissModal onDismiss={() => setShopeeParticipantSelectorActive(null)}>
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, minHeight: 450 }]}>
+              <View style={styles.sheetHeroTop}>
+                <View style={styles.sheetTitleCluster}>
+                  <View style={styles.sheetIconBadge}>
+                    <Users size={16} color={t.accent} />
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: t.textPrimary }}>Select Participants</Text>
+                    <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 2 }}>They will split the bill equally</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setShopeeParticipantSelectorActive(null)}>
+                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9', margin: 16, paddingHorizontal: 12, borderRadius: 8, height: 40 }}>
+                <Search size={18} color={t.textSecondary} />
+                <TextInput
+                  style={[{ flex: 1, marginLeft: 8, fontSize: 14 }, { color: t.textPrimary }]}
+                  placeholder="Search name or email"
+                  placeholderTextColor={t.textSecondary}
+                  value={shopeeClientSearch}
+                  onChangeText={setShopeeClientSearch}
+                  autoFocus={true}
+                />
+              </View>
+
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
+                {clientsList
+                  .filter((c: any) =>
+                    !shopeeClientSearch ||
+                    c.name.toLowerCase().includes(shopeeClientSearch.toLowerCase()) ||
+                    c.email.toLowerCase().includes(shopeeClientSearch.toLowerCase())
+                  )
+                  .map((client: any) => {
+                    let isSelected = false;
+                    let isDisabled = false;
+
+                    if (shopeeParticipantSelectorActive === 'single') {
+                      isSelected = shopeeParticipants.includes(client.id);
+                      isDisabled = shopeeClientId === client.id;
+                    } else if (shopeeParticipantSelectorActive) {
+                      const cfg = bulkItemsConfig[shopeeParticipantSelectorActive];
+                      if (cfg) {
+                        isSelected = (cfg.participants || []).includes(client.id);
+                        isDisabled = cfg.clientId === client.id;
+                      }
+                    }
+
+                    return (
+                      <TouchableOpacity
+                        key={client.id}
+                        style={[
+                          { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: t.cardBorder },
+                          isSelected && { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.1)' : '#fff7ed' },
+                          isDisabled && { opacity: 0.5 }
+                        ]}
+                        disabled={isDisabled}
+                        onPress={() => {
+                          if (shopeeParticipantSelectorActive === 'single') {
+                            if (isSelected) {
+                              setShopeeParticipants(prev => prev.filter(id => id !== client.id));
+                            } else {
+                              setShopeeParticipants(prev => [...prev, client.id]);
+                            }
+                          } else {
+                            const cfg = bulkItemsConfig[shopeeParticipantSelectorActive!];
+                            if (cfg) {
+                              const parts = cfg.participants || [];
+                              const newParts = isSelected ? parts.filter(id => id !== client.id) : [...parts, client.id];
+                              setBulkItemsConfig(prev => ({
+                                ...prev,
+                                [shopeeParticipantSelectorActive!]: { ...cfg, participants: newParts }
+                              }));
+                            }
+                          }
+                        }}
+                      >
+                        <Image
+                          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          style={{ width: 40, height: 40, borderRadius: 20 }}
+                        />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={[{ color: t.textPrimary, fontWeight: '600' }]}>{client.name}</Text>
+                          <Text style={[{ color: t.textSecondary, fontSize: 12 }]}>{client.email}</Text>
+                          {isDisabled && <Text style={{ fontSize: 10, color: t.textSecondary, marginTop: 2 }}>Main client cannot be participant</Text>}
+                        </View>
+                        {isSelected && <Check size={20} color={t.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+              </ScrollView>
+            </View>
+          </SwipeDismissModal>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }

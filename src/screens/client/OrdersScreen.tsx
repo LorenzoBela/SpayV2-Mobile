@@ -70,6 +70,8 @@ interface OrderItem {
   paidInstallments: number;
   progressPercent: number;
   payments: PaymentItem[];
+  userId?: string;
+  isShared?: boolean;
 }
 
 export default function OrdersScreen() {
@@ -126,6 +128,7 @@ export default function OrdersScreen() {
   // UI States
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paid'>('all');
+  const [sharingFilter, setSharingFilter] = useState<'all' | 'mine' | 'shared'>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [currentPage, setCurrentPage] = useState(1);
@@ -138,7 +141,7 @@ export default function OrdersScreen() {
   // Reset pagination page on filter/search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm, statusFilter, sharingFilter]);
 
   const fetchOrdersAndAnalytics = async () => {
     refetch();
@@ -185,8 +188,12 @@ export default function OrdersScreen() {
     const matchesSearch = o.itemName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           o.id.toLowerCase().includes(searchTerm.toLowerCase());
     if (!matchesSearch) return false;
-    if (statusFilter === 'active') return !o.isPaid;
-    if (statusFilter === 'paid') return o.isPaid;
+    if (statusFilter === 'active' && o.isPaid) return false;
+    if (statusFilter === 'paid' && !o.isPaid) return false;
+
+    if (sharingFilter === 'mine' && o.userId !== queryOrders?.profileId) return false;
+    if (sharingFilter === 'shared' && o.userId === queryOrders?.profileId) return false;
+
     return true;
   });
 
@@ -348,6 +355,34 @@ export default function OrdersScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+            </View>
+
+            <View style={[styles.filterViewRow, { marginTop: 8 }]}>
+              <View style={[styles.tabsContainer, { backgroundColor: t.divider, flex: 1 }]}>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'mine', label: 'My Orders' },
+                  { id: 'shared', label: 'Shared' },
+                ].map(tab => (
+                  <TouchableOpacity
+                    key={tab.id}
+                    onPress={() => setSharingFilter(tab.id as any)}
+                    style={[
+                      styles.tabButton,
+                      sharingFilter === tab.id && { backgroundColor: t.tabActiveBg },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabButtonText,
+                        { color: sharingFilter === tab.id ? t.textPrimary : t.textSecondary },
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               <View style={[styles.viewToggleContainer, { backgroundColor: t.divider }]}>
                 <TouchableOpacity
@@ -393,8 +428,8 @@ export default function OrdersScreen() {
                       key={order.id}
                       style={[
                         styles.orderCard,
-                        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                        isExpanded && { borderColor: t.accent },
+                        { backgroundColor: t.cardBg, borderColor: order.isShared ? '#ee4d2d' : t.cardBorder, borderStyle: order.isShared ? 'dashed' : 'solid' },
+                        isExpanded && { borderColor: '#ee4d2d' },
                       ]}
                     >
                       {/* Collapsible toggle head */}
@@ -403,7 +438,21 @@ export default function OrdersScreen() {
                         style={styles.orderCardHeader}
                       >
                         <View style={styles.headerLeft}>
-                          <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.itemName}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                            <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.itemName}</Text>
+                            {order.isShared && (
+                              <View style={{
+                                backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
+                                borderColor: 'rgba(238, 77, 45, 0.3)',
+                                borderWidth: 1,
+                                paddingHorizontal: 6,
+                                paddingVertical: 1.5,
+                                borderRadius: 4,
+                              }}>
+                                <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED</Text>
+                              </View>
+                            )}
+                          </View>
                           <Text style={[styles.orderItemDate, { color: t.textSecondary }]}>
                             Ordered {parseUtcDate(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                           </Text>
@@ -519,11 +568,43 @@ export default function OrdersScreen() {
                                         {statusText}
                                       </Text>
                                     </View>
+                                    {order.isShared && p.participantPaidCount !== undefined && (
+                                      <Text style={{ fontSize: 9, color: t.textSecondary, marginTop: 2, fontWeight: '600', textAlign: 'right' }}>
+                                        👥 {p.participantPaidCount}/{p.participantTotalCount} paid
+                                      </Text>
+                                    )}
                                   </View>
                                 </View>
                               );
                             })}
                           </View>
+
+                          {order.isShared && order.participants && (
+                            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: t.divider }}>
+                              <Text style={[styles.scheduleHeading, { color: t.textSecondary, marginBottom: 6 }]}>
+                                SHARING PARTICIPANTS
+                              </Text>
+                              {order.participants.map((part: any) => (
+                                <View key={part.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
+                                    {part.name}
+                                  </Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
+                                      {formatCurrency(part.splitAmount)}
+                                    </Text>
+                                    <Text style={{
+                                      fontSize: 9,
+                                      fontWeight: '800',
+                                      color: part.isPaid ? t.successText : '#eab308',
+                                    }}>
+                                      {part.isPaid ? 'PAID' : 'UNPAID'}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          )}
 
                           {order.remarks && (
                             <View style={[styles.remarksBox, { backgroundColor: t.divider }]}>
@@ -555,8 +636,8 @@ export default function OrdersScreen() {
                       key={order.id}
                       style={[
                         styles.orderListRow,
-                        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                        isExpanded && { borderColor: t.accent },
+                        { backgroundColor: t.cardBg, borderColor: order.isShared ? '#ee4d2d' : t.cardBorder, borderStyle: order.isShared ? 'dashed' : 'solid' },
+                        isExpanded && { borderColor: '#ee4d2d' },
                       ]}
                     >
                       <TouchableOpacity
@@ -568,9 +649,23 @@ export default function OrdersScreen() {
                             <ShoppingBag size={15} color={order.isPaid ? t.successText : '#3b82f6'} />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text style={[styles.orderListRowName, { color: t.textPrimary }]} numberOfLines={1}>
-                              {order.itemName}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                              <Text style={[styles.orderListRowName, { color: t.textPrimary }]} numberOfLines={1}>
+                                {order.itemName}
+                              </Text>
+                              {order.isShared && (
+                                <View style={{
+                                  backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
+                                  borderColor: 'rgba(238, 77, 45, 0.3)',
+                                  borderWidth: 1,
+                                  paddingHorizontal: 4,
+                                  paddingVertical: 1,
+                                  borderRadius: 4,
+                                }}>
+                                  <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
+                                </View>
+                              )}
+                            </View>
                             <Text style={[styles.orderListRowDate, { color: t.textSecondary }]}>
                               {parseUtcDate(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                             </Text>
@@ -677,11 +772,43 @@ export default function OrdersScreen() {
                                         {statusText}
                                       </Text>
                                     </View>
+                                    {order.isShared && p.participantPaidCount !== undefined && (
+                                      <Text style={{ fontSize: 9, color: t.textSecondary, marginTop: 2, fontWeight: '600', textAlign: 'right' }}>
+                                        👥 {p.participantPaidCount}/{p.participantTotalCount} paid
+                                      </Text>
+                                    )}
                                   </View>
                                 </View>
                               );
                             })}
                           </View>
+
+                          {order.isShared && order.participants && (
+                            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: t.divider }}>
+                              <Text style={[styles.scheduleHeading, { color: t.textSecondary, marginBottom: 6 }]}>
+                                SHARING PARTICIPANTS
+                              </Text>
+                              {order.participants.map((part: any) => (
+                                <View key={part.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
+                                    {part.name}
+                                  </Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
+                                      {formatCurrency(part.splitAmount)}
+                                    </Text>
+                                    <Text style={{
+                                      fontSize: 9,
+                                      fontWeight: '800',
+                                      color: part.isPaid ? t.successText : '#eab308',
+                                    }}>
+                                      {part.isPaid ? 'PAID' : 'UNPAID'}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          )}
 
                           {order.remarks && (
                             <View style={[styles.remarksBox, { backgroundColor: t.divider }]}>

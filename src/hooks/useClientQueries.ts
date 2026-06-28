@@ -11,6 +11,8 @@ export interface OrderPaymentItem {
   dueDate: string;
   isPaid: boolean;
   paymentDate: string | null;
+  participantPaidCount?: number;
+  participantTotalCount?: number;
 }
 
 export interface OrderItem {
@@ -24,6 +26,17 @@ export interface OrderItem {
   paidInstallments: number;
   progressPercent: number;
   payments: OrderPaymentItem[];
+  isShared?: boolean;
+  splitAmount?: number;
+  participants?: {
+    id: string;
+    userId: string;
+    name: string;
+    email: string;
+    splitAmount: number;
+    isPaid: boolean;
+  }[];
+  userId?: string;
 }
 
 export interface OrdersData {
@@ -34,6 +47,7 @@ export interface OrdersData {
     paymentStreak: number;
     onTimeRate: number;
   };
+  profileId?: string;
 }
 
 // --- PAYMENTS HOOK INTERFACES ---
@@ -60,6 +74,7 @@ export interface ClientPaymentItem {
   proofOfPayment: string | null;
   status: 'paid' | 'overdue' | 'pending';
   rescheduleHistory: PaymentReschedule[];
+  isShared?: boolean;
 }
 
 export function useClientOrdersQuery() {
@@ -71,24 +86,50 @@ export function useClientOrdersQuery() {
         throw new Error('User not authenticated');
       }
 
-      // Fetch Orders
-      const { data: dbOrders, error: ordersErr } = await supabase
-        .from('orders')
-        .select('id, item_name, amount, installment_months, order_date, remarks, is_paid')
-        .eq('user_id', profileId)
-        .order('order_date', { ascending: false });
+      // 1. Fetch orders where user is owner or participant
+      const [ownedResult, participantResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, remarks, is_paid, is_shared, user_id')
+          .eq('user_id', profileId),
+        supabase
+          .from('order_participants')
+          .select('order_id')
+          .eq('user_id', profileId)
+      ]);
 
-      if (ordersErr) throw ordersErr;
+      if (ownedResult.error) throw ownedResult.error;
+      if (participantResult.error) throw participantResult.error;
 
-      if (!dbOrders || dbOrders.length === 0) {
+      const ownedOrders = ownedResult.data || [];
+      const participantOrderIds = (participantResult.data || []).map(p => p.order_id);
+
+      // Fetch the actual orders for those participant IDs the user doesn't already own
+      const missingOrderIds = participantOrderIds.filter(id => !ownedOrders.some(o => o.id === id));
+      let participantOrders: any[] = [];
+      if (missingOrderIds.length > 0) {
+        const { data: partOrders, error: partOrdersErr } = await supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, remarks, is_paid, is_shared, user_id')
+          .in('id', missingOrderIds);
+        if (partOrdersErr) throw partOrdersErr;
+        participantOrders = partOrders || [];
+      }
+
+      const allOrders = [...ownedOrders, ...participantOrders].sort(
+        (a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
+      );
+
+      if (allOrders.length === 0) {
         return {
           orders: [],
           analytics: { totalOrders: 0, totalSpent: 0, paymentStreak: 0, onTimeRate: 100 },
         };
       }
 
-      // Fetch payments for those orders
-      const orderIds = dbOrders.map((o) => o.id);
+      const orderIds = allOrders.map((o) => o.id);
+
+      // Fetch all payments for those orders
       const { data: paymentsData, error: paymentsErr } = await supabase
         .from('payments')
         .select('id, order_id, month_number, amount_due, due_date, is_paid, payment_date')
@@ -104,62 +145,176 @@ export function useClientOrdersQuery() {
         orderPaymentsMap.set(p.order_id, list);
       });
 
+      // Fetch participants for these orders
+      const { data: dbParticipants, error: participantsErr } = await supabase
+        .from('order_participants')
+        .select(`
+          id,
+          order_id,
+          user_id,
+          split_amount,
+          is_paid,
+          profile:profiles (
+            id,
+            name,
+            email
+          )
+        `)
+        .in('order_id', orderIds);
+
+      if (participantsErr) throw participantsErr;
+
+      // Fetch client's own split payments for shared orders
+      const { data: myParticipantPayments, error: myPartPaymentsErr } = await supabase
+        .from('order_participant_payments')
+        .select(`
+          id,
+          payment_id,
+          amount_due,
+          is_paid,
+          paid_at,
+          participant:order_participants!inner (
+            id,
+            order_id,
+            user_id
+          )
+        `)
+        .eq('participant.user_id', profileId);
+
+      if (myPartPaymentsErr) throw myPartPaymentsErr;
+
+      // Fetch all participant payments for everyone on these orders (to show installment progress)
+      const { data: allParticipantPayments, error: allPartPaymentsErr } = await supabase
+        .from('order_participant_payments')
+        .select(`
+          id,
+          payment_id,
+          is_paid,
+          participant:order_participants!inner (
+            id,
+            order_id,
+            user_id
+          )
+        `)
+        .in('participant.order_id', orderIds);
+
+      if (allPartPaymentsErr) throw allPartPaymentsErr;
+
+      const formattedOrders: OrderItem[] = allOrders.map((o) => {
+        const orderPayments = orderPaymentsMap.get(o.id) || [];
+        const isShared = o.is_shared === true;
+
+        // Find my participant record
+        const myPartRecord = dbParticipants?.find(part => part.order_id === o.id && part.user_id === profileId);
+        const splitAmount = isShared && myPartRecord ? parseFloat(myPartRecord.split_amount) : parseFloat(o.amount);
+
+        // Format participant list
+        const participantsList = (dbParticipants || [])
+          .filter(part => part.order_id === o.id)
+          .map(part => ({
+            id: part.id,
+            userId: part.user_id,
+            name: (part.profile as any)?.name || 'Unknown Participant',
+            email: (part.profile as any)?.email || '',
+            splitAmount: parseFloat(part.split_amount),
+            isPaid: part.is_paid
+          }));
+
+        // Format payments
+        const formattedPayments = orderPayments.map((p) => {
+          let isPaid = p.is_paid;
+          let amountDue = parseFloat(p.amount_due);
+          let paymentDate = p.payment_date;
+
+          if (isShared) {
+            // Find my specific split payment
+            const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
+            if (mySplitPay) {
+              isPaid = mySplitPay.is_paid;
+              amountDue = parseFloat(mySplitPay.amount_due);
+              paymentDate = mySplitPay.paid_at;
+            }
+          }
+
+          // Calculate installment progress
+          const installmentSplits = allParticipantPayments?.filter(ap => ap.payment_id === p.id) || [];
+          const participantPaidCount = installmentSplits.filter(ap => ap.is_paid).length;
+          const participantTotalCount = installmentSplits.length;
+
+          return {
+            id: p.id,
+            monthNumber: p.month_number,
+            amountDue,
+            dueDate: p.due_date,
+            isPaid,
+            paymentDate,
+            participantPaidCount: isShared ? participantPaidCount : undefined,
+            participantTotalCount: isShared ? participantTotalCount : undefined,
+          };
+        });
+
+        const paidCount = formattedPayments.filter((p) => p.isPaid).length;
+        const progressPercent = o.installment_months > 0 ? (paidCount / o.installment_months) * 100 : 0;
+        const isOrderPaid = isShared ? (myPartRecord?.is_paid ?? false) : o.is_paid;
+
+        return {
+          id: o.id,
+          itemName: o.item_name,
+          amount: splitAmount, // Reflect split amount for shared, total amount for personal
+          installmentMonths: parseInt(o.installment_months, 10),
+          orderDate: o.order_date,
+          remarks: o.remarks,
+          isPaid: isOrderPaid,
+          paidInstallments: paidCount,
+          progressPercent,
+          payments: formattedPayments,
+          isShared,
+          splitAmount: isShared ? splitAmount : undefined,
+          participants: isShared ? participantsList : undefined,
+          userId: o.user_id
+        };
+      });
+
+      // Calculate total spent
+      const totalSpent = formattedOrders.reduce((sum, o) => sum + o.amount, 0);
+
       // Calculate Streak & On-Time Rate
-      const allPaidPayments = (paymentsData || [])
-        .filter((p) => p.is_paid)
-        .sort((a, b) => parseUtcDate(b.payment_date || b.due_date).getTime() - parseUtcDate(a.payment_date || a.due_date).getTime());
+      const clientInstallments = formattedOrders.flatMap(o =>
+        o.payments.map(p => ({
+          isPaid: p.isPaid,
+          dueDate: p.dueDate,
+          paymentDate: p.paymentDate
+        }))
+      );
+
+      const allPaidInstallments = clientInstallments
+        .filter(p => p.isPaid)
+        .sort((a, b) => parseUtcDate(b.paymentDate || b.dueDate).getTime() - parseUtcDate(a.paymentDate || a.dueDate).getTime());
 
       let paymentStreak = 0;
-      for (const p of allPaidPayments) {
-        if (p.payment_date && parseUtcDate(p.payment_date) <= parseUtcDate(p.due_date)) {
+      for (const p of allPaidInstallments) {
+        if (p.paymentDate && parseUtcDate(p.paymentDate) <= parseUtcDate(p.dueDate)) {
           paymentStreak++;
         } else {
           break;
         }
       }
 
-      const completedCount = allPaidPayments.length;
-      const onTimeCount = allPaidPayments.filter(
-        (p) => p.payment_date && parseUtcDate(p.payment_date) <= parseUtcDate(p.due_date)
+      const completedCount = allPaidInstallments.length;
+      const onTimeCount = allPaidInstallments.filter(
+        p => p.paymentDate && parseUtcDate(p.paymentDate) <= parseUtcDate(p.dueDate)
       ).length;
       const onTimeRate = completedCount > 0 ? Math.round((onTimeCount / completedCount) * 100) : 100;
-
-      const totalSpent = dbOrders.reduce((sum, o) => sum + parseFloat(o.amount), 0);
-
-      const formattedOrders: OrderItem[] = dbOrders.map((o) => {
-        const orderPayments = orderPaymentsMap.get(o.id) || [];
-        const paidCount = orderPayments.filter((p) => p.is_paid).length;
-        const progressPercent = o.installment_months > 0 ? (paidCount / o.installment_months) * 100 : 0;
-
-        return {
-          id: o.id,
-          itemName: o.item_name,
-          amount: parseFloat(o.amount),
-          installmentMonths: parseInt(o.installment_months, 10),
-          orderDate: o.order_date,
-          remarks: o.remarks,
-          isPaid: o.is_paid,
-          paidInstallments: paidCount,
-          progressPercent,
-          payments: orderPayments.map((p) => ({
-            id: p.id,
-            monthNumber: p.month_number,
-            amountDue: parseFloat(p.amount_due),
-            dueDate: p.due_date,
-            isPaid: p.is_paid,
-            paymentDate: p.payment_date,
-          })),
-        };
-      });
 
       return {
         orders: formattedOrders,
         analytics: {
-          totalOrders: dbOrders.length,
+          totalOrders: allOrders.length,
           totalSpent,
           paymentStreak,
           onTimeRate,
         },
+        profileId,
       };
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -203,7 +358,9 @@ export function useClientPaymentsQuery() {
           order:orders (
             id,
             item_name,
-            installment_months
+            installment_months,
+            is_shared,
+            split_amount
           ),
           payment_reschedule_history (
             id,
@@ -235,6 +392,12 @@ export function useClientPaymentsQuery() {
         const isPaid = p.is_paid;
         const isOverdue = !isPaid && parseUtcDate(rawDueDate).getTime() < nowMs;
 
+        const isShared = p.order?.is_shared === true;
+        const rawSplit = parseFloat(p.order?.split_amount) || 0;
+        const finalAmountDue = isShared && rawSplit > 0
+          ? rawSplit / (p.order?.installment_months || 1)
+          : parseFloat(p.amount_due);
+
         return {
           id: p.id,
           orderId: p.order?.id || '',
@@ -254,6 +417,7 @@ export function useClientPaymentsQuery() {
           proofOfPayment: p.proof_of_payment,
           status: isPaid ? 'paid' : isOverdue ? 'overdue' : 'pending',
           rescheduleHistory: rescheduleArr,
+          isShared,
         };
       });
 

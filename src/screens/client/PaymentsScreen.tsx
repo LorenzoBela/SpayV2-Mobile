@@ -35,9 +35,10 @@ import {
   ChevronDown,
   X,
   Bell,
-  Sun,
   Moon,
   CloudUpload,
+  Users,
+  Sun,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -78,6 +79,7 @@ interface PaymentItem {
   proofOfPayment: string | null;
   status: 'paid' | 'overdue' | 'pending';
   rescheduleHistory: PaymentReschedule[];
+  isShared?: boolean;
 }
 
 interface MonthlyGroup {
@@ -137,6 +139,7 @@ function groupUnpaidBillingMonths(payments: PaymentItem[]) {
         amount: p.amountDue,
         dueDate: p.rawDueDate,
         orderId: p.orderId,
+        isShared: p.isShared,
       })),
     };
   });
@@ -838,6 +841,12 @@ export default function PaymentsScreen() {
                 <View style={styles.countdownBottomAmountCol}>
                   <Text style={[styles.billLabel, { color: t.textSecondary }]}>Your Amount Due</Text>
                   <Text style={[styles.billValue, { color: t.textPrimary }]}>{formatCurrency(nextPaymentCountdown.totalAmount)}</Text>
+                  {nextPaymentCountdown.payments.some((p: any) => p.isShared) && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 8, justifyContent: 'center' }}>
+                      <Users size={12} color="#ee4d2d" style={{ marginRight: 4 }} />
+                      <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>INCLUDES SHARED EXPENSES</Text>
+                    </View>
+                  )}
                   
                   {selectedMonthIndex === 0 ? (
                     <TouchableOpacity
@@ -1077,6 +1086,12 @@ export default function PaymentsScreen() {
                                   {isSelected && <CheckCircle2 size={10} color="#ffffff" />}
                                 </TouchableOpacity>
                               )}
+                              {item.isShared && (
+                                <View style={[styles.sharedBadge, { borderColor: '#ee4d2d' }]}>
+                                  <Users size={8} color="#ee4d2d" />
+                                  <Text style={[styles.sharedBadgeText, { color: '#ee4d2d' }]}>SHARED</Text>
+                                </View>
+                              )}
                               <Text style={[styles.itemNameText, { color: t.textPrimary }]} numberOfLines={1}>
                                 {item.itemName}
                               </Text>
@@ -1089,7 +1104,9 @@ export default function PaymentsScreen() {
                           <View style={styles.cardBody}>
                             <View style={styles.col}>
                               <Text style={styles.bodyLabel}>AMOUNT DUE</Text>
-                              <Text style={[styles.amountText, { color: t.textPrimary }]}>{formatCurrency(item.amountDue)}</Text>
+                              <Text style={[styles.amountText, { color: t.textPrimary }]}>
+                                {formatCurrency(item.amountDue)}{item.isShared ? ' (Your Split)' : ''}
+                              </Text>
                             </View>
                             <View style={styles.col}>
                               <Text style={styles.bodyLabel}>INSTALLMENT MONTH</Text>
@@ -1156,9 +1173,17 @@ export default function PaymentsScreen() {
                                 </TouchableOpacity>
                               )}
                               <View style={{ flex: 1 }}>
-                                <Text style={[styles.listRowName, { color: t.textPrimary }]} numberOfLines={1}>
-                                  {item.itemName}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                  {item.isShared && (
+                                    <View style={[styles.sharedBadge, { borderColor: '#ee4d2d' }]}>
+                                      <Users size={8} color="#ee4d2d" />
+                                      <Text style={[styles.sharedBadgeText, { color: '#ee4d2d' }]}>SHARED</Text>
+                                    </View>
+                                  )}
+                                  <Text style={[styles.listRowName, { color: t.textPrimary }]} numberOfLines={1}>
+                                    {item.itemName}
+                                  </Text>
+                                </View>
                                 <Text style={[styles.listRowSub, { color: t.textSecondary }]}>
                                   Month {item.monthNumber}/{item.installmentMonths} • Due {item.dueDate}
                                   {isOffline && !item.isPaid && " • CACHED"}
@@ -1168,7 +1193,9 @@ export default function PaymentsScreen() {
 
                             <View style={styles.listRowRight}>
                               <View style={{ alignItems: 'flex-end', marginRight: 8 }}>
-                                <Text style={[styles.listRowAmount, { color: t.textPrimary }]}>{formatCurrency(item.amountDue)}</Text>
+                                <Text style={[styles.listRowAmount, { color: t.textPrimary }]}>
+                                  {formatCurrency(item.amountDue)}{item.isShared ? ' (Your Split)' : ''}
+                                </Text>
                                 <Text style={[styles.listRowStatus, { color: labelColor }]}>{statusLabel}</Text>
                               </View>
                               
@@ -1550,16 +1577,26 @@ export default function PaymentsScreen() {
                   return (
                     <View key={p.id || idx} style={[styles.monthPaymentRow, { borderColor: t.divider, backgroundColor: t.divider }]}>
                       <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={[styles.monthPaymentName, { color: t.textPrimary }]} numberOfLines={1}>
-                          {p.itemName}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                          {p.isShared && (
+                            <View style={[styles.sharedBadge, { borderColor: '#ee4d2d' }]}>
+                              <Users size={8} color="#ee4d2d" />
+                              <Text style={[styles.sharedBadgeText, { color: '#ee4d2d' }]}>SHARED</Text>
+                            </View>
+                          )}
+                          <Text style={[styles.monthPaymentName, { color: t.textPrimary }]} numberOfLines={1}>
+                            {p.itemName}
+                          </Text>
+                        </View>
                         <Text style={[styles.monthPaymentSub, { color: t.textSecondary }]}>
                           Month {p.monthNumber}/{p.installmentMonths} • Due {p.dueDate}
                         </Text>
                       </View>
 
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.monthPaymentAmt, { color: t.textPrimary }]}>{formatCurrency(p.amountDue)}</Text>
+                        <Text style={[styles.monthPaymentAmt, { color: t.textPrimary }]}>
+                          {formatCurrency(p.amountDue)}{p.isShared ? ' (Your Split)' : ''}
+                        </Text>
                         <View style={[styles.statusTagBadge, { backgroundColor: statusBg, marginTop: 4 }]}>
                           <Text style={[styles.statusTagBadgeText, { color: labelColor, fontSize: 8 }]}>{statusText}</Text>
                         </View>
@@ -2537,5 +2574,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 12,
     maxWidth: 120,
+  },
+  sharedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  sharedBadgeText: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 0.5,
   },
 });
