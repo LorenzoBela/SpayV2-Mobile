@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   ShoppingBag,
+  Users,
   Receipt,
   TrendingUp,
   Flame,
@@ -191,8 +192,8 @@ export default function OrdersScreen() {
     if (statusFilter === 'active' && o.isPaid) return false;
     if (statusFilter === 'paid' && !o.isPaid) return false;
 
-    if (sharingFilter === 'mine' && o.userId !== queryOrders?.profileId) return false;
-    if (sharingFilter === 'shared' && o.userId === queryOrders?.profileId) return false;
+    if (sharingFilter === 'mine' && o.isShared) return false;
+    if (sharingFilter === 'shared' && !o.isShared) return false;
 
     return true;
   });
@@ -360,9 +361,9 @@ export default function OrdersScreen() {
             <View style={[styles.filterViewRow, { marginTop: 8 }]}>
               <View style={[styles.tabsContainer, { backgroundColor: t.divider, flex: 1 }]}>
                 {[
-                  { id: 'all', label: 'All' },
-                  { id: 'mine', label: 'My Orders' },
-                  { id: 'shared', label: 'Shared' },
+                  { id: 'all', label: 'All Plans' },
+                  { id: 'mine', label: 'Personal' },
+                  { id: 'shared', label: 'Shared Group' },
                 ].map(tab => (
                   <TouchableOpacity
                     key={tab.id}
@@ -442,14 +443,17 @@ export default function OrdersScreen() {
                             <Text style={[styles.orderItemName, { color: t.textPrimary }]}>{order.itemName}</Text>
                             {order.isShared && (
                               <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
                                 backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
                                 borderColor: 'rgba(238, 77, 45, 0.3)',
                                 borderWidth: 1,
                                 paddingHorizontal: 6,
-                                paddingVertical: 1.5,
-                                borderRadius: 4,
+                                paddingVertical: 2,
+                                borderRadius: 10,
                               }}>
-                                <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED</Text>
+                                <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
+                                <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED GROUP</Text>
                               </View>
                             )}
                           </View>
@@ -655,14 +659,17 @@ export default function OrdersScreen() {
                               </Text>
                               {order.isShared && (
                                 <View style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
                                   backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
                                   borderColor: 'rgba(238, 77, 45, 0.3)',
                                   borderWidth: 1,
-                                  paddingHorizontal: 4,
-                                  paddingVertical: 1,
-                                  borderRadius: 4,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 1.5,
+                                  borderRadius: 10,
                                 }}>
-                                  <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
+                                  <Users size={9} color="#ee4d2d" style={{ marginRight: 3 }} />
+                                  <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED GROUP</Text>
                                 </View>
                               )}
                             </View>

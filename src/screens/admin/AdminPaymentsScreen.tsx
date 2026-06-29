@@ -764,8 +764,12 @@ export default function AdminPaymentsScreen() {
         clientBillingMap.set(payment.clientId, clientData);
       });
       
-      const billingClients = Array.from(clientBillingMap.values()).sort((a, b) => b.totalOwed - a.totalOwed);
+      const billingClients = Array.from(clientBillingMap.values()).map((c: any) => ({
+        ...c,
+        hasShared: c.items.some((i: any) => i.isShared),
+      })).sort((a: any, b: any) => b.totalOwed - a.totalOwed);
       const billingTotal = billingClients.reduce((sum, c) => sum + c.totalOwed, 0);
+      const hasShared = monthPayments.some((p: any) => p.isShared);
       
       return {
         monthKey,
@@ -774,6 +778,7 @@ export default function AdminPaymentsScreen() {
         earliestDueDate: earliestDue,
         clients: billingClients,
         payments: monthPayments,
+        hasShared,
       };
     });
   }, [processedPayments]);
@@ -1744,7 +1749,15 @@ export default function AdminPaymentsScreen() {
                           activeOpacity={0.7}
                         >
                           <View style={styles.scheduleItemLeft}>
-                            <Text style={[styles.clientNameText, { color: t.textPrimary }]}>{client.clientName}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={[styles.clientNameText, { color: t.textPrimary }]}>{client.clientName}</Text>
+                              {(client.hasShared || client.items?.some((i: any) => i.isShared)) && (
+                                <View style={{ backgroundColor: '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6, flexDirection: 'row', alignItems: 'center' }}>
+                                  <Users size={10} color="#ee4d2d" style={{ marginRight: 2 }} />
+                                  <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED</Text>
+                                </View>
+                              )}
+                            </View>
                             <Text style={styles.clientEmailText}>{client.email}</Text>
                           </View>
                           <View style={styles.scheduleItemRight}>
@@ -1758,7 +1771,14 @@ export default function AdminPaymentsScreen() {
                             {client.items.map((item: any, idx: number) => (
                               <View key={idx} style={styles.subPaymentRow}>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={[styles.subPaymentItem, { color: t.textPrimary }]}>{item.itemName}</Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={[styles.subPaymentItem, { color: t.textPrimary }]}>{item.itemName}</Text>
+                                    {item.isShared && (
+                                      <View style={{ backgroundColor: '#fee2e2', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, marginLeft: 6 }}>
+                                        <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED</Text>
+                                      </View>
+                                    )}
+                                  </View>
                                   <Text style={styles.subPaymentTerm}>Month {item.monthNumber} of {item.installmentMonths}</Text>
                                 </View>
                                 <Text style={[styles.subPaymentAmount, { color: t.textPrimary }]}>{formatCurrency(item.amountDue)}</Text>

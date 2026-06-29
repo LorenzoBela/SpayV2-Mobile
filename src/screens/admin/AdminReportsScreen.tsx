@@ -258,6 +258,14 @@ export default function AdminReportsScreen() {
     totalOrders: 0,
     retentionRate: 0,
     avgPaymentVelocity: 0,
+    collaborativeBilling: {
+      sharedVolume: 0,
+      individualVolume: 0,
+      sharedCount: 0,
+      individualCount: 0,
+      totalVolume: 0,
+      sharedPercentage: 0,
+    },
   };
 
   const monthlyData = reportsPayload?.monthlyData || [];
@@ -829,6 +837,53 @@ export default function AdminReportsScreen() {
               <View style={styles.velocityScaleLabels}>
                 <Text style={styles.scaleLabelText}>Fast</Text>
                 <Text style={styles.scaleLabelText}>30d</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Card 7: Collaborative Billing Breakdown Hero Card */}
+          <View
+            style={[
+              styles.heroKpiCard,
+              {
+                backgroundColor: isDarkMode ? '#271c19' : '#fff5f2',
+                borderColor: '#ee4d2d',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+              }
+            ]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={[styles.iconWrapper, { backgroundColor: 'rgba(238, 77, 45, 0.15)' }]}>
+                  <Users size={15} color="#ee4d2d" />
+                </View>
+                <Text style={[styles.heroKpiLabel, { color: '#ee4d2d' }]}>Collaborative Billing Volume</Text>
+              </View>
+              <View style={{ backgroundColor: '#ee4d2d', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{metrics.collaborativeBilling?.sharedPercentage || 0}% Shared</Text>
+              </View>
+            </View>
+
+            <Text style={[styles.heroHealthDesc, { color: t.textSecondary }]}>
+              Shared group billing accounts for <Text style={{ color: '#ee4d2d', fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{formatCurrency(metrics.collaborativeBilling?.sharedVolume || 0)}</Text> across {metrics.collaborativeBilling?.sharedCount || 0} plans, vs <Text style={{ color: t.textPrimary, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{formatCurrency(metrics.collaborativeBilling?.individualVolume || 0)}</Text> individual.
+            </Text>
+
+            {/* Split Progress Bar */}
+            <View style={{ marginTop: 4 }}>
+              <View style={{ height: 8, borderRadius: 4, backgroundColor: isDarkMode ? '#334155' : '#e2e8f0', flexDirection: 'row', overflow: 'hidden' }}>
+                <View style={{ flex: Math.max(metrics.collaborativeBilling?.sharedPercentage || 0, 1), backgroundColor: '#ee4d2d' }} />
+                <View style={{ flex: Math.max(100 - (metrics.collaborativeBilling?.sharedPercentage || 0), 1), backgroundColor: '#3b82f6' }} />
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#ee4d2d' }} />
+                  <Text style={{ fontSize: 11, color: t.textSecondary }}>Shared Group ({metrics.collaborativeBilling?.sharedCount || 0})</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6' }} />
+                  <Text style={{ fontSize: 11, color: t.textSecondary }}>Personal ({metrics.collaborativeBilling?.individualCount || 0})</Text>
+                </View>
               </View>
             </View>
           </View>

@@ -29,6 +29,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   type LucideIcon,
+  Users,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { FlashList } from '@shopify/flash-list';
@@ -317,7 +318,8 @@ export default function NotificationsScreen() {
   const renderItem = ({ item, index }: { item: AppNotification; index: number }) => {
     const unread = !item.read_at;
     const catTheme = CATEGORY_THEMES[item.category];
-    const IconComponent = catTheme.icon;
+    const isShared = item.type && item.type.startsWith('SHARED_');
+    const IconComponent = isShared ? Users : catTheme.icon;
 
     return (
       <MotiView

@@ -40,6 +40,7 @@ import {
   Database,
   Key,
   FileText,
+  Users,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../../utils/supabase';
@@ -91,6 +92,11 @@ function iconFor(type: string, category: NotificationCategory) {
       return ShieldAlert;
     case 'AD_ANNOUNCEMENT':
       return Megaphone;
+    case 'SHARED_ORDER_ASSIGNED':
+    case 'SHARED_ORDER_PARTICIPANT_REMOVED':
+    case 'SHARED_ORDER_PARTICIPANT_PAID':
+    case 'SHARED_ORDER_ALL_PAID':
+      return Users;
     default:
       if (category === 'PAYMENT_UPDATES') return CreditCard;
       if (category === 'ALERTS') return ShieldAlert;

@@ -85,7 +85,7 @@ export default function AdminOrdersScreen() {
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'paid'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'paid' | 'shared'>('all');
   const [filterMonthKey, setFilterMonthKey] = useState<string | null>(null);
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(false);
 
@@ -251,7 +251,8 @@ export default function AdminOrdersScreen() {
         amount_due: p.amountDue,
         payment_date: p.paymentDate,
         proof_of_payment: p.proofOfPayment
-      }))
+      })),
+      participants: o.participants || []
     }));
   }, [ordersData]);
 
@@ -572,7 +573,7 @@ export default function AdminOrdersScreen() {
 
       {/* Tabs */}
       <View style={styles.tabsContainer}>
-        {['all', 'active', 'paid'].map((tab) => (
+        {['all', 'active', 'paid', 'shared'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[
@@ -725,8 +726,14 @@ export default function AdminOrdersScreen() {
                         <ShoppingBag size={20} color="#fff" />
                       </View>
                       <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                        {order.item_name} {order.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                        {order.item_name}
                       </Text>
+                      {order.is_shared && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginVertical: 2 }}>
+                          <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
+                          <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED GROUP</Text>
+                        </View>
+                      )}
                       <View style={[styles.clientRow, { justifyContent: 'center' }]}>
                         <User size={10} color={t.textSecondary} />
                         <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
@@ -771,9 +778,17 @@ export default function AdminOrdersScreen() {
                   >
                     <View style={styles.orderCardHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.orderItemName, { color: t.textPrimary }]}>
-                          {order.item_name} {order.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                          <Text style={[styles.orderItemName, { color: t.textPrimary }]}>
+                            {order.item_name}
+                          </Text>
+                          {order.is_shared && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 }}>
+                              <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
+                              <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED GROUP</Text>
+                            </View>
+                          )}
+                        </View>
                         <View style={styles.clientRow}>
                           <User size={12} color={t.textSecondary} />
                           <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
@@ -1133,6 +1148,35 @@ export default function AdminOrdersScreen() {
                             </Text>
                             <ChevronDown size={14} color={t.textSecondary} />
                           </TouchableOpacity>
+
+                          {/* Split-Billing Calculator Inline */}
+                          {(() => {
+                            const totalAmount = parseFloat(amount) || 0;
+                            const monthsCount = parseInt(installmentMonths, 10) || 6;
+                            const totalParts = 1 + sharedParticipants.length;
+                            const splitPrincipal = totalAmount / totalParts;
+                            const splitMonthly = splitPrincipal / monthsCount;
+                            return (
+                              <View style={{ marginTop: 14, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 16, padding: 14 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <View style={{ flex: 1, marginRight: 8 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: '800', color: t.textPrimary }}>
+                                      ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
+                                    </Text>
+                                    <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
+                                      ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / month for {monthsCount} months
+                                    </Text>
+                                  </View>
+                                  <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
+                                      1 Main + {sharedParticipants.length} Split{sharedParticipants.length === 1 ? '' : 's'}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          })()}
                         </View>
                       )}
                     </View>
@@ -1289,6 +1333,36 @@ export default function AdminOrdersScreen() {
                                 </Text>
                                 <ChevronDown size={14} color={t.textSecondary} />
                               </TouchableOpacity>
+
+                              {/* Split-Billing Calculator Inline */}
+                              {(() => {
+                                const totalAmount = parseFloat(order.amount) || 0;
+                                const monthsCount = parseInt(order.months, 10) || 6;
+                                const partsList = order.participants || [];
+                                const totalParts = 1 + partsList.length;
+                                const splitPrincipal = totalAmount / totalParts;
+                                const splitMonthly = splitPrincipal / monthsCount;
+                                return (
+                                  <View style={{ marginTop: 14, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 16, padding: 14 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <View style={{ flex: 1, marginRight: 8 }}>
+                                        <Text style={{ fontSize: 13, fontWeight: '800', color: t.textPrimary }}>
+                                          ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
+                                          ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / month for {monthsCount} months
+                                        </Text>
+                                      </View>
+                                      <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
+                                        <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
+                                          1 Main + {partsList.length} Split{partsList.length === 1 ? '' : 's'}
+                                        </Text>
+                                      </View>
+                                    </View>
+                                  </View>
+                                );
+                              })()}
                             </View>
                           )}
                         </View>
@@ -1501,20 +1575,25 @@ export default function AdminOrdersScreen() {
         >
           <SwipeDismissModal onDismiss={() => setClientSelectorActiveOrderId(null)}>
             <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, minHeight: 450 }]}>
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <Users size={18} color="#ffffff" />
+              <LinearGradient
+                colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+                style={styles.sheetHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <Users size={18} color="#ffffff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER ASSIGNMENT</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Choose Client</Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LEDGER ASSIGNMENT</Text>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Choose Client</Text>
-                  </View>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setClientSelectorActiveOrderId(null)}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setClientSelectorActiveOrderId(null)}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
+              </LinearGradient>
 
               <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff', margin: 16, width: '92%', alignSelf: 'center' }]}>
                 <Search size={15} color={t.textSecondary} />
@@ -1583,35 +1662,108 @@ export default function AdminOrdersScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <SwipeDismissModal onDismiss={() => setParticipantSelectorActiveOrderId(null)}>
-            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, minHeight: 450 }]}>
-              <View style={styles.sheetHeroTop}>
-                <View style={styles.sheetTitleCluster}>
-                  <View style={styles.sheetIconBadge}>
-                    <Users size={16} color={t.accent} />
+            <View style={[styles.sheetContainer, { backgroundColor: isDarkMode ? '#101827' : '#fbfcff', borderColor: t.cardBorder, minHeight: 480, maxHeight: '88%' }]}>
+              <LinearGradient
+                colors={isDarkMode ? ['#1f2937', '#111827'] : ['#fff7ed', '#ffffff']}
+                style={styles.sheetHero}
+              >
+                <View style={styles.sheetHeroTop}>
+                  <View style={styles.sheetTitleCluster}>
+                    <View style={styles.sheetIconBadge}>
+                      <Users size={18} color="#ffffff" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>COLLABORATIVE BILLING</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Select Participants</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Select Participants</Text>
-                    <Text style={[styles.sheetSubtitle, { color: t.textSecondary }]}>They will split the bill equally</Text>
-                  </View>
+                  <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setParticipantSelectorActiveOrderId(null)}>
+                    <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Done</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setParticipantSelectorActiveOrderId(null)}>
-                  <Text style={[styles.sheetCloseText, { color: t.textSecondary }]}>Done</Text>
-                </TouchableOpacity>
-              </View>
+              </LinearGradient>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', margin: 16, paddingHorizontal: 12, borderRadius: 8, height: 40, backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }}>
-                <Search size={18} color={t.textSecondary} />
+              {/* Horizontal Selected Chips Rail */}
+              {(() => {
+                let currentSelectedIds: string[] = [];
+                if (participantSelectorActiveOrderId === 'single') {
+                  currentSelectedIds = sharedParticipants;
+                } else if (participantSelectorActiveOrderId === 'edit') {
+                  currentSelectedIds = editSharedParticipants;
+                } else if (participantSelectorActiveOrderId) {
+                  const order = bulkOrders.find(o => o.id === participantSelectorActiveOrderId);
+                  if (order) {
+                    currentSelectedIds = order.participants || [];
+                  }
+                }
+
+                if (currentSelectedIds.length === 0) return null;
+
+                return (
+                  <View style={{ borderBottomWidth: 1, borderBottomColor: t.border, paddingBottom: 12, paddingHorizontal: 16, paddingTop: 4 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, flexDirection: 'row' }}>
+                      {currentSelectedIds.map(id => {
+                        const client = profiles.find((c: any) => c.id === id);
+                        if (!client) return null;
+                        return (
+                          <View
+                            key={id}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
+                              borderRadius: 100,
+                              paddingLeft: 4,
+                              paddingRight: 10,
+                              paddingVertical: 4,
+                              borderWidth: 1,
+                              borderColor: t.accentLight,
+                              gap: 6
+                            }}
+                          >
+                            <Image
+                              source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=50&bold=true` }}
+                              style={{ width: 20, height: 20, borderRadius: 10 }}
+                              contentFit="cover"
+                            />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>{client.name}</Text>
+                            <TouchableOpacity
+                              onPress={() => {
+                                if (participantSelectorActiveOrderId === 'single') {
+                                  setSharedParticipants(prev => prev.filter(x => x !== id));
+                                } else if (participantSelectorActiveOrderId === 'edit') {
+                                  setEditSharedParticipants(prev => prev.filter(x => x !== id));
+                                } else {
+                                  const order = bulkOrders.find(o => o.id === participantSelectorActiveOrderId);
+                                  if (order) {
+                                    const parts = order.participants || [];
+                                    updateBulkOrderRow(order.id, { participants: parts.filter(x => x !== id) });
+                                  }
+                                }
+                              }}
+                            >
+                              <X size={12} color={t.accent} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                );
+              })()}
+
+              <View style={[styles.searchInputShell, { borderColor: t.cardBorder, backgroundColor: isDarkMode ? '#0b1220' : '#ffffff', margin: 16, width: '92%', alignSelf: 'center', marginBottom: 8 }]}>
+                <Search size={15} color={t.textSecondary} />
                 <TextInput
-                  style={[styles.searchInput, { color: t.textPrimary, flex: 1, marginLeft: 8 }]}
+                  style={[styles.searchInput, { color: t.textPrimary }]}
                   placeholder="Search name or email"
                   placeholderTextColor={t.textSecondary}
                   value={bulkClientSearchQuery}
                   onChangeText={setBulkClientSearchQuery}
-                  autoFocus={true}
                 />
               </View>
 
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}>
                 {profiles
                   .filter((c: any) =>
                     !bulkClientSearchQuery ||
@@ -1640,9 +1792,9 @@ export default function AdminOrdersScreen() {
                       <TouchableOpacity
                         key={client.id}
                         style={[
-                          { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+                          { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, paddingHorizontal: 8 },
                           { borderColor: t.cardBorder },
-                          isSelected && { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.1)' : '#fff7ed' },
+                          isSelected && { backgroundColor: t.accentLight },
                           isDisabled && { opacity: 0.5 }
                         ]}
                         disabled={isDisabled}
@@ -1671,18 +1823,78 @@ export default function AdminOrdersScreen() {
                       >
                         <Image
                           source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
-                          style={styles.clientListAvatar}
+                          style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
+                          contentFit="cover"
                         />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={[styles.clientListName, { color: t.textPrimary }]}>{client.name}</Text>
-                          <Text style={[styles.clientListEmail, { color: t.textSecondary }]}>{client.email}</Text>
+                        <View style={{ flex: 1, marginLeft: 14 }}>
+                          <Text style={[styles.clientListName, { color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>
+                          <Text style={[styles.clientListEmail, { color: t.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">{client.email}</Text>
                           {isDisabled && <Text style={{ fontSize: 10, color: t.textSecondary, marginTop: 2 }}>Main client cannot be participant</Text>}
                         </View>
-                        {isSelected && <Check size={20} color={t.accent} />}
+                        {isSelected ? (
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }}>
+                            <Check size={12} color="#ffffff" strokeWidth={4} />
+                          </View>
+                        ) : isDisabled ? (
+                          <View style={{ opacity: 0.5 }}>
+                            <Users size={16} color={t.textSecondary} />
+                          </View>
+                        ) : (
+                          <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: t.textSecondary }} />
+                        )}
                       </TouchableOpacity>
                     );
-                  })}
+                  })
+                }
               </ScrollView>
+
+              {/* Split-Billing Calculator Floating Card */}
+              {(() => {
+                let currentSelectedIds: string[] = [];
+                let totalAmount = 0;
+                let installmentMonthsCount = 6;
+                if (participantSelectorActiveOrderId === 'single') {
+                  currentSelectedIds = sharedParticipants;
+                  totalAmount = parseFloat(amount) || 0;
+                  installmentMonthsCount = parseInt(installmentMonths, 10) || 6;
+                } else if (participantSelectorActiveOrderId === 'edit') {
+                  currentSelectedIds = editSharedParticipants;
+                  totalAmount = parseFloat(editAmount) || 0;
+                  installmentMonthsCount = parseInt(editMonths, 10) || 6;
+                } else if (participantSelectorActiveOrderId) {
+                  const order = bulkOrders.find(o => o.id === participantSelectorActiveOrderId);
+                  if (order) {
+                    currentSelectedIds = order.participants || [];
+                    totalAmount = parseFloat(order.amount) || 0;
+                    installmentMonthsCount = parseInt(order.months, 10) || 6;
+                  }
+                }
+
+                const totalParts = 1 + currentSelectedIds.length;
+                const splitPrincipal = totalAmount / totalParts;
+                const splitMonthly = splitPrincipal / installmentMonthsCount;
+
+                return (
+                  <View style={{ marginHorizontal: 16, marginBottom: 20, marginTop: 10, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDarkMode ? 0.3 : 0.08, shadowRadius: 8, elevation: 3 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: t.textPrimary }}>
+                          ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
+                        </Text>
+                        <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
+                          ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / month for {installmentMonthsCount} months
+                        </Text>
+                      </View>
+                      <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
+                          1 Main + {currentSelectedIds.length} Split{currentSelectedIds.length === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()}
             </View>
           </SwipeDismissModal>
         </KeyboardAvoidingView>
@@ -1802,6 +2014,35 @@ export default function AdminOrdersScreen() {
                             <ChevronDown size={14} color={t.textSecondary} />
                           </TouchableOpacity>
                         )}
+
+                        {/* Split-Billing Calculator Inline */}
+                        {(() => {
+                          const totalAmount = parseFloat(editAmount) || 0;
+                          const monthsCount = parseInt(editMonths, 10) || 6;
+                          const totalParts = 1 + editSharedParticipants.length;
+                          const splitPrincipal = totalAmount / totalParts;
+                          const splitMonthly = splitPrincipal / monthsCount;
+                          return (
+                            <View style={{ marginTop: 14, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 16, padding: 14 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <View style={{ flex: 1, marginRight: 8 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '800', color: t.textPrimary }}>
+                                    ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
+                                  </Text>
+                                  <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
+                                    ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mo for {monthsCount} mos
+                                  </Text>
+                                </View>
+                                <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
+                                    1 Main + {editSharedParticipants.length} Split{editSharedParticipants.length === 1 ? '' : 's'}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                          );
+                        })()}
                       </View>
                     )}
                   </View>
@@ -2840,6 +3081,7 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     borderWidth: 1.5,
+    flexShrink: 0,
   },
   clientListRowName: {
     fontSize: 14,
