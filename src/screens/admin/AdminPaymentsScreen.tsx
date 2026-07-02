@@ -1384,15 +1384,15 @@ export default function AdminPaymentsScreen() {
   );
 
   const clientsList = useMemo(() => {
-    const clientMap = new Map<string, { id: string; name: string }>();
+    const clientMap = new Map<string, { id: string; name: string; avatarUrl?: string }>();
     profiles.forEach((p: any) => {
       if (p.role === 'CLIENT' || p.role === 'client') {
-        clientMap.set(p.id, { id: p.id, name: p.name });
+        clientMap.set(p.id, { id: p.id, name: p.name, avatarUrl: p.avatar_url || p.avatarUrl || '' });
       }
     });
     receiptsList.forEach(r => {
       if (!clientMap.has(r.clientId)) {
-        clientMap.set(r.clientId, { id: r.clientId, name: r.clientName });
+        clientMap.set(r.clientId, { id: r.clientId, name: r.clientName, avatarUrl: r.avatar_url || r.avatarUrl || '' });
       }
     });
     return Array.from(clientMap.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -3706,7 +3706,11 @@ export default function AdminPaymentsScreen() {
               </View>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+              <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Form Input fields */}
               <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
                 <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Order Details</Text>
@@ -4005,6 +4009,7 @@ export default function AdminPaymentsScreen() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
+            </KeyboardAvoidingView>
           </SafeAreaView>
         </Modal>
       )}
@@ -4034,7 +4039,11 @@ export default function AdminPaymentsScreen() {
               </View>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+              <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               
               {/* SECTION 1: Batch Defaults / Quick Apply */}
               <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, alignItems: 'stretch' }]}>
@@ -4081,11 +4090,10 @@ export default function AdminPaymentsScreen() {
                             ]}
                             onPress={() => handleDefaultClientChange(isSelected ? '' : c.id)}
                           >
-                            <View style={[styles.clientRailAvatar, { backgroundColor: isSelected ? t.accentLight : (isDarkMode ? '#1e293b' : '#f1f5f9') }]}>
-                              <Text style={[styles.clientRailAvatarText, { color: isSelected ? '#ee4d2d' : t.textPrimary }]}>
-                                {c.name.charAt(0).toUpperCase()}
-                              </Text>
-                            </View>
+                            <Image
+                              source={{ uri: c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                              style={{ width: 36, height: 36, borderRadius: 18 }}
+                            />
                             <Text style={[styles.clientRailName, { color: t.textPrimary }]} numberOfLines={1}>
                               {c.name}
                             </Text>
@@ -4255,7 +4263,7 @@ export default function AdminPaymentsScreen() {
                               ) : null}
                             </View>
 
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
                               {(() => {
                                 const filtered = clientsList.filter(c => c.name.toLowerCase().includes(individualClientSearch.toLowerCase()));
                                 return filtered.length > 0 ? (
@@ -4266,7 +4274,7 @@ export default function AdminPaymentsScreen() {
                                         key={c.id}
                                         style={[
                                           styles.clientRailCard,
-                                          { height: 50, paddingHorizontal: 8, backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: isSel ? '#ee4d2d' : t.border },
+                                          { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: isSel ? '#ee4d2d' : t.border },
                                           isSel && { borderWidth: 1.5 }
                                         ]}
                                         onPress={() => {
@@ -4279,14 +4287,18 @@ export default function AdminPaymentsScreen() {
                                           }
                                         }}
                                       >
-                                        <Text style={[styles.clientRailName, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>
+                                        <Image
+                                          source={{ uri: c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                                          style={{ width: 36, height: 36, borderRadius: 18 }}
+                                        />
+                                        <Text style={[styles.clientRailName, { color: t.textPrimary }]} numberOfLines={1}>
                                           {c.name}
                                         </Text>
                                       </TouchableOpacity>
                                     );
                                   })
                                 ) : (
-                                  <Text style={[styles.emptyText, { fontSize: 10 }]}>No clients.</Text>
+                                  <Text style={[styles.emptyText, { marginVertical: 6 }]}>No clients.</Text>
                                 );
                               })()}
                             </ScrollView>
@@ -4544,6 +4556,7 @@ export default function AdminPaymentsScreen() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
+            </KeyboardAvoidingView>
           </SafeAreaView>
         </Modal>
       )}
