@@ -367,6 +367,7 @@ export default function AdminPaymentsScreen() {
         clientId: p.clientId,
         clientAvatarUrl: p.clientAvatarUrl,
         rescheduleRequest: p.rescheduleRequest,
+        participantPayments: p.participantPayments,
       };
     });
   }, [paymentsData]);
@@ -722,11 +723,45 @@ export default function AdminPaymentsScreen() {
   const overdueItems = useMemo(() => processedPayments.filter((p: any) => p.isOverdue), [processedPayments]);
 
   const unpaidBillingSchedules = useMemo(() => {
-    if (processedPayments.length === 0) return [];
-    const unpaid = processedPayments.filter((p: any) => !p.is_paid);
+    if (rawPayments.length === 0) return [];
+    const unpaidRaw = rawPayments.filter((p: any) => !p.is_paid);
+    
+    // Flatten shared payments: for shared orders, each participant gets their own entry
+    const flattenedUnpaid: any[] = [];
+    unpaidRaw.forEach((p: any) => {
+      const isShared = p.order?.is_shared === true;
+      const hasPP = p.participantPayments && p.participantPayments.length > 0;
+
+      if (isShared && hasPP) {
+        p.participantPayments.forEach((pp: any) => {
+          if (!pp.is_paid) {
+            flattenedUnpaid.push({
+              ...p,
+              amount_due: pp.amount_due,
+              clientId: pp.profile?.id || p.order?.profile?.id || '',
+              clientName: pp.profile?.name || p.order?.profile?.name || 'Unknown Client',
+              clientEmail: pp.profile?.email || p.order?.profile?.email || '',
+              isShared: true,
+              itemName: p.order?.item_name || 'Purchase Order',
+              totalMonths: p.order?.installment_months || 0,
+            });
+          }
+        });
+      } else {
+        flattenedUnpaid.push({
+          ...p,
+          clientId: p.order?.profile?.id || '',
+          clientName: p.order?.profile?.name || 'Unknown Client',
+          clientEmail: p.order?.profile?.email || '',
+          isShared: isShared,
+          itemName: p.order?.item_name || 'Purchase Order',
+          totalMonths: p.order?.installment_months || 0,
+        });
+      }
+    });
     
     const unpaidByMonth = new Map<string, any[]>();
-    unpaid.forEach((payment: any) => {
+    flattenedUnpaid.forEach((payment: any) => {
       const monthKey = getBillingMonthKey(payment.due_date);
       const list = unpaidByMonth.get(monthKey) || [];
       list.push(payment);
@@ -781,7 +816,7 @@ export default function AdminPaymentsScreen() {
         hasShared,
       };
     });
-  }, [processedPayments]);
+  }, [rawPayments]);
 
   const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
     monthName: '',
@@ -1255,6 +1290,43 @@ export default function AdminPaymentsScreen() {
       }
     } catch (e: any) {
       PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleMarkParticipantPaid = async (participantPaymentId: string, participantName: string) => {
+    setActionLoading(true);
+    try {
+      const response = await callAdminApi('mark-participant-paid', { participantPaymentId });
+      if (response && response.success) {
+        PremiumAlert.alert('Success', `Successfully marked split paid for ${participantName}!`);
+        
+        // Update the selected payment state to reflect the paid status:
+        setSelectedPayment((prev: any) => {
+          if (!prev) return null;
+          const updatedPP = (prev.participantPayments || []).map((pp: any) => {
+            if (pp.id === participantPaymentId) {
+              return { ...pp, isPaid: true, paidAt: new Date().toISOString() };
+            }
+            return pp;
+          });
+          const allPaid = updatedPP.every((pp: any) => pp.isPaid);
+          return {
+            ...prev,
+            participantPayments: updatedPP,
+            is_paid: allPaid ? true : prev.is_paid
+          };
+        });
+        
+        // Refetch query to sync lists
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+      } else {
+        PremiumAlert.alert('Error', response?.error || 'Failed to mark split paid.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      PremiumAlert.alert('Error', err?.message || 'An unexpected error occurred.');
     } finally {
       setActionLoading(false);
     }
@@ -3131,6 +3203,79 @@ export default function AdminPaymentsScreen() {
                   )}
                 </View>
               </View>
+
+              {selectedPayment.is_shared && (
+                <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginTop: 12, alignItems: 'stretch' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <Users size={16} color={t.accent} />
+                    <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>Shared Group Payment Splits</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: t.textSecondary, marginBottom: 12, lineHeight: 16 }}>
+                    This payment is shared with a group. Mark individual split payments as paid below:
+                  </Text>
+                  
+                  <View style={{ gap: 8 }}>
+                    {(selectedPayment.participantPayments || []).map((pp: any) => {
+                      const isOwner = pp.userId === selectedPayment.clientId;
+                      return (
+                        <View 
+                          key={pp.id} 
+                          style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            justifyContent: 'space-between',
+                            paddingVertical: 8,
+                            borderBottomWidth: 1,
+                            borderBottomColor: t.border
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary }}>
+                                {pp.name || 'Unknown'}
+                              </Text>
+                              {isOwner && (
+                                <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 }}>
+                                  <Text style={{ fontSize: 9, color: '#ee4d2d', fontWeight: '800' }}>OWNER</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={{ fontSize: 10, color: t.textSecondary }}>{formatCurrency(pp.amountDue || 0)}</Text>
+                          </View>
+                          
+                          <TouchableOpacity
+                            style={{ 
+                              flexDirection: 'row', 
+                              alignItems: 'center', 
+                              gap: 6,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              backgroundColor: pp.isPaid ? 'rgba(16, 185, 129, 0.08)' : 'rgba(238, 77, 45, 0.08)',
+                              borderColor: pp.isPaid ? '#10b981' : '#ee4d2d',
+                              borderWidth: 1
+                            }}
+                            onPress={() => !pp.isPaid && handleMarkParticipantPaid(pp.id, pp.name || 'Participant')}
+                            disabled={pp.isPaid || actionLoading}
+                          >
+                            {pp.isPaid ? (
+                              <>
+                                <Check size={12} color="#10b981" />
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#10b981' }}>Paid</Text>
+                              </>
+                            ) : (
+                              <>
+                                <Square size={12} color="#ee4d2d" />
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>Mark Paid</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
 
               {selectedPayment.proof_of_payment ? (
                 <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>

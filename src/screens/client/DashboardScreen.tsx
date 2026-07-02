@@ -63,6 +63,13 @@ interface NextMonthlyPayment {
     itemName: string;
     amount: number;
     dueDate: string;
+    isShared?: boolean;
+    sharingProgress?: Array<{
+      name: string;
+      email: string;
+      amountDue: number;
+      isPaid: boolean;
+    }>;
   }>;
 }
 
@@ -137,6 +144,12 @@ function groupUnpaidBillingMonths(
     monthNumber?: number;
     installmentMonths?: number;
     isShared?: boolean;
+    sharingProgress?: Array<{
+      name: string;
+      email: string;
+      amountDue: number;
+      isPaid: boolean;
+    }>;
   }>,
 ) {
   const unpaidPaymentsByMonth = new Map<string, typeof payments>();
@@ -170,6 +183,7 @@ function groupUnpaidBillingMonths(
         amount: payment.amountDue,
         dueDate: payment.dueDate.toISOString(),
         isShared: payment.isShared,
+        sharingProgress: payment.sharingProgress,
       })),
     };
   });
@@ -841,6 +855,28 @@ export default function DashboardScreen() {
 
       if (myPartPaymentsErr) throw myPartPaymentsErr;
 
+      // Fetch all participant payments for everyone on these orders
+      const { data: allParticipantPayments, error: allPartPaymentsErr } = await supabase
+        .from('order_participant_payments')
+        .select(`
+          id,
+          payment_id,
+          amount_due,
+          is_paid,
+          participant:order_participants!inner (
+            id,
+            order_id,
+            user_id,
+            profile:profiles (
+              name,
+              email
+            )
+          )
+        `)
+        .in('participant.order_id', orderIds);
+
+      if (allPartPaymentsErr) throw allPartPaymentsErr;
+
       // Process in-memory mappings
       const ordersMap = new Map();
       dbOrders.forEach(o => {
@@ -873,6 +909,19 @@ export default function DashboardScreen() {
           }
         }
 
+        const sharingProgress = isShared ? (allParticipantPayments || [])
+          .filter(ap => ap.payment_id === p.id)
+          .map(ap => {
+            const part = Array.isArray(ap.participant) ? ap.participant[0] : ap.participant;
+            const prof = part?.profile ? (Array.isArray(part.profile) ? part.profile[0] : part.profile) : null;
+            return {
+              name: (prof as any)?.name || 'Unknown',
+              email: (prof as any)?.email || '',
+              amountDue: parseFloat(ap.amount_due),
+              isPaid: ap.is_paid
+            };
+          }) : [];
+
         return {
           id: p.id,
           dueDate: parseUtcDate(p.due_date),
@@ -883,6 +932,7 @@ export default function DashboardScreen() {
           monthNumber: p.month_number,
           installmentMonths: order?.installment_months || 0,
           isShared: isShared,
+          sharingProgress,
         };
       });
 
@@ -1294,25 +1344,50 @@ export default function DashboardScreen() {
               <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>Personal Bill Breakdown</Text>
               <View style={[styles.breakdownDivider, { backgroundColor: t.divider }]} />
               {nextMonthlyPayment.payments.map((p: any, idx: number) => (
-                <View key={p.id || idx} style={[styles.breakdownItem, p.isShared && { borderLeftWidth: 2, borderLeftColor: '#ee4d2d', paddingLeft: 8 }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
-                    <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                      {p.itemName}
-                    </Text>
-                    {p.isShared && (
-                      <View style={[styles.badge, { borderColor: '#ee4d2d', backgroundColor: 'transparent', marginLeft: 6 }]}>
-                        <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
-                      </View>
-                    )}
+                <View key={p.id || idx} style={{ marginBottom: 12 }}>
+                  <View style={[styles.breakdownItem, p.isShared && { borderLeftWidth: 2, borderLeftColor: '#ee4d2d', paddingLeft: 8 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                      <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                        {p.itemName}
+                      </Text>
+                      {p.isShared && (
+                        <View style={[styles.badge, { borderColor: '#ee4d2d', backgroundColor: 'transparent', marginLeft: 6 }]}>
+                          <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.breakdownItemRight}>
+                      <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
+                        Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
+                      </Text>
+                      <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
+                        {formatCurrency(p.amount)}{p.isShared ? ' (Your Split)' : ''}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.breakdownItemRight}>
-                    <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
-                      Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
-                    </Text>
-                    <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
-                      {formatCurrency(p.amount)}{p.isShared ? ' (Your Split)' : ''}
-                    </Text>
-                  </View>
+                  {p.isShared && p.sharingProgress && p.sharingProgress.length > 0 && (
+                    <View style={{ paddingLeft: 12, marginTop: 4, borderLeftWidth: 1, borderLeftColor: t.divider }}>
+                      {p.sharingProgress.map((part: any, pIdx: number) => (
+                        <View key={pIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 }}>
+                          <Text style={{ fontSize: 9, color: t.textSecondary, flex: 1 }} numberOfLines={1}>
+                            {part.name} <Text style={{ opacity: 0.6, fontSize: 8 }}>({part.email})</Text>
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 9, color: t.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
+                              {formatCurrency(part.amountDue)}
+                            </Text>
+                            <Text style={{
+                              fontSize: 8,
+                              fontWeight: '800',
+                              color: part.isPaid ? '#10b981' : '#f59e0b',
+                            }}>
+                              {part.isPaid ? 'PAID' : 'UNPAID'}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

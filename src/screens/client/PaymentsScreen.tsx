@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Animated,
   Easing,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -875,18 +876,57 @@ export default function PaymentsScreen() {
               <View style={[styles.breakdownBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', borderColor: t.divider }]}>
                 <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>COMBINED BILL BREAKDOWN</Text>
                 {nextPaymentCountdown.payments.map((p: any, idx: number) => (
-                  <View key={p.id || idx} style={styles.breakdownRow}>
-                    <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                      {p.itemName}
-                    </Text>
-                    <View style={styles.breakdownItemRight}>
-                      <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
-                        Due {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
-                      </Text>
-                      <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
-                        {formatCurrency(p.amount)}
-                      </Text>
+                  <View key={p.id || idx} style={{ marginBottom: 12 }}>
+                    <View style={styles.breakdownRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                        <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                          {p.itemName}
+                        </Text>
+                        {p.isShared && (
+                          <View style={{
+                            borderWidth: 1,
+                            borderColor: '#ee4d2d',
+                            borderRadius: 4,
+                            paddingHorizontal: 4,
+                            paddingVertical: 1,
+                            marginLeft: 6
+                          }}>
+                            <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.breakdownItemRight}>
+                        <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
+                          Due {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
+                        </Text>
+                        <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
+                          {formatCurrency(p.amount)}
+                        </Text>
+                      </View>
                     </View>
+                    {p.isShared && p.sharingProgress && p.sharingProgress.length > 0 && (
+                      <View style={{ paddingLeft: 12, marginTop: 4, borderLeftWidth: 1, borderLeftColor: t.divider }}>
+                        {p.sharingProgress.map((part: any, pIdx: number) => (
+                          <View key={pIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 }}>
+                            <Text style={{ fontSize: 9, color: t.textSecondary, flex: 1 }} numberOfLines={1}>
+                              {part.name} <Text style={{ opacity: 0.6, fontSize: 8 }}>({part.email})</Text>
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 9, color: t.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
+                                {formatCurrency(part.amountDue)}
+                              </Text>
+                              <Text style={{
+                                fontSize: 8,
+                                fontWeight: '800',
+                                color: part.isPaid ? '#10b981' : '#f59e0b',
+                              }}>
+                                {part.isPaid ? 'PAID' : 'UNPAID'}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 ))}
               </View>

@@ -907,7 +907,16 @@ export default function AdminOrdersScreen() {
                         {selectedOrder.status}
                       </Text>
                     </View>
-                    <Text style={[styles.detailsHeroId, { color: t.textSecondary }]} numberOfLines={1}>{selectedOrder.clientName}</Text>
+                    {selectedOrder.is_shared && (
+                      <View style={[styles.statusBadge, { backgroundColor: 'rgba(238, 77, 45, 0.08)', borderColor: 'rgba(238, 77, 45, 0.25)', borderWidth: 0.5, marginTop: 0 }]}>
+                        <Text style={[styles.statusBadgeText, { color: '#ee4d2d', fontWeight: '800' }]}>
+                          👥 SHARED
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={[styles.detailsHeroId, { color: t.textSecondary }]} numberOfLines={1}>
+                      {selectedOrder.is_shared ? `Owner: ${selectedOrder.clientName}` : selectedOrder.clientName}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -945,6 +954,63 @@ export default function AdminOrdersScreen() {
                   </View>
                 ) : null}
               </View>
+              
+              {selectedOrder.is_shared && (
+                <View style={[styles.modalProfileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginTop: 12, alignItems: 'stretch' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <Users size={16} color={t.accent} />
+                    <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>Shared Group Payment</Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: t.textSecondary, marginBottom: 12, lineHeight: 16 }}>
+                    This order is shared with a group. Here is the split breakdown and payment status of each participant:
+                  </Text>
+                  
+                  <View style={{ gap: 8 }}>
+                    {(selectedOrder.participants || []).map((participant: any) => {
+                      const isOwner = participant.user_id === selectedOrder.user_id;
+                      return (
+                        <View 
+                          key={participant.id || participant.user_id} 
+                          style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            justifyContent: 'space-between',
+                            paddingVertical: 8,
+                            borderBottomWidth: 1,
+                            borderBottomColor: t.border
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary }}>
+                                {participant.name || 'Unknown'}
+                              </Text>
+                              {isOwner && (
+                                <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 }}>
+                                  <Text style={{ fontSize: 9, color: '#ee4d2d', fontWeight: '800' }}>OWNER</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={{ fontSize: 10, color: t.textSecondary }}>{participant.email}</Text>
+                          </View>
+                          
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary, fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace' }}>
+                              {formatCurrency(participant.splitAmount || 0)}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: participant.isPaid ? '#10b981' : '#f59e0b' }} />
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: participant.isPaid ? '#10b981' : '#f59e0b' }}>
+                                {participant.isPaid ? 'Paid' : 'Unpaid'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
 
               {/* Action columns */}
               <View style={styles.actionButtonsCol}>

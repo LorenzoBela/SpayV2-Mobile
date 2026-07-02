@@ -75,6 +75,13 @@ export interface ClientPaymentItem {
   status: 'paid' | 'overdue' | 'pending';
   rescheduleHistory: PaymentReschedule[];
   isShared?: boolean;
+  sharingProgress?: Array<{
+    name: string;
+    email: string;
+    splitAmount?: number;
+    amountDue: number;
+    isPaid: boolean;
+  }>;
 }
 
 export function useClientOrdersQuery() {
@@ -330,19 +337,28 @@ export function useClientPaymentsQuery() {
         throw new Error('User not authenticated');
       }
 
-      // Fetch user orders first to filter payments
-      const { data: userOrders, error: ordersErr } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('user_id', profileId);
+      // 1. Fetch owned and participant orders
+      const [ownedResult, participantResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id')
+          .eq('user_id', profileId),
+        supabase
+          .from('order_participants')
+          .select('order_id')
+          .eq('user_id', profileId)
+      ]);
 
-      if (ordersErr) throw ordersErr;
+      if (ownedResult.error) throw ownedResult.error;
+      if (participantResult.error) throw participantResult.error;
 
-      if (!userOrders || userOrders.length === 0) {
+      const ownedOrderIds = (ownedResult.data || []).map(o => o.id);
+      const participantOrderIds = (participantResult.data || []).map(p => p.order_id);
+      const orderIds = Array.from(new Set([...ownedOrderIds, ...participantOrderIds]));
+
+      if (orderIds.length === 0) {
         return [];
       }
-
-      const orderIds = userOrders.map((o) => o.id);
 
       // Fetch payments belonging only to those orders
       const { data, error } = await supabase
@@ -376,6 +392,47 @@ export function useClientPaymentsQuery() {
 
       if (error) throw error;
 
+      // Fetch client's own split payments for shared orders
+      const { data: myParticipantPayments, error: myPartPaymentsErr } = await supabase
+        .from('order_participant_payments')
+        .select(`
+          id,
+          payment_id,
+          amount_due,
+          is_paid,
+          paid_at,
+          participant:order_participants!inner (
+            id,
+            order_id,
+            user_id
+          )
+        `)
+        .eq('participant.user_id', profileId);
+
+      if (myPartPaymentsErr) throw myPartPaymentsErr;
+
+      // Fetch all participant payments for everyone on these orders
+      const { data: allParticipantPayments, error: allPartPaymentsErr } = await supabase
+        .from('order_participant_payments')
+        .select(`
+          id,
+          payment_id,
+          amount_due,
+          is_paid,
+          participant:order_participants!inner (
+            id,
+            order_id,
+            user_id,
+            profile:profiles (
+              name,
+              email
+            )
+          )
+        `)
+        .in('participant.order_id', orderIds);
+
+      if (allPartPaymentsErr) throw allPartPaymentsErr;
+
       const nowMs = Date.now();
 
       const formatted: ClientPaymentItem[] = (data || []).map((p: any) => {
@@ -389,20 +446,41 @@ export function useClientPaymentsQuery() {
         }));
 
         const rawDueDate = p.due_date;
-        const isPaid = p.is_paid;
+        const isShared = p.order?.is_shared === true;
+
+        let isPaid = p.is_paid;
+        let amountDue = parseFloat(p.amount_due);
+        let paymentDate = p.payment_date;
+
+        if (isShared) {
+          const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
+          if (mySplitPay) {
+            isPaid = mySplitPay.is_paid;
+            amountDue = parseFloat(mySplitPay.amount_due);
+            paymentDate = mySplitPay.paid_at;
+          }
+        }
+
         const isOverdue = !isPaid && parseUtcDate(rawDueDate).getTime() < nowMs;
 
-        const isShared = p.order?.is_shared === true;
-        const rawSplit = parseFloat(p.order?.split_amount) || 0;
-        const finalAmountDue = isShared && rawSplit > 0
-          ? rawSplit / (p.order?.installment_months || 1)
-          : parseFloat(p.amount_due);
+        const sharingProgress = isShared ? (allParticipantPayments || [])
+          .filter(ap => ap.payment_id === p.id)
+          .map(ap => {
+            const part = Array.isArray(ap.participant) ? ap.participant[0] : ap.participant;
+            const prof = part?.profile ? (Array.isArray(part.profile) ? part.profile[0] : part.profile) : null;
+            return {
+              name: (prof as any)?.name || 'Unknown',
+              email: (prof as any)?.email || '',
+              amountDue: parseFloat(ap.amount_due),
+              isPaid: ap.is_paid
+            };
+          }) : [];
 
         return {
           id: p.id,
           orderId: p.order?.id || '',
           itemName: p.order?.item_name || 'Installment Order',
-          amountDue: parseFloat(p.amount_due),
+          amountDue,
           monthNumber: p.month_number,
           installmentMonths: p.order?.installment_months || 12,
           dueDate: parseUtcDate(rawDueDate).toLocaleDateString('en-US', {
@@ -413,11 +491,12 @@ export function useClientPaymentsQuery() {
           }),
           rawDueDate,
           isPaid,
-          paymentDate: p.payment_date,
+          paymentDate,
           proofOfPayment: p.proof_of_payment,
           status: isPaid ? 'paid' : isOverdue ? 'overdue' : 'pending',
           rescheduleHistory: rescheduleArr,
           isShared,
+          sharingProgress,
         };
       });
 
