@@ -1,5 +1,6 @@
 import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../utils/supabase';
+import { trpcVanillaClient } from '../utils/trpc';
 import {
   fetchNotifications,
   markNotificationRead,
@@ -14,13 +15,23 @@ const getApiUrl = () => {
 };
 
 export const callAdminApi = async (action: string, bodyData: any = {}) => {
+  DeviceEventEmitter.emit('progress-start', action);
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const apiUrl = getApiUrl();
-
-    DeviceEventEmitter.emit('progress-start', action);
+    // 1. Try tRPC mutation
+    const result = await trpcVanillaClient.admin.dispatch.mutate({
+      action,
+      ...bodyData,
+    });
+    return result;
+  } catch (trpcError) {
+    console.warn(`[adminService] tRPC failed for action ${action}, falling back to REST:`, trpcError);
+    
+    // 2. Fallback to original REST logic
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const apiUrl = getApiUrl();
+
       const response = await fetch(`${apiUrl}/api/admin/actions`, {
         method: 'POST',
         headers: {
@@ -68,12 +79,12 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
       const text = decoder.decode(allChunks);
       const result = JSON.parse(text);
       return result;
-    } finally {
-      DeviceEventEmitter.emit('progress-finish', action);
+    } catch (error: any) {
+      console.error(`[adminService] REST fallback error running action ${action}:`, error);
+      return { success: false, error: error?.message || 'Network error executing request.' };
     }
-  } catch (error: any) {
-    console.error(`[adminService] Error running action ${action}:`, error);
-    return { success: false, error: error?.message || 'Network error executing request.' };
+  } finally {
+    DeviceEventEmitter.emit('progress-finish', action);
   }
 };
 
@@ -85,33 +96,49 @@ export const getExportLedgerCsv = async (filters: {
   endMonth?: number;
 }) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const apiUrl = getApiUrl();
-
-    let queryParams = `?allTime=${filters.allTime}`;
-    if (!filters.allTime && filters.startYear) {
-      queryParams += `&startYear=${filters.startYear}&startMonth=${filters.startMonth}&endYear=${filters.endYear}&endMonth=${filters.endMonth}`;
-    }
-
-    const response = await fetch(`${apiUrl}/api/admin/reports/export${queryParams}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+    // 1. Try tRPC query
+    const csvContent = await trpcVanillaClient.admin.exportReport.query({
+      allTime: filters.allTime,
+      startYear: filters.startYear,
+      startMonth: filters.startMonth,
+      endYear: filters.endYear,
+      endMonth: filters.endMonth,
     });
-
-    if (!response.ok) {
-      throw new Error(`Server returned status ${response.status}`);
-    }
-
-    const csvContent = await response.text();
     return { success: true, csv: csvContent };
-  } catch (error: any) {
-    console.error('[adminService] Error fetching ledger CSV:', error);
-    return { success: false, error: error?.message || 'Failed to download report ledger CSV.' };
+  } catch (trpcError) {
+    console.warn('[adminService] tRPC ledger export failed, falling back to REST:', trpcError);
+    
+    // 2. Fallback to REST
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const apiUrl = getApiUrl();
+
+      let queryParams = `?allTime=${filters.allTime}`;
+      if (!filters.allTime && filters.startYear) {
+        queryParams += `&startYear=${filters.startYear}&startMonth=${filters.startMonth}&endYear=${filters.endYear}&endMonth=${filters.endMonth}`;
+      }
+
+      const response = await fetch(`${apiUrl}/api/admin/reports/export${queryParams}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+
+      const csvContent = await response.text();
+      return { success: true, csv: csvContent };
+    } catch (error: any) {
+      console.error('[adminService] Error fetching ledger CSV:', error);
+      return { success: false, error: error?.message || 'Failed to download report ledger CSV.' };
+    }
   }
 };
+
 
 export const fetchAdminDashboardData = async () => {
   try {

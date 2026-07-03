@@ -3,6 +3,10 @@ import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
+import { trpc } from './src/utils/trpc';
+import { httpBatchLink } from '@trpc/client';
+import superjson from 'superjson';
+import { supabase } from './src/utils/supabase';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { clientPersister } from './src/utils/queryPersister';
@@ -46,6 +50,27 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 60 * 5, // 5 minutes stale time
     },
   },
+});
+
+const getApiUrl = () => {
+  const url = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (url) return url.replace(/\/$/, '');
+  return 'https://nootspaytracker.vercel.app';
+};
+
+const trpcClient = trpc.createClient({
+  links: [
+    httpBatchLink({
+      url: `${getApiUrl()}/api/trpc`,
+      async headers() {
+        const { data: { session } } = await supabase.auth.getSession();
+        return {
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+        };
+      },
+      transformer: superjson as any,
+    }),
+  ],
 });
 
 // Clean themed styles overlay for react-native-paper if required
@@ -101,16 +126,18 @@ export default function App() {
           },
         }}
       >
-        <PaperProvider theme={darkTheme}>
-          <ProgressProvider>
-            <SafeAreaProvider>
-              <AppUpdateGate />
-              <AppNavigator />
-              <GlobalPremiumAlert />
-              <GlobalProgressBar />
-            </SafeAreaProvider>
-          </ProgressProvider>
-        </PaperProvider>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <PaperProvider theme={darkTheme}>
+            <ProgressProvider>
+              <SafeAreaProvider>
+                <AppUpdateGate />
+                <AppNavigator />
+                <GlobalPremiumAlert />
+                <GlobalProgressBar />
+              </SafeAreaProvider>
+            </ProgressProvider>
+          </PaperProvider>
+        </trpc.Provider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>
   );

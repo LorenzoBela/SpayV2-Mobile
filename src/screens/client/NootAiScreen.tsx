@@ -21,6 +21,7 @@ import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { trpc } from '../../utils/trpc';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -218,6 +219,7 @@ function renderFormattedMessage(text: string, t: any) {
 export default function NootAiScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = useContext(ThemeContext);
+  const chatMutation = trpc.nootai.chat.useMutation();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -436,22 +438,39 @@ export default function NootAiScreen() {
         text: m.text
       }));
 
-      const response = await fetch(`${apiUrl}/api/nootai`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ message: text, history: historyToSend }),
-      });
+      try {
+        // 1. Try tRPC mutation
+        const result = await chatMutation.mutateAsync({
+          message: text,
+          history: historyToSend,
+        });
 
-      const data = await response.json();
-      if (data.success) {
-        // 4. Run Post-Output Safety Check on AI response
-        const safeResponse = checkOutputSafety(data.response);
-        setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date() }]);
-      } else {
-        throw new Error(data.error || 'Server error');
+        if (result.success) {
+          const safeResponse = checkOutputSafety(result.response);
+          setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date() }]);
+        } else {
+          throw new Error('Server error');
+        }
+      } catch (trpcErr: any) {
+        console.warn('[NootAiScreen] tRPC chat failed, falling back to REST:', trpcErr);
+        
+        // 2. Fallback to REST API nootai endpoint
+        const response = await fetch(`${apiUrl}/api/nootai`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token || ''}`,
+          },
+          body: JSON.stringify({ message: text, history: historyToSend }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          const safeResponse = checkOutputSafety(data.response);
+          setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date() }]);
+        } else {
+          throw new Error(data.error || 'Server error');
+        }
       }
     } catch (e: any) {
       console.warn('[NootAiScreen] Backend error:', e);

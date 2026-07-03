@@ -9,6 +9,7 @@ import {
   normalizeAndroidChannelId,
   shouldAttemptRemotePushRegistration,
 } from './notificationServiceConfig';
+import { trpcVanillaClient } from '../utils/trpc';
 
 export type NotificationCategory = 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -156,54 +157,85 @@ export async function fetchNotifications(limit = 100) {
   const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return [];
 
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .eq('user_id', profileId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  try {
+    const data = await trpcVanillaClient.notifications.list.query({ limit });
+    return (data?.notifications || []).map((n: any) => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      type: n.type,
+      category: n.category,
+      priority: n.priority,
+      data: n.data,
+      read_at: n.readAt,
+      created_at: n.createdAt,
+    })) as AppNotification[];
+  } catch (trpcError) {
+    console.warn('[notificationService] tRPC fetchNotifications failed, falling back to Supabase:', trpcError);
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', profileId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-  if (error) throw error;
-  return (data || []) as AppNotification[];
+    if (error) throw error;
+    return (data || []) as AppNotification[];
+  }
 }
 
 export async function markNotificationRead(notificationId: string) {
   const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return;
 
-  const { error } = await supabase
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('id', notificationId)
-    .eq('user_id', profileId);
+  try {
+    await trpcVanillaClient.notifications.markRead.mutate({ notificationId });
+  } catch (trpcError) {
+    console.warn('[notificationService] tRPC markNotificationRead failed, falling back to Supabase:', trpcError);
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', notificationId)
+      .eq('user_id', profileId);
 
-  if (error) throw error;
+    if (error) throw error;
+  }
 }
 
 export async function markAllNotificationsRead() {
   const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return;
 
-  const { error } = await supabase
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('user_id', profileId)
-    .is('read_at', null);
+  try {
+    await trpcVanillaClient.notifications.markAllRead.mutate();
+  } catch (trpcError) {
+    console.warn('[notificationService] tRPC markAllNotificationsRead failed, falling back to Supabase:', trpcError);
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('user_id', profileId)
+      .is('read_at', null);
 
-  if (error) throw error;
+    if (error) throw error;
+  }
 }
 
 export async function clearNotification(notificationId: string) {
   const { user, profileId } = await getLinkedProfileForCurrentUser();
   if (!user) return;
 
-  const { error } = await supabase
-    .from('notifications')
-    .delete()
-    .eq('id', notificationId)
-    .eq('user_id', profileId);
+  try {
+    await trpcVanillaClient.notifications.clear.mutate({ notificationId });
+  } catch (trpcError) {
+    console.warn('[notificationService] tRPC clearNotification failed, falling back to Supabase:', trpcError);
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+      .eq('user_id', profileId);
 
-  if (error) throw error;
+    if (error) throw error;
+  }
 }
 
 export async function mirrorToLocalTray(notification: AppNotification) {

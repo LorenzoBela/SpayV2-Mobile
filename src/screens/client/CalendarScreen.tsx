@@ -38,6 +38,7 @@ import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { CalendarSkeleton } from '../../components/SkeletonLoader';
+import { trpc } from '../../utils/trpc';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 
@@ -179,6 +180,7 @@ export default function CalendarScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const cellWidth = Math.floor((layout.contentInnerWidth - 12) / 7);
+  const rescheduleMutation = trpc.payments.reschedule.useMutation();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -582,73 +584,37 @@ export default function CalendarScreen() {
 
     setSubmittingReschedule(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No authenticated user');
-
       const [yr, mo, dy] = rescheduleDate.split('-').map(Number);
       const proposedDate = createUtc8Date(yr, mo - 1, dy);
 
-      // Check if there is already a pending reschedule request
-      const { data: existingRequest } = await supabase
-        .from('payment_reschedule_history')
-        .select('id')
-        .eq('payment_id', reschedulePayment.id)
-        .eq('admin_approved', false)
-        .maybeSingle();
-
-      if (existingRequest) {
-        // Update the existing request
-        const { error: updateErr } = await supabase
-          .from('payment_reschedule_history')
-          .update({
-            new_due_date: proposedDate.toISOString(),
+      try {
+        // 1. Try tRPC mutation
+        await rescheduleMutation.mutateAsync({
+          paymentId: reschedulePayment.id,
+          requestedDate: proposedDate.toISOString(),
+          reason: rescheduleReason,
+        });
+      } catch (trpcErr) {
+        console.warn('[CalendarScreen] tRPC reschedule failed, falling back to REST:', trpcErr);
+        // 2. Fallback to REST API reschedule endpoint
+        const { data: { session } } = await supabase.auth.getSession();
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || 'https://nootspaytracker.vercel.app';
+        const response = await fetch(`${apiUrl}/api/payments/reschedule`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({
+            paymentId: reschedulePayment.id,
+            requestedDate: proposedDate.toISOString(),
             reason: rescheduleReason,
-            created_at: new Date().toISOString()
-          })
-          .eq('id', existingRequest.id);
+          }),
+        });
 
-        if (updateErr) throw updateErr;
-
-        try {
-          await supabase.from('payment_logs').insert({
-            payment_id: reschedulePayment.id,
-            action_type: 'payment_reschedule_updated',
-            action_description: `Client updated pending reschedule request for ${reschedulePayment.itemName} (Month ${reschedulePayment.monthNumber}). Requested change to ${proposedDate.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}.`,
-            performed_by_id: user.id,
-            performed_at: new Date().toISOString(),
-            old_values: JSON.stringify({ new_due_date: reschedulePayment.dueDate }),
-            new_values: JSON.stringify({ new_due_date: proposedDate.toISOString(), reason: rescheduleReason })
-          });
-        } catch (logErr) {
-          console.warn('Logging reschedule update failed:', logErr);
-        }
-      } else {
-        // Create new request
-        const { error: insertErr } = await supabase
-          .from('payment_reschedule_history')
-          .insert({
-            payment_id: reschedulePayment.id,
-            old_due_date: reschedulePayment.dueDate,
-            new_due_date: proposedDate.toISOString(),
-            reason: rescheduleReason,
-            updated_by_id: user.id,
-            admin_approved: false
-          });
-
-        if (insertErr) throw insertErr;
-
-        try {
-          await supabase.from('payment_logs').insert({
-            payment_id: reschedulePayment.id,
-            action_type: 'payment_reschedule_requested',
-            action_description: `Client requested reschedule for ${reschedulePayment.itemName} (Month ${reschedulePayment.monthNumber}). Proposed due date: ${proposedDate.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}.`,
-            performed_by_id: user.id,
-            performed_at: new Date().toISOString(),
-            old_values: JSON.stringify({ due_date: reschedulePayment.dueDate }),
-            new_values: JSON.stringify({ due_date: proposedDate.toISOString(), reason: rescheduleReason })
-          });
-        } catch (logErr) {
-          console.warn('Logging reschedule request failed:', logErr);
+        const resData = await response.json();
+        if (!resData.success) {
+          throw new Error(resData.error || 'REST fallback failed');
         }
       }
 
