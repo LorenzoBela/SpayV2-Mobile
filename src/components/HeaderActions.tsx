@@ -102,18 +102,26 @@ export function HeaderWeatherTime() {
 
       // Attempt high-accuracy Native GPS Geolocation via expo-location
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const permissionResult = await Promise.race([
+          Location.requestForegroundPermissionsAsync(),
+          new Promise<any>((resolve) => setTimeout(() => resolve({ status: 'denied' }), 3000))
+        ]);
+        const status = permissionResult?.status;
+
         if (status === 'granted') {
           const positionPromise = Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
           const timeoutPromise = new Promise<Location.LocationObject | null>((resolve) =>
-            setTimeout(() => resolve(null), 6000)
+            setTimeout(() => resolve(null), 3000)
           );
 
           let position = await Promise.race([positionPromise, timeoutPromise]);
           if (!position) {
-            position = await Location.getLastKnownPositionAsync();
+            position = await Promise.race([
+              Location.getLastKnownPositionAsync(),
+              new Promise<any>((resolve) => setTimeout(() => resolve(null), 3000))
+            ]);
           }
 
           if (position && position.coords) {
