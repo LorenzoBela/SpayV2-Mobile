@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Animated, StatusBar } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions } from 'react-native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Reanimated, { useAnimatedStyle, interpolate, withSpring, useSharedValue, withSequence, withTiming, Easing } from 'react-native-reanimated';
+import { TabBarProvider, useTabBar } from './TabBarContext';
+import { BlurView } from 'expo-blur';
 import {
   Wallet,
   Receipt,
@@ -86,7 +89,6 @@ const ADMIN_TAB_ICONS: Record<string, LucideIcon> = {
   AdminPayments: Receipt,
   AdminMore: Menu,
 };
-
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -112,6 +114,26 @@ const PaymentsGestureScreen = withClientTabGesture('Payments', PaymentsScreen);
 const NotificationsGestureScreen = withClientTabGesture('Notifications', NotificationsScreen);
 const MoreGestureScreen = withClientTabGesture('More', MoreScreen);
 
+const withAdminTabGesture = (
+  routeName: any,
+  ScreenComponent: React.ComponentType<any>,
+) => {
+  const GestureWrappedAdminTab = (props: any) => (
+    <ClientTabGestureSurface routeName={routeName}>
+      <ScreenComponent {...props} />
+    </ClientTabGestureSurface>
+  );
+
+  GestureWrappedAdminTab.displayName = `${routeName}GestureScreen`;
+  return GestureWrappedAdminTab;
+};
+
+const AdminDashboardGestureScreen = withAdminTabGesture('AdminDashboard', AdminDashboardScreen);
+const AdminClientsGestureScreen = withAdminTabGesture('AdminClients', AdminClientsScreen);
+const AdminOrdersGestureScreen = withAdminTabGesture('AdminOrders', AdminOrdersScreen);
+const AdminPaymentsGestureScreen = withAdminTabGesture('AdminPayments', AdminPaymentsScreen);
+const AdminMoreGestureScreen = withAdminTabGesture('AdminMore', AdminMoreScreen);
+
 // Auth Navigator
 const AuthNavigator = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }}>
@@ -119,54 +141,219 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
+// Custom Floating Tab Bar Component matching verified Apple Podcasts style
+const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unreadCount }: any) => {
+  const { isCollapsed } = useTabBar();
+  const { width: windowWidth } = useWindowDimensions();
+  const sliderScale = useSharedValue(1);
+  const insets = useSafeAreaInsets();
+
+  const visibleRoutes = state.routes.filter((route: any) => {
+    const options = descriptors[route.key].options;
+    return options.tabBarButton !== null && options.tabBarItemStyle?.display !== 'none';
+  });
+
+  const activeIndex = visibleRoutes.findIndex((r: any) => {
+    const activeRouteName = state.routes[state.index].name;
+    const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi',
+                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications'].includes(activeRouteName);
+    if (isSubScreen) {
+      return r.name === 'More' || r.name === 'AdminMore';
+    }
+    return r.name === activeRouteName;
+  });
+
+  // 358px expanded (390 screen - 32 margins), 195px collapsed
+  const expandedWidth = windowWidth - 32;
+  const collapsedWidth = 195;
+
+  const barAnimatedStyle = useAnimatedStyle(() => {
+    const collapsed = isCollapsed.value;
+    const currentWidth = interpolate(collapsed, [0, 1], [expandedWidth, collapsedWidth]);
+    const currentHeight = interpolate(collapsed, [0, 1], [64, 52]);
+    const currentPadding = interpolate(collapsed, [0, 1], [14, 12]);
+    const currentRadius = interpolate(collapsed, [0, 1], [28, 24]);
+
+    return {
+      width: currentWidth,
+      height: currentHeight,
+      borderRadius: currentRadius,
+      paddingHorizontal: currentPadding,
+    };
+  });
+
+  const sliderAnimatedStyle = useAnimatedStyle(() => {
+    const collapsed = isCollapsed.value;
+    const currentWidth = interpolate(collapsed, [0, 1], [expandedWidth, collapsedWidth]);
+    const currentPadding = interpolate(collapsed, [0, 1], [14, 12]);
+    
+    const innerWidth = currentWidth - currentPadding * 2;
+    const step = innerWidth / 5;
+    
+    // Expanded active state sizing (capsule pill)
+    const expandedSliderWidth = step - 8;
+    const expandedLeft = currentPadding + activeIndex * step + 4;
+    const expandedHeight = 50;
+    const expandedTop = 7;
+    const expandedRadius = 20;
+
+    // Collapsed active state sizing (centered perfect circle)
+    const collapsedSliderSize = 38;
+    const buttonCenter = currentPadding + activeIndex * step + step / 2;
+    const collapsedLeft = buttonCenter - collapsedSliderSize / 2;
+    const collapsedHeight = 38;
+    const collapsedTop = (52 - 38) / 2;
+    const collapsedRadius = 19;
+
+    return {
+      width: interpolate(collapsed, [0, 1], [expandedSliderWidth, collapsedSliderSize]),
+      left: interpolate(collapsed, [0, 1], [expandedLeft, collapsedLeft]),
+      height: interpolate(collapsed, [0, 1], [expandedHeight, collapsedHeight]),
+      top: interpolate(collapsed, [0, 1], [expandedTop, collapsedTop]),
+      borderRadius: interpolate(collapsed, [0, 1], [expandedRadius, collapsedRadius]),
+      transform: [{ scale: sliderScale.value }],
+    };
+  });
+
+  return (
+    <View style={[styles.floatingWrapper, { bottom: Math.max(insets.bottom, 16) }]}>
+      <Reanimated.View style={[
+        styles.barContainer,
+        isDarkMode ? styles.barDark : styles.barLight,
+        barAnimatedStyle
+      ]}>
+        <BlurView
+          intensity={90}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        
+        <Reanimated.View style={[
+          styles.slider,
+          isDarkMode ? styles.sliderDark : styles.sliderLight,
+          sliderAnimatedStyle
+        ]} />
+
+        <View style={styles.buttonsWrapper}>
+          {visibleRoutes.map((route: any, index: number) => {
+            const { options } = descriptors[route.key];
+            const label = options.tabBarLabel !== undefined
+              ? options.tabBarLabel
+              : options.title !== undefined
+                ? options.title
+                : route.name;
+
+            const isFocused = index === activeIndex;
+            const IconComponent = icons[route.name] ?? HelpCircle;
+
+            const onPress = () => {
+              // Trigger active slider tap scale compression (magnetic flex) with a very tight premium spring
+              sliderScale.value = withSequence(
+                withSpring(0.94, { damping: 28, stiffness: 350 }),
+                withSpring(1, { damping: 24, stiffness: 300 })
+              );
+
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            };
+
+            const labelAnimatedStyle = useAnimatedStyle(() => {
+              const collapsed = isCollapsed.value;
+              return {
+                opacity: interpolate(collapsed, [0, 1], [1, 0]),
+                transform: [
+                  { translateY: interpolate(collapsed, [0, 1], [0, 8]) },
+                  { scale: interpolate(collapsed, [0, 1], [1, 0.8]) }
+                ],
+                height: interpolate(collapsed, [0, 1], [12, 0]),
+                marginTop: interpolate(collapsed, [0, 1], [2, 0]),
+              };
+            });
+
+            const iconAnimatedStyle = useAnimatedStyle(() => {
+              const collapsed = isCollapsed.value;
+              return {
+                transform: [
+                  { translateY: interpolate(collapsed, [0, 1], [0, 1]) },
+                  { scale: interpolate(collapsed, [0, 1], [1, 0.95]) }
+                ]
+              };
+            });
+
+            const hasBadge = route.name === 'Notifications' || route.name === 'AdminMore';
+            const displayBadge = hasBadge && unreadCount > 0;
+
+            const badgeAnimatedStyle = useAnimatedStyle(() => {
+              const collapsed = isCollapsed.value;
+              const badgeSize = interpolate(collapsed, [0, 1], [8, 6]);
+              const badgeTop = interpolate(collapsed, [0, 1], [-2, 0]);
+              const badgeRight = interpolate(collapsed, [0, 1], [-2, 0]);
+              
+              return {
+                width: badgeSize,
+                height: badgeSize,
+                borderRadius: badgeSize / 2,
+                top: badgeTop,
+                right: badgeRight,
+                borderWidth: interpolate(collapsed, [0, 1], [1.5, 1]),
+              };
+            });
+
+            const activeColor = '#ee4d2d';
+            const inactiveColor = isDarkMode ? '#64748b' : '#94a3b8';
+
+            const cleanLabel = label === 'AdminMore' ? 'More' : label === 'AdminDashboard' ? 'Overview' : label === 'AdminClients' ? 'Clients' : label === 'AdminOrders' ? 'Orders' : label === 'AdminPayments' ? 'Ledger' : label;
+
+            return (
+              <Pressable
+                key={route.key}
+                onPress={onPress}
+                style={styles.tabButton}
+              >
+                <Reanimated.View style={[styles.iconContainer, iconAnimatedStyle]}>
+                  <IconComponent
+                    size={20}
+                    color={isFocused ? activeColor : inactiveColor}
+                    strokeWidth={isFocused ? 2.5 : 1.5}
+                  />
+
+                  {displayBadge && (
+                    <Reanimated.View style={[styles.badge, badgeAnimatedStyle]} />
+                  )}
+                </Reanimated.View>
+
+                <Reanimated.Text style={[
+                  styles.tabLabel,
+                  { color: isFocused ? activeColor : inactiveColor },
+                  labelAnimatedStyle
+                ]}>
+                  {cleanLabel}
+                </Reanimated.Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Reanimated.View>
+    </View>
+  );
+};
+
 // Main Tab Navigator — consumes ThemeContext for dynamic tab bar styling
 const MainNavigator = () => {
   const { isDarkMode } = React.useContext(ThemeContext);
   const { unreadCount } = useNotifications();
-  const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, 12);
 
   return (
     <Tab.Navigator
-      screenOptions={({ route, navigation }) => {
-        const state = navigation.getState();
-        const activeRouteName = state ? state.routes[state.index]?.name : '';
-        const isMoreTab = route.name === 'More';
-        const forceMoreFocus =
-          isMoreTab &&
-          ['Budget', 'Reports', 'Settings', 'Calendar'].includes(activeRouteName);
-
-        return {
-          tabBarIcon: ({ focused, color, size }) => {
-            const IconComponent = TAB_ICONS[route.name] ?? HelpCircle;
-            const finalFocused = focused || forceMoreFocus;
-            const finalColor = forceMoreFocus ? '#ee4d2d' : color;
-            return (
-              <IconComponent
-                size={size}
-                color={finalColor}
-                strokeWidth={finalFocused ? 2.5 : 1.5}
-              />
-            );
-          },
-          tabBarActiveTintColor: '#ee4d2d',
-          tabBarInactiveTintColor: isDarkMode ? '#64748b' : '#94a3b8',
-          tabBarStyle: {
-            backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff',
-            borderTopWidth: 1,
-            borderTopColor: isDarkMode ? '#1e293b' : '#e2e8f0',
-            paddingBottom: bottomInset,
-            paddingTop: 8,
-            height: 56 + bottomInset,
-          },
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: '500',
-            ...(forceMoreFocus ? { color: '#ee4d2d' } : {}),
-          },
-          headerShown: false,
-        };
-      }}
+      tabBar={(props) => <CustomTabBar {...props} icons={TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Dashboard" component={DashboardGestureScreen} />
       <Tab.Screen name="Orders" component={OrdersGestureScreen} />
@@ -174,15 +361,6 @@ const MainNavigator = () => {
       <Tab.Screen
         name="Notifications"
         component={NotificationsGestureScreen}
-        options={{
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#ee4d2d',
-            color: '#ffffff',
-            fontSize: 10,
-            fontFamily: 'Jakarta-Bold',
-          },
-        }}
       />
       <Tab.Screen name="More" component={MoreGestureScreen} />
       <Tab.Screen
@@ -233,84 +411,36 @@ const MainNavigator = () => {
 const AdminNavigator = () => {
   const { isDarkMode } = React.useContext(ThemeContext);
   const { unreadCount } = useNotifications();
-  const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, 12);
 
   return (
     <AdminTab.Navigator
-      screenOptions={({ route, navigation }) => {
-        const state = navigation.getState();
-        const activeRouteName = state ? state.routes[state.index]?.name : '';
-        const isMoreTab = route.name === 'AdminMore';
-        const forceMoreFocus =
-          isMoreTab &&
-          ['AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications'].includes(activeRouteName);
-
-        return {
-          tabBarIcon: ({ focused, color, size }) => {
-            const IconComponent = ADMIN_TAB_ICONS[route.name] ?? HelpCircle;
-            const finalFocused = focused || forceMoreFocus;
-            const finalColor = forceMoreFocus ? '#ee4d2d' : color;
-            return (
-              <IconComponent
-                size={size}
-                color={finalColor}
-                strokeWidth={finalFocused ? 2.5 : 1.5}
-              />
-            );
-          },
-          tabBarActiveTintColor: '#ee4d2d',
-          tabBarInactiveTintColor: isDarkMode ? '#64748b' : '#94a3b8',
-          tabBarStyle: {
-            backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff',
-            borderTopWidth: 1,
-            borderTopColor: isDarkMode ? '#1e293b' : '#e2e8f0',
-            paddingBottom: bottomInset,
-            paddingTop: 8,
-            height: 56 + bottomInset,
-          },
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: '500',
-            ...(forceMoreFocus ? { color: '#ee4d2d' } : {}),
-          },
-          headerShown: false,
-        };
-      }}
+      tabBar={(props) => <CustomTabBar {...props} icons={ADMIN_TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
+      screenOptions={{ headerShown: false }}
     >
       <AdminTab.Screen
         name="AdminDashboard"
-        component={AdminDashboardScreen}
+        component={AdminDashboardGestureScreen}
         options={{ tabBarLabel: 'Overview' }}
       />
       <AdminTab.Screen
         name="AdminClients"
-        component={AdminClientsScreen}
+        component={AdminClientsGestureScreen}
         options={{ tabBarLabel: 'Clients' }}
       />
       <AdminTab.Screen
         name="AdminOrders"
-        component={AdminOrdersScreen}
+        component={AdminOrdersGestureScreen}
         options={{ tabBarLabel: 'Orders' }}
       />
       <AdminTab.Screen
         name="AdminPayments"
-        component={AdminPaymentsScreen}
+        component={AdminPaymentsGestureScreen}
         options={{ tabBarLabel: 'Ledger' }}
       />
       <AdminTab.Screen
         name="AdminMore"
-        component={AdminMoreScreen}
-        options={{
-          tabBarLabel: 'More',
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#ee4d2d',
-            color: '#ffffff',
-            fontSize: 10,
-            fontFamily: 'Jakarta-Bold',
-          },
-        }}
+        component={AdminMoreGestureScreen}
+        options={{ tabBarLabel: 'More' }}
       />
       <AdminTab.Screen
         name="AdminReminders"
@@ -362,6 +492,18 @@ export default function AppNavigator() {
   // Theme state — defaults to dark mode
   const [isDarkMode, setIsDarkMode] = useState(true);
   const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
+
+  const navigationTheme = React.useMemo(() => {
+    const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
+    return {
+      ...baseTheme,
+      dark: isDarkMode,
+      colors: {
+        ...baseTheme.colors,
+        background: isDarkMode ? '#0b0f19' : '#f1f5f9',
+      },
+    };
+  }, [isDarkMode]);
 
   useEffect(() => {
     // Get initial session
@@ -523,65 +665,67 @@ export default function AppNavigator() {
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
         <NotificationProvider userId={linkedProfileId || undefined}>
-          <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
-            <StatusBar
-              barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-              backgroundColor={isDarkMode ? '#0b0f19' : '#ffffff'}
-              translucent={false}
-              animated
-            />
+          <TabBarProvider>
+            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
+              <StatusBar
+                barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+                backgroundColor={isDarkMode ? '#0b0f19' : '#ffffff'}
+                translucent={false}
+                animated
+              />
 
-            {!isActuallyLoading && (
-              <AppLockGate sessionExists={!!session}>
-                <NavigationContainer ref={navigationRef}>
-                  <Stack.Navigator screenOptions={{ headerShown: false }}>
-                    {session ? (
-                      userRole === 'ADMIN' && activeRole === null ? (
-                        <Stack.Screen name="RoleSelect">
-                          {(props) => (
-                            <RoleSelectionScreen
-                              {...props}
-                              onSelectRole={(role) => setActiveRole(role)}
-                              onSignOut={async () => {
-                                await supabase.auth.signOut();
-                              }}
-                            />
-                          )}
-                        </Stack.Screen>
-                      ) : activeRole === 'admin' ? (
-                        <Stack.Screen name="Admin" component={AdminNavigator} />
+              {!isActuallyLoading && (
+                <AppLockGate sessionExists={!!session}>
+                  <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+                    <Stack.Navigator screenOptions={{ headerShown: false }}>
+                      {session ? (
+                        userRole === 'ADMIN' && activeRole === null ? (
+                          <Stack.Screen name="RoleSelect">
+                            {(props) => (
+                              <RoleSelectionScreen
+                                {...props}
+                                onSelectRole={(role) => setActiveRole(role)}
+                                onSignOut={async () => {
+                                  await supabase.auth.signOut();
+                                }}
+                              />
+                            )}
+                          </Stack.Screen>
+                        ) : activeRole === 'admin' ? (
+                          <Stack.Screen name="Admin" component={AdminNavigator} />
+                        ) : (
+                          <>
+                            <Stack.Screen name="Main" component={MainNavigator} />
+                          </>
+                        )
                       ) : (
-                        <>
-                          <Stack.Screen name="Main" component={MainNavigator} />
-                        </>
-                      )
-                    ) : (
-                      <Stack.Screen name="Auth" component={AuthNavigator} />
-                    )}
-                  </Stack.Navigator>
-                </NavigationContainer>
-              </AppLockGate>
-            )}
+                        <Stack.Screen name="Auth" component={AuthNavigator} />
+                      )}
+                    </Stack.Navigator>
+                  </NavigationContainer>
+                </AppLockGate>
+              )}
 
-            {showOverlay && (
-              <Animated.View
-                style={[
-                  StyleSheet.absoluteFill,
-                  {
-                    opacity: overlayOpacity,
-                    zIndex: 9999,
-                  },
-                ]}
-              >
-                <PremiumLoader
-                  title={session ? 'Syncing Account Config' : 'Initializing Session'}
-                  subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
-                  error={profileError}
-                  onRetry={handleRetry}
-                />
-              </Animated.View>
-            )}
-          </View>
+              {showOverlay && (
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    {
+                      opacity: overlayOpacity,
+                      zIndex: 9999,
+                    },
+                  ]}
+                >
+                  <PremiumLoader
+                    title={session ? 'Syncing Account Config' : 'Initializing Session'}
+                    subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
+                    error={profileError}
+                    onRetry={handleRetry}
+                  />
+                </Animated.View>
+              )}
+            </View>
+          </TabBarProvider>
         </NotificationProvider>
       </RoleContext.Provider>
     </ThemeContext.Provider>
@@ -594,5 +738,101 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  floatingWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  barContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  barLight: {
+    backgroundColor: 'rgba(255, 252, 251, 0.65)',
+    borderColor: 'rgba(0, 0, 0, 0.06)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  barDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  slider: {
+    position: 'absolute',
+    borderWidth: 1,
+  },
+  sliderLight: {
+    backgroundColor: 'rgba(238, 77, 45, 0.08)',
+    borderColor: 'rgba(238, 77, 45, 0.12)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+  },
+  sliderDark: {
+    backgroundColor: 'rgba(238, 77, 45, 0.15)',
+    borderColor: 'rgba(238, 77, 45, 0.25)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+  },
+  buttonsWrapper: {
+    width: '100%',
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tabButton: {
+    flex: 1,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+  },
+  iconContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+    height: 24,
+  },
+  tabLabel: {
+    fontSize: 9,
+    fontFamily: 'Jakarta-Medium',
+  },
+  badge: {
+    position: 'absolute',
+    backgroundColor: '#ee4d2d',
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontWeight: '900',
+    textAlign: 'center',
   },
 });

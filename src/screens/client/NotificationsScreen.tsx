@@ -33,6 +33,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { FlashList } from '@shopify/flash-list';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { MotiView, AnimatePresence } from 'moti';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -122,12 +123,14 @@ function formatFullDate(value: string) {
   });
 }
 
+
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { refreshUnreadCount } = useNotifications();
   const insets = useSafeAreaInsets();
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<NotificationCategory>('PAYMENT_UPDATES');
   const [loading, setLoading] = useState(true);
@@ -491,8 +494,10 @@ export default function NotificationsScreen() {
         <View style={[styles.listContainer, layout.centeredContentStyle]}>
           <FlashList
             data={paginatedItems}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item: any) => item.id}
             renderItem={renderItem}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

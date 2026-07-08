@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   ArrowLeft,
   ShoppingBag,
@@ -79,6 +80,7 @@ export default function OrdersScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
   const analyticsCardMinWidth = layout.getGridItemWidth(layout.isTablet ? 4 : 2, 10);
   
   // Loading & Data States
@@ -273,6 +275,8 @@ export default function OrdersScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
           }

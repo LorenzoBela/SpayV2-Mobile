@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from "expo-image";
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -297,6 +298,7 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
 export default function AdminPaymentsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
 
   const queryClient = useQueryClient();
 
@@ -1700,6 +1702,8 @@ export default function AdminPaymentsScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.mainScrollContent]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
@@ -4677,6 +4681,7 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 10,
     gap: 16,
+    paddingBottom: 100,
   },
   scheduleCard: {
     borderRadius: 20,

@@ -53,6 +53,7 @@ export function getResponsiveLayout(width: number, height: number): ResponsiveLa
       maxWidth: contentMaxWidth,
       paddingHorizontal: gutter,
       width: '100%',
+      paddingBottom: 100,
     },
     centeredContentStyle: {
       alignSelf: 'center',

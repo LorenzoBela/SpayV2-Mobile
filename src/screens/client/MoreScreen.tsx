@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useNavigation } from '@react-navigation/native';
 import {
   TrendingUp,
@@ -38,6 +39,7 @@ export default function MoreScreen() {
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
   const gridColumns = layout.isTablet ? 3 : 2;
   const gridCardWidth = layout.getGridItemWidth(gridColumns, 12);
   const [userName, setUserName] = useState('Client');
@@ -160,7 +162,12 @@ export default function MoreScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+      >
         
         {/* Profile Card */}
         <TouchableOpacity

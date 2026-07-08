@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   Wallet,
   Calendar,
@@ -533,6 +534,7 @@ export default function DashboardScreen() {
   const { isDarkMode } = React.useContext(ThemeContext);
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
   const quickActionColumns = layout.isTablet ? 4 : 2;
   const quickActionWidth = layout.getGridItemWidth(quickActionColumns, 10);
 
@@ -1205,6 +1207,8 @@ export default function DashboardScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
         }

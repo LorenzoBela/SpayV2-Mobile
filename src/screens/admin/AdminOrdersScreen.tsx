@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   ShoppingBag,
@@ -80,6 +81,7 @@ function formatDate(value: string) {
 export default function AdminOrdersScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
 
   const queryClient = useQueryClient();
 
@@ -591,6 +593,8 @@ export default function AdminOrdersScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >

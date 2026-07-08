@@ -18,6 +18,7 @@ import {
   KeyboardAvoidingView,
   Switch,
 } from 'react-native';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -276,6 +277,7 @@ export default function AdminDashboardScreen() {
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
 
   const queryClient = useQueryClient();
 
@@ -823,6 +825,8 @@ export default function AdminDashboardScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useNavigation } from '@react-navigation/native';
 import {
   LayoutDashboard,
@@ -40,6 +41,7 @@ export default function AdminMoreScreen() {
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { unreadCount } = useNotifications();
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
 
   const [adminName, setAdminName] = useState('Administrator');
   const [adminEmail, setAdminEmail] = useState('');
@@ -168,7 +170,12 @@ export default function AdminMoreScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+      >
         
         {/* Profile Card */}
         <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>

@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   CreditCard,
   Calendar as CalendarIcon,
@@ -345,6 +346,7 @@ export default function PaymentsScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
   const analyticsCardMinWidth = layout.getGridItemWidth(layout.isTablet ? 4 : 2, 10);
 
   // States
@@ -786,6 +788,8 @@ export default function PaymentsScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
           }

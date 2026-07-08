@@ -1,7 +1,6 @@
 import React, { PropsWithChildren, useCallback, useContext, useEffect, useMemo } from 'react';
 import { PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import * as Haptics from 'expo-haptics';
 import Animated, {
   Easing,
@@ -14,13 +13,51 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { CLIENT_TAB_SEQUENCE, getAdjacentClientTab, ClientVisibleTabName } from '../navigation/clientTabs';
-import { MainTabParamList, ThemeContext } from '../navigation/navigationTypes';
+import { ThemeContext } from '../navigation/navigationTypes';
 
-type ClientTabNavigation = BottomTabNavigationProp<MainTabParamList, ClientVisibleTabName>;
+const CLIENT_TAB_SEQUENCE = [
+  'Dashboard',
+  'Orders',
+  'Payments',
+  'Notifications',
+  'More',
+] as const;
+
+const ADMIN_TAB_SEQUENCE = [
+  'AdminDashboard',
+  'AdminClients',
+  'AdminOrders',
+  'AdminPayments',
+  'AdminMore',
+] as const;
+
+const TAB_LABEL_MAP: Record<string, string> = {
+  Dashboard: 'Dashboard',
+  Orders: 'Orders',
+  Payments: 'Payments',
+  Notifications: 'Notifications',
+  More: 'More',
+  AdminDashboard: 'Overview',
+  AdminClients: 'Clients',
+  AdminOrders: 'Orders',
+  AdminPayments: 'Ledger',
+  AdminMore: 'More',
+};
+
+function getAdjacentTab(
+  routeName: string,
+  direction: 'previous' | 'next',
+  sequence: readonly string[],
+): string | null {
+  const currentIndex = sequence.indexOf(routeName);
+  if (currentIndex === -1) return null;
+
+  const nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+  return sequence[nextIndex] ?? null;
+}
 
 type ClientTabGestureSurfaceProps = PropsWithChildren<{
-  routeName: ClientVisibleTabName;
+  routeName: any;
 }>;
 
 const HORIZONTAL_CAPTURE_PX = 10;
@@ -29,10 +66,10 @@ const QUICK_FLICK_DISTANCE_PX = 44;
 const SWIPE_VELOCITY_PX = 360;
 const MAX_PAGE_PULL_RATIO = 0.12;
 
-let lastFocusedClientTab: ClientVisibleTabName | null = null;
+let lastFocusedClientTab: string | null = null;
 
-function getTabIndex(routeName: ClientVisibleTabName) {
-  return CLIENT_TAB_SEQUENCE.indexOf(routeName);
+function getTabIndex(routeName: string, sequence: readonly string[]) {
+  return sequence.indexOf(routeName);
 }
 
 function triggerTabSwipeHaptic() {
@@ -47,15 +84,20 @@ export default function ClientTabGestureSurface({
   routeName,
   children,
 }: ClientTabGestureSurfaceProps) {
-  const navigation = useNavigation<ClientTabNavigation>();
+  const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
   const { isDarkMode } = useContext(ThemeContext);
   const { width } = useWindowDimensions();
   const translateX = useSharedValue(0);
   const enterTranslateX = useSharedValue(0);
   const focusProgress = useSharedValue(1);
-  const previousTab = getAdjacentClientTab(routeName, 'previous');
-  const nextTab = getAdjacentClientTab(routeName, 'next');
+
+  const isAdmin = routeName.startsWith('Admin');
+  const tabSequence = isAdmin ? ADMIN_TAB_SEQUENCE : CLIENT_TAB_SEQUENCE;
+
+  const previousTab = getAdjacentTab(routeName, 'previous', tabSequence);
+  const nextTab = getAdjacentTab(routeName, 'next', tabSequence);
+  
   const maxPagePull = Math.min(Math.max(width * MAX_PAGE_PULL_RATIO, 38), 54);
   const surfaceBackgroundColor = isDarkMode ? '#0b0f19' : '#f1f5f9';
   const edgeHintBackgroundColor = isDarkMode ? 'rgba(18, 25, 39, 0.96)' : 'rgba(255, 255, 255, 0.96)';
@@ -65,8 +107,10 @@ export default function ClientTabGestureSurface({
   useEffect(() => {
     translateX.value = 0;
     if (isFocused) {
-      const previousIndex = lastFocusedClientTab ? getTabIndex(lastFocusedClientTab) : -1;
-      const currentIndex = getTabIndex(routeName);
+      const isConfigAdmin = routeName.startsWith('Admin');
+      const sequence = isConfigAdmin ? ADMIN_TAB_SEQUENCE : CLIENT_TAB_SEQUENCE;
+      const previousIndex = lastFocusedClientTab ? getTabIndex(lastFocusedClientTab, sequence) : -1;
+      const currentIndex = getTabIndex(routeName, sequence);
       const cameFromAdjacentTab = previousIndex !== -1 && Math.abs(currentIndex - previousIndex) === 1;
       const incomingDirection = cameFromAdjacentTab && previousIndex < currentIndex ? 1 : -1;
 
@@ -85,7 +129,9 @@ export default function ClientTabGestureSurface({
   }, [enterTranslateX, focusProgress, isFocused, routeName, translateX]);
 
   const goToAdjacentTab = useCallback((direction: 'previous' | 'next') => {
-    const targetRoute = getAdjacentClientTab(routeName, direction);
+    const isConfigAdmin = routeName.startsWith('Admin');
+    const sequence = isConfigAdmin ? ADMIN_TAB_SEQUENCE : CLIENT_TAB_SEQUENCE;
+    const targetRoute = getAdjacentTab(routeName, direction, sequence);
     if (targetRoute) {
       navigation.navigate(targetRoute);
     }
@@ -221,7 +267,9 @@ export default function ClientTabGestureSurface({
           ]}
         >
           <Text style={[styles.edgeHintArrow, { color: '#ee4d2d' }]}>{'<'}</Text>
-          <Text style={[styles.edgeHintText, { color: edgeHintTextColor }]}>{previousTab}</Text>
+          <Text style={[styles.edgeHintText, { color: edgeHintTextColor }]}>
+            {previousTab ? (TAB_LABEL_MAP[previousTab] ?? previousTab) : ''}
+          </Text>
         </Animated.View>
 
         <Animated.View
@@ -236,7 +284,9 @@ export default function ClientTabGestureSurface({
             nextHintStyle,
           ]}
         >
-          <Text style={[styles.edgeHintText, { color: edgeHintTextColor }]}>{nextTab}</Text>
+          <Text style={[styles.edgeHintText, { color: edgeHintTextColor }]}>
+            {nextTab ? (TAB_LABEL_MAP[nextTab] ?? nextTab) : ''}
+          </Text>
           <Text style={[styles.edgeHintArrow, { color: '#ee4d2d' }]}>{'>'}</Text>
         </Animated.View>
 
