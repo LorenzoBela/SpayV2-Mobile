@@ -51,6 +51,8 @@ import CalendarScreen from '../screens/client/CalendarScreen';
 import SettingsScreen from '../screens/client/SettingsScreen';
 import MoreScreen from '../screens/client/MoreScreen';
 import NootAiScreen from '../screens/client/NootAiScreen';
+import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen';
+import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
@@ -403,6 +405,14 @@ const MainNavigator = () => {
           tabBarButton: () => null,
         }}
       />
+      <Tab.Screen
+        name="ClientMilestones"
+        component={ClientMilestonesScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
     </Tab.Navigator>
   );
 };
@@ -469,6 +479,14 @@ const AdminNavigator = () => {
       <AdminTab.Screen
         name="AdminNotifications"
         component={AdminNotificationsScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <AdminTab.Screen
+        name="AdminMilestones"
+        component={AdminMilestonesScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,

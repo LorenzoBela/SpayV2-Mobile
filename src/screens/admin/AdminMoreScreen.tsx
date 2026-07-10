@@ -28,6 +28,7 @@ import {
   Sun,
   Moon,
   Users,
+  Trophy,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -127,6 +128,12 @@ export default function AdminMoreScreen() {
       icon: Receipt,
       desc: 'Create & schedule plans',
       action: () => navigation.navigate('AdminOrders'),
+    },
+    {
+      name: 'Achievements',
+      icon: Trophy,
+      desc: 'System-wide milestones',
+      action: () => navigation.navigate('AdminMilestones'),
     },
   ];
 

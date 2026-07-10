@@ -26,6 +26,7 @@ export type MainTabParamList = {
   Settings: undefined;
   Calendar: undefined;
   NootAi: undefined;
+  ClientMilestones: undefined;
 };
 
 export type AdminTabParamList = {
@@ -38,6 +39,7 @@ export type AdminTabParamList = {
   AdminReports: undefined;
   AdminSettings: undefined;
   AdminNotifications: undefined;
+  AdminMilestones: undefined;
 };
 
 export const RoleContext = React.createContext<{

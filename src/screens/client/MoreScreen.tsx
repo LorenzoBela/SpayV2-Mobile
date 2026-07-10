@@ -28,6 +28,7 @@ import {
   Sun,
   Moon,
   Sparkles,
+  Trophy,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -119,6 +120,12 @@ export default function MoreScreen() {
       icon: Calendar,
       desc: 'Due reminders',
       action: () => navigation.navigate('Calendar'),
+    },
+    {
+      name: 'Achievements',
+      icon: Trophy,
+      desc: 'Milestones & progress',
+      action: () => navigation.navigate('ClientMilestones'),
     },
   ];
 
