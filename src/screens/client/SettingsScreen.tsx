@@ -18,7 +18,8 @@ import {
   Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFooterPadding } from '../../utils/safeArea';
 import { useNavigation } from '@react-navigation/native';
 import {
   ArrowLeft,
@@ -66,6 +67,7 @@ export default function SettingsScreen() {
   const { userRole, setActiveRole } = useContext(RoleContext);
   const systemColorScheme = useColorScheme();
   const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -802,7 +804,7 @@ export default function SettingsScreen() {
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+              { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) },
             ]}
           >
             <View style={styles.modalHeader}>

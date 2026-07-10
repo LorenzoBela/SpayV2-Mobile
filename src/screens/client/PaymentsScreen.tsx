@@ -14,7 +14,8 @@ import {
   Easing,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFooterPadding } from '../../utils/safeArea';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   CreditCard,
@@ -346,6 +347,7 @@ export default function PaymentsScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
   const scrollHandler = useTabBarScroll();
   const analyticsCardMinWidth = layout.getGridItemWidth(layout.isTablet ? 4 : 2, 10);
 
@@ -1498,7 +1500,7 @@ export default function PaymentsScreen() {
       >
         <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
           <SwipeDismissModal onDismiss={() => setIsPaymentModalOpen(false)}>
-          <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+          <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
               <View>
                 <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Pay Installment Dues</Text>
@@ -1583,7 +1585,7 @@ export default function PaymentsScreen() {
       >
         <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
           <SwipeDismissModal onDismiss={() => setIsMonthDetailModalOpen(false)}>
-          <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+          <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
               <View>
                 <Text style={[styles.modalTitle, { color: t.textPrimary }]}>{selectedMonthGroup?.monthName}</Text>

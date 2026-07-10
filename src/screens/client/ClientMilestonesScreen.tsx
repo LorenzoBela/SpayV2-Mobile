@@ -12,7 +12,8 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getSheetContentPadding } from '../../utils/safeArea';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   Trophy,
@@ -211,6 +212,7 @@ export default function ClientMilestonesScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+  const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<'all' | 'unlocked' | 'locked' | 'finance' | 'orders' | 'clients' | 'operations'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -224,6 +226,9 @@ export default function ClientMilestonesScreen() {
   const [showRarityDropdown, setShowRarityDropdown] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showPageSizeDropdown, setShowPageSizeDropdown] = useState(false);
+
+  const [showStats, setShowStats] = useState(true);
+  const [showFilters, setShowFilters] = useState(true);
 
   // Confetti triggering keys
   const [celebrateCount, setCelebrateCount] = useState(0);
@@ -407,104 +412,131 @@ export default function ClientMilestonesScreen() {
           <Text style={styles.headerSubtitle}>S-Pay Milestones</Text>
           <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Achievements</Text>
         </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerActionBtn, { backgroundColor: showStats ? t.accentLight : 'transparent' }]}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowStats(s => !s);
+            }}
+          >
+            <Trophy color={showStats ? t.accent : t.textSecondary} size={20} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.headerActionBtn,
+              { backgroundColor: showFilters ? t.accentLight : 'transparent', marginLeft: 8 },
+            ]}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFilters(f => !f);
+            }}
+          >
+            <Search color={showFilters ? t.accent : t.textSecondary} size={20} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Progress Header Card */}
-      <View style={styles.progressCardContainer}>
-        <View style={[styles.progressCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <View style={styles.progressHeader}>
-            <View>
-              <Text style={[styles.progressTitle, { color: t.textPrimary }]}>Your Achievement Journey</Text>
-              <Text style={[styles.progressSubtitle, { color: t.textSecondary }]}>
-                {unlockedCount} of {totalCount} Milestones Unlocked
-              </Text>
+      {showStats && (
+        <View style={styles.progressCardContainer}>
+          <View style={[styles.progressCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={styles.progressHeader}>
+              <View>
+                <Text style={[styles.progressTitle, { color: t.textPrimary }]}>Your Achievement Journey</Text>
+                <Text style={[styles.progressSubtitle, { color: t.textSecondary }]}>
+                  {unlockedCount} of {totalCount} Milestones Unlocked
+                </Text>
+              </View>
+              <View style={[styles.badgeCircle, { backgroundColor: t.accentLight }]}>
+                <Trophy color={t.accent} size={28} />
+              </View>
             </View>
-            <View style={[styles.badgeCircle, { backgroundColor: t.accentLight }]}>
-              <Trophy color={t.accent} size={28} />
+
+            <View style={[styles.progressBarOuter, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
+              <View style={[styles.progressBarInner, { width: `${percentage}%`, backgroundColor: t.accent }]} />
             </View>
-          </View>
 
-          <View style={[styles.progressBarOuter, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
-            <View style={[styles.progressBarInner, { width: `${percentage}%`, backgroundColor: t.accent }]} />
-          </View>
-
-          <View style={styles.progressFooter}>
-            <Text style={[styles.progressPercent, { color: t.accent }]}>{percentage}% Complete</Text>
-            <Text style={[styles.progressRarityText, { color: t.textMuted }]}>Keep spending and paying to level up!</Text>
+            <View style={styles.progressFooter}>
+              <Text style={[styles.progressPercent, { color: t.accent }]}>{percentage}% Complete</Text>
+              <Text style={[styles.progressRarityText, { color: t.textMuted }]}>Keep spending and paying to level up!</Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Filters & Search Panel */}
-      <View style={styles.filterSection}>
-        <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <Search color={t.textSecondary} size={18} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: t.textPrimary }]}
-            placeholder="Search achievements..."
-            placeholderTextColor={t.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <X color={t.textSecondary} size={18} />
+      {showFilters && (
+        <View style={styles.filterSection}>
+          <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <Search color={t.textSecondary} size={18} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: t.textPrimary }]}
+              placeholder="Search achievements..."
+              placeholderTextColor={t.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X color={t.textSecondary} size={18} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Dropdowns row */}
+          <View style={styles.dropdownsRow}>
+            <TouchableOpacity
+              style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+              onPress={() => setShowRarityDropdown(true)}
+            >
+              <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
+                {rarityOptions.find(o => o.key === rarityFilter)?.label || 'Rarity'}
+              </Text>
+              <ChevronDown color={t.textSecondary} size={14} />
             </TouchableOpacity>
-          ) : null}
-        </View>
 
-        {/* Dropdowns row */}
-        <View style={styles.dropdownsRow}>
-          <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-            onPress={() => setShowRarityDropdown(true)}
-          >
-            <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
-              {rarityOptions.find(o => o.key === rarityFilter)?.label || 'Rarity'}
-            </Text>
-            <ChevronDown color={t.textSecondary} size={14} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+              onPress={() => setShowSortDropdown(true)}
+            >
+              <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
+                {sortOptions.find(o => o.key === sortBy)?.label || 'Sort'}
+              </Text>
+              <ChevronDown color={t.textSecondary} size={14} />
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-            onPress={() => setShowSortDropdown(true)}
-          >
-            <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
-              {sortOptions.find(o => o.key === sortBy)?.label || 'Sort'}
-            </Text>
-            <ChevronDown color={t.textSecondary} size={14} />
-          </TouchableOpacity>
+          {/* Category Tabs Selector */}
+          <View style={styles.tabsWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+              {tabs.map((tab) => {
+                const isSelected = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[
+                      styles.tabButton,
+                      {
+                        backgroundColor: isSelected ? t.accent : t.cardBg,
+                        borderColor: isSelected ? t.accent : t.cardBorder,
+                      },
+                    ]}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setActiveTab(tab.key);
+                    }}
+                  >
+                    <Text style={[styles.tabButtonText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
-
-        {/* Category Tabs Selector */}
-        <View style={styles.tabsWrapper}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
-            {tabs.map((tab) => {
-              const isSelected = activeTab === tab.key;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[
-                    styles.tabButton,
-                    {
-                      backgroundColor: isSelected ? t.accent : t.cardBg,
-                      borderColor: isSelected ? t.accent : t.cardBorder,
-                    },
-                  ]}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setActiveTab(tab.key);
-                  }}
-                >
-                  <Text style={[styles.tabButtonText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      </View>
+      )}
 
       {/* Milestones Content List */}
       {isLoading ? (
@@ -518,7 +550,12 @@ export default function ClientMilestonesScreen() {
           <Text style={[styles.emptySubtitle, { color: t.textSecondary }]}>Try adjusting your filters or search terms.</Text>
         </View>
       ) : (
-        <ScrollView style={styles.scrollList} contentContainerStyle={styles.scrollListContent}>
+        <ScrollView
+          style={styles.scrollList}
+          contentContainerStyle={[styles.scrollListContent, layout.scrollContentStyle]}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+        >
           <View style={styles.grid}>
             {paginatedMilestones.map((milestone) => {
               const rarity = getMilestoneRarity(milestone.id);
@@ -533,7 +570,7 @@ export default function ClientMilestonesScreen() {
                     {
                       backgroundColor: c.bg,
                       borderColor: c.border,
-                      width: layout.isTablet ? (SCREEN_WIDTH - 48) / 3 : (SCREEN_WIDTH - 36) / 2,
+                      width: layout.getGridItemWidth(layout.isTablet ? 3 : 2, 12),
                     },
                   ]}
                   onPress={() => handleMilestoneClick(milestone)}
@@ -719,7 +756,7 @@ export default function ClientMilestonesScreen() {
             const Icon = getMilestoneIcon(selectedMilestone.id);
 
             return (
-              <View style={[styles.bottomSheetContent, { backgroundColor: t.cardBg }]}>
+              <View style={[styles.bottomSheetContent, { backgroundColor: t.cardBg, paddingBottom: getSheetContentPadding(insets.bottom) }]}>
                 {/* Drag handle line indicator */}
                 <View style={[styles.dragHandle, { backgroundColor: isDarkMode ? '#334155' : '#cbd5e1' }]} />
 
@@ -832,6 +869,17 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontFamily: 'Jakarta-Bold',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   progressCardContainer: {
     padding: 16,
@@ -1088,7 +1136,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dropdownModalContainer: {
-    width: SCREEN_WIDTH - 64,
+    width: '85%',
+    maxWidth: 400,
     borderRadius: 16,
     borderWidth: 1,
     padding: 16,

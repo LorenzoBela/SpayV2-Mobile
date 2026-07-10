@@ -14,7 +14,8 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFooterPadding } from '../../utils/safeArea';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -130,6 +131,7 @@ export default function AdminClientsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+  const insets = useSafeAreaInsets();
 
   const queryClient = useQueryClient();
 
@@ -1373,7 +1375,7 @@ export default function AdminClientsScreen() {
                 </View>
               </ScrollView>
 
-              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
                 <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditProfileOpen(false)} disabled={actionLoading}>
                   <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>

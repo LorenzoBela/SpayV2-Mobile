@@ -11,7 +11,8 @@ import {
   Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFooterPadding } from '../../utils/safeArea';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   ArrowLeft,
@@ -81,6 +82,7 @@ export default function OrdersScreen() {
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+  const insets = useSafeAreaInsets();
   const analyticsCardMinWidth = layout.getGridItemWidth(layout.isTablet ? 4 : 2, 10);
   
   // Loading & Data States
@@ -948,7 +950,7 @@ export default function OrdersScreen() {
       >
         <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
           <SwipeDismissModal onDismiss={() => setIsPaymentModalOpen(false)}>
-          <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+          <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
             
             <View style={[styles.modalHeader, { borderColor: t.divider }]}>
               <View>

@@ -51,8 +51,8 @@ import CalendarScreen from '../screens/client/CalendarScreen';
 import SettingsScreen from '../screens/client/SettingsScreen';
 import MoreScreen from '../screens/client/MoreScreen';
 import NootAiScreen from '../screens/client/NootAiScreen';
-import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen';
-import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen';
+import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen'; // refresh cache
+import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen'; // refresh cache
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
@@ -74,6 +74,7 @@ import {
 } from './navigationTypes';
 import { ClientVisibleTabName } from './clientTabs';
 import { NotificationProvider, useNotifications } from '../hooks/useNotifications';
+import { useResponsiveLayout } from '../utils/responsive';
 
 // Map route names to Lucide icon components
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -149,6 +150,7 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
   const { width: windowWidth } = useWindowDimensions();
   const sliderScale = useSharedValue(1);
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
 
   const visibleRoutes = state.routes.filter((route: any) => {
     const options = descriptors[route.key].options;
@@ -157,8 +159,8 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
 
   const activeIndex = visibleRoutes.findIndex((r: any) => {
     const activeRouteName = state.routes[state.index].name;
-    const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi',
-                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications'].includes(activeRouteName);
+    const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones',
+                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones'].includes(activeRouteName);
     if (isSubScreen) {
       return r.name === 'More' || r.name === 'AdminMore';
     }
@@ -166,7 +168,7 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
   });
 
   // 358px expanded (390 screen - 32 margins), 195px collapsed
-  const expandedWidth = windowWidth - 32;
+  const expandedWidth = Math.min(windowWidth - 32, 500);
   const collapsedWidth = 195;
 
   const barAnimatedStyle = useAnimatedStyle(() => {
@@ -835,6 +837,7 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 9,
     fontFamily: 'Jakarta-Medium',
+    overflow: 'hidden',
   },
   badge: {
     position: 'absolute',

@@ -21,7 +21,8 @@ import {
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFooterPadding } from '../../utils/safeArea';
 import {
   ShieldAlert,
   Users,
@@ -278,6 +279,7 @@ export default function AdminDashboardScreen() {
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+  const insets = useSafeAreaInsets();
 
   const queryClient = useQueryClient();
 
@@ -2189,7 +2191,7 @@ export default function AdminDashboardScreen() {
                 })()}
               </ScrollView>
 
-              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
                 <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsNewOrderOpen(false)} disabled={actionLoading}>
                   <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
@@ -2598,7 +2600,7 @@ export default function AdminDashboardScreen() {
                 </View>
               </View>
 
-              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder }]}>
+              <View style={[styles.sheetActions, { borderTopColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
                 <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
                   <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>

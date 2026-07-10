@@ -1429,7 +1429,7 @@ export default function ReportsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 20 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
         {/* S-Pay Branding and Description */}
         <View style={styles.brandContainer}>
           <Text style={styles.brandSub}>S-Pay Client</Text>

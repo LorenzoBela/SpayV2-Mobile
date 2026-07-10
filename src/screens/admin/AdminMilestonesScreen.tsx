@@ -12,7 +12,8 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getSheetContentPadding } from '../../utils/safeArea';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   Trophy,
@@ -34,6 +35,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Volume2,
+  VolumeX,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { ThemeContext } from '../../navigation/navigationTypes';
@@ -81,16 +84,15 @@ const getTierInfo = (rarity: Rarity): TierInfo => {
 
 const getMilestoneRarity = (id: string): Rarity => {
   if (
-    id.includes('5m') ||
-    id.includes('1000') ||
+    id.includes('volume-5m') ||
     id.includes('no-delinquents') ||
     id.includes('500-payments')
   ) {
     return 'LEGENDARY';
   }
   if (
-    id.includes('1m') ||
-    id.includes('500k') ||
+    id.includes('volume-1m') ||
+    id.includes('volume-500k') ||
     id.includes('250-payments') ||
     id.includes('100-payments') ||
     id.includes('single-100k') ||
@@ -100,8 +102,8 @@ const getMilestoneRarity = (id: string): Rarity => {
     return 'EPIC';
   }
   if (
-    id.includes('250k') ||
-    id.includes('100k') ||
+    id.includes('volume-250k') ||
+    id.includes('volume-100k') ||
     id.includes('50-payments') ||
     id.includes('100-orders') ||
     id.includes('single-50k') ||
@@ -112,8 +114,8 @@ const getMilestoneRarity = (id: string): Rarity => {
     return 'RARE';
   }
   if (
-    id.includes('50k') ||
-    id.includes('25k') ||
+    id.includes('volume-50k') ||
+    id.includes('volume-25k') ||
     id.includes('25-payments') ||
     id.includes('10-payments') ||
     id.includes('fifty-orders') ||
@@ -185,23 +187,18 @@ const getRarityColors = (rarity: Rarity, isUnlocked: boolean, isDark: boolean) =
 };
 
 const getMilestoneIcon = (id: string) => {
-  if (id.startsWith('volume-1m') || id.startsWith('volume-2m') || id.startsWith('volume-5m')) return Trophy;
-  if (id.startsWith('volume-')) return Coins;
-  if (id.startsWith('single-100k')) return Trophy;
-  if (id.startsWith('single-')) return TrendingUp;
-  if (id.startsWith('limit-')) return Coins;
-  if (id.startsWith('device-')) return Zap;
-  if (id.startsWith('push-')) return BellRing;
+  if (id.startsWith('volume-') || id.startsWith('single-')) return TrendingUp;
+  if (id.startsWith('limit-raise-') || id.startsWith('limit-exposure-')) return Coins;
+  if (id.startsWith('device-onboard-')) return Zap;
+  if (id.startsWith('push-subscribers-')) return BellRing;
   if (id.startsWith('reschedule-')) return Calendar;
-  if (id.startsWith('payment-log-')) return Layers;
-  if (id.startsWith('settings-')) return Award;
-  if (id.startsWith('goal-')) return Trophy;
-  if (id.startsWith('budget-')) return Coins;
-  if (id.includes('vol-') || id.includes('single-')) return Coins;
-  if (id.includes('ord-') || id.includes('shared-')) return Layers;
-  if (id.includes('budget-')) return Calendar;
-  if (id.includes('resch-')) return ShieldCheck;
-  if (id.includes('settings-') || id.includes('device-')) return Zap;
+  if (id.startsWith('settings-changed-')) return Award;
+  if (id.startsWith('budget-limit-') || id.startsWith('goal-value-')) return Trophy;
+  if (id.includes('-clients')) return Users;
+  if (id.includes('-orders')) return Layers;
+  if (id.startsWith('pay-settled-') || id.startsWith('payment-log-')) return Coins;
+  if (id.startsWith('reminder-sent-')) return BellRing;
+  if (id === 'no-delinquents') return ShieldCheck;
   return Sparkles;
 };
 
@@ -210,6 +207,7 @@ export default function AdminMilestonesScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+  const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<'all' | 'unlocked' | 'locked' | 'finance' | 'orders' | 'clients' | 'operations'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -223,6 +221,9 @@ export default function AdminMilestonesScreen() {
   const [showRarityDropdown, setShowRarityDropdown] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [showPageSizeDropdown, setShowPageSizeDropdown] = useState(false);
+
+  const [showStats, setShowStats] = useState(true);
+  const [showFilters, setShowFilters] = useState(true);
 
   // Confetti triggers
   const [celebrateCount, setCelebrateCount] = useState(0);
@@ -405,104 +406,131 @@ export default function AdminMilestonesScreen() {
           <Text style={styles.headerSubtitle}>S-Pay Admin Panel</Text>
           <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Global Milestones</Text>
         </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerActionBtn, { backgroundColor: showStats ? t.accentLight : 'transparent' }]}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowStats(s => !s);
+            }}
+          >
+            <Trophy color={showStats ? t.accent : t.textSecondary} size={20} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.headerActionBtn,
+              { backgroundColor: showFilters ? t.accentLight : 'transparent', marginLeft: 8 },
+            ]}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFilters(f => !f);
+            }}
+          >
+            <Search color={showFilters ? t.accent : t.textSecondary} size={20} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Progress Header Card */}
-      <View style={styles.progressCardContainer}>
-        <View style={[styles.progressCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <View style={styles.progressHeader}>
-            <View>
-              <Text style={[styles.progressTitle, { color: t.textPrimary }]}>System Achievements</Text>
-              <Text style={[styles.progressSubtitle, { color: t.textSecondary }]}>
-                {unlockedCount} of {totalCount} Global Milestones Unlocked
-              </Text>
+      {showStats && (
+        <View style={styles.progressCardContainer}>
+          <View style={[styles.progressCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <View style={styles.progressHeader}>
+              <View>
+                <Text style={[styles.progressTitle, { color: t.textPrimary }]}>System Achievements</Text>
+                <Text style={[styles.progressSubtitle, { color: t.textSecondary }]}>
+                  {unlockedCount} of {totalCount} Global Milestones Unlocked
+                </Text>
+              </View>
+              <View style={[styles.badgeCircle, { backgroundColor: t.accentLight }]}>
+                <Trophy color={t.accent} size={28} />
+              </View>
             </View>
-            <View style={[styles.badgeCircle, { backgroundColor: t.accentLight }]}>
-              <Trophy color={t.accent} size={28} />
+
+            <View style={[styles.progressBarOuter, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
+              <View style={[styles.progressBarInner, { width: `${percentage}%`, backgroundColor: t.accent }]} />
             </View>
-          </View>
 
-          <View style={[styles.progressBarOuter, { backgroundColor: isDarkMode ? '#1e293b' : '#e2e8f0' }]}>
-            <View style={[styles.progressBarInner, { width: `${percentage}%`, backgroundColor: t.accent }]} />
-          </View>
-
-          <View style={styles.progressFooter}>
-            <Text style={[styles.progressPercent, { color: t.accent }]}>{percentage}% Complete</Text>
-            <Text style={[styles.progressRarityText, { color: t.textMuted }]}>Platform milestones dashboard</Text>
+            <View style={styles.progressFooter}>
+              <Text style={[styles.progressPercent, { color: t.accent }]}>{percentage}% Complete</Text>
+              <Text style={[styles.progressRarityText, { color: t.textMuted }]}>Platform milestones dashboard</Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Filters & Search Panel */}
-      <View style={styles.filterSection}>
-        <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <Search color={t.textSecondary} size={18} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: t.textPrimary }]}
-            placeholder="Search achievements..."
-            placeholderTextColor={t.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <X color={t.textSecondary} size={18} />
+      {showFilters && (
+        <View style={styles.filterSection}>
+          <View style={[styles.searchBox, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            <Search color={t.textSecondary} size={18} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: t.textPrimary }]}
+              placeholder="Search achievements..."
+              placeholderTextColor={t.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X color={t.textSecondary} size={18} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Dropdowns row */}
+          <View style={styles.dropdownsRow}>
+            <TouchableOpacity
+              style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+              onPress={() => setShowRarityDropdown(true)}
+            >
+              <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
+                {rarityOptions.find(o => o.key === rarityFilter)?.label || 'Rarity'}
+              </Text>
+              <ChevronDown color={t.textSecondary} size={14} />
             </TouchableOpacity>
-          ) : null}
-        </View>
 
-        {/* Dropdowns row */}
-        <View style={styles.dropdownsRow}>
-          <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-            onPress={() => setShowRarityDropdown(true)}
-          >
-            <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
-              {rarityOptions.find(o => o.key === rarityFilter)?.label || 'Rarity'}
-            </Text>
-            <ChevronDown color={t.textSecondary} size={14} />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+              onPress={() => setShowSortDropdown(true)}
+            >
+              <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
+                {sortOptions.find(o => o.key === sortBy)?.label || 'Sort'}
+              </Text>
+              <ChevronDown color={t.textSecondary} size={14} />
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-            onPress={() => setShowSortDropdown(true)}
-          >
-            <Text style={[styles.filterButtonText, { color: t.textPrimary }]}>
-              {sortOptions.find(o => o.key === sortBy)?.label || 'Sort'}
-            </Text>
-            <ChevronDown color={t.textSecondary} size={14} />
-          </TouchableOpacity>
+          {/* Category Tabs Selector */}
+          <View style={styles.tabsWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+              {tabs.map((tab) => {
+                const isSelected = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[
+                      styles.tabButton,
+                      {
+                        backgroundColor: isSelected ? t.accent : t.cardBg,
+                        borderColor: isSelected ? t.accent : t.cardBorder,
+                      },
+                    ]}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setActiveTab(tab.key);
+                    }}
+                  >
+                    <Text style={[styles.tabButtonText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
-
-        {/* Category Tabs Selector */}
-        <View style={styles.tabsWrapper}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
-            {tabs.map((tab) => {
-              const isSelected = activeTab === tab.key;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[
-                    styles.tabButton,
-                    {
-                      backgroundColor: isSelected ? t.accent : t.cardBg,
-                      borderColor: isSelected ? t.accent : t.cardBorder,
-                    },
-                  ]}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setActiveTab(tab.key);
-                  }}
-                >
-                  <Text style={[styles.tabButtonText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      </View>
+      )}
 
       {/* Milestones Content List */}
       {isLoading ? (
@@ -516,7 +544,12 @@ export default function AdminMilestonesScreen() {
           <Text style={[styles.emptySubtitle, { color: t.textSecondary }]}>Try adjusting your filters or search terms.</Text>
         </View>
       ) : (
-        <ScrollView style={styles.scrollList} contentContainerStyle={styles.scrollListContent}>
+        <ScrollView
+          style={styles.scrollList}
+          contentContainerStyle={[styles.scrollListContent, layout.scrollContentStyle]}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+        >
           <View style={styles.grid}>
             {paginatedMilestones.map((milestone) => {
               const rarity = getMilestoneRarity(milestone.id);
@@ -531,7 +564,7 @@ export default function AdminMilestonesScreen() {
                     {
                       backgroundColor: c.bg,
                       borderColor: c.border,
-                      width: layout.isTablet ? (SCREEN_WIDTH - 48) / 3 : (SCREEN_WIDTH - 36) / 2,
+                      width: layout.getGridItemWidth(layout.isTablet ? 3 : 2, 12),
                     },
                   ]}
                   onPress={() => handleMilestoneClick(milestone)}
@@ -717,7 +750,7 @@ export default function AdminMilestonesScreen() {
             const Icon = getMilestoneIcon(selectedMilestone.id);
 
             return (
-              <View style={[styles.bottomSheetContent, { backgroundColor: t.cardBg }]}>
+              <View style={[styles.bottomSheetContent, { backgroundColor: t.cardBg, paddingBottom: getSheetContentPadding(insets.bottom) }]}>
                 <View style={[styles.dragHandle, { backgroundColor: isDarkMode ? '#334155' : '#cbd5e1' }]} />
 
                 <View style={styles.sheetHeader}>
@@ -829,6 +862,17 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontFamily: 'Jakarta-Bold',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   progressCardContainer: {
     padding: 16,
@@ -1085,7 +1129,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dropdownModalContainer: {
-    width: SCREEN_WIDTH - 64,
+    width: '85%',
+    maxWidth: 400,
     borderRadius: 16,
     borderWidth: 1,
     padding: 16,
