@@ -12,15 +12,11 @@ import {
 } from 'react-native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ShieldAlert,
   Wallet,
   ArrowRight,
   User,
-  CloudSun,
-  Moon,
-  Sun,
   LogOut,
   Users,
   Receipt,
@@ -28,50 +24,19 @@ import {
   Settings,
   LayoutDashboard,
   Sparkles,
-  RefreshCw,
-  Wind,
-  Droplets,
-  Compass,
-  Navigation,
-  Cloud,
-  CloudRain,
-  CloudDrizzle,
-  CloudLightning,
-  CloudFog,
-  Snowflake,
-  X,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForUser } from '../../utils/authProfile';
 import PremiumLoader from '../../components/PremiumLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
+import WeatherWidget from '../../components/WeatherWidget';
 
 interface RoleSelectionScreenProps {
   onSelectRole: (role: 'admin' | 'client') => void;
   onSignOut: () => void;
 }
 
-interface WeatherInfo {
-  temp: number;
-  feelsLike: number;
-  humidity: number;
-  windSpeed: number;
-  code: number;
-  label: string;
-  locationName: string;
-  lastUpdated?: string;
-}
 
-function getWeatherDetails(code: number) {
-  if (code === 0) return { label: 'Clear Sky', icon: Sun, color: '#fbbf24' };
-  if ([1, 2, 3].includes(code)) return { label: 'Partly Cloudy', icon: CloudSun, color: '#38bdf8' };
-  if ([45, 48].includes(code)) return { label: 'Foggy', icon: CloudFog, color: '#94a3b8' };
-  if ([51, 53, 55].includes(code)) return { label: 'Drizzle', icon: CloudDrizzle, color: '#7dd3fc' };
-  if ([61, 63, 65, 80, 81, 82].includes(code)) return { label: 'Rainy', icon: CloudRain, color: '#3b82f6' };
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return { label: 'Snowy', icon: Snowflake, color: '#c7d2fe' };
-  if ([95, 96, 99].includes(code)) return { label: 'Thunderstorm', icon: CloudLightning, color: '#a855f7' };
-  return { label: 'Cloudy', icon: Cloud, color: '#64748b' };
-}
 
 // Staggered entry animation hook
 function useEntryAnimation(delay = 0, duration = 300) {
@@ -108,134 +73,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [weather, setWeather] = useState<WeatherInfo | null>(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
 
-  const fetchWeather = async (force: boolean = false) => {
-    if (weatherLoading) return;
-    setWeatherLoading(true);
-
-    try {
-      if (!force) {
-        const cached = await AsyncStorage.getItem('cached_weather');
-        const cachedTime = await AsyncStorage.getItem('cached_weather_time');
-        if (cached && cachedTime && Date.now() - Number(cachedTime) < 1800000) {
-          // 30 min cache
-          const parsed = JSON.parse(cached);
-          const date = new Date(Number(cachedTime));
-          parsed.lastUpdated = date.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'Asia/Manila',
-          });
-          setWeather(parsed);
-          setWeatherLoading(false);
-          return;
-        }
-      }
-
-      // 1. Geolocate using Free IP API or IP-API
-      let lat = 14.5995;
-      let lon = 120.9842;
-      let city = 'Manila, PH';
-
-      try {
-        const ipRes = await fetch('https://freeipapi.com/api/json');
-        if (ipRes.ok) {
-          const ipData = await ipRes.json();
-          if (ipData.latitude && ipData.longitude) {
-            lat = ipData.latitude;
-            lon = ipData.longitude;
-            city = ipData.cityName ? `${ipData.cityName}, ${ipData.countryCode || 'PH'}` : city;
-          }
-        } else {
-          const ipRes2 = await fetch('http://ip-api.com/json/');
-          if (ipRes2.ok) {
-            const ipData2 = await ipRes2.json();
-            if (ipData2.lat && ipData2.lon) {
-              lat = ipData2.lat;
-              lon = ipData2.lon;
-              city = ipData2.city ? `${ipData2.city}, ${ipData2.countryCode || 'PH'}` : city;
-            }
-          }
-        }
-
-        // Try to reverse geocode the IP coordinates using BigDataCloud for higher local accuracy!
-        try {
-          const geoRes = await fetch(
-            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
-          );
-          if (geoRes.ok) {
-            const geoData = await geoRes.json();
-            const detectedCity = geoData.locality || geoData.city || geoData.principalSubdivision;
-            if (detectedCity) {
-              city = `${detectedCity}, ${geoData.countryCode || 'PH'}`;
-            }
-          }
-        } catch (err) {
-          console.warn('Failed reverse geocoding IP coordinates:', err);
-        }
-      } catch (err) {
-        console.error('Failed IP geolocation:', err);
-      }
-
-      // 2. Fetch Open-Meteo Weather
-      const weatherRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`
-      );
-      if (!weatherRes.ok) throw new Error();
-      const weatherData = await weatherRes.json();
-      const current = weatherData.current;
-      const details = getWeatherDetails(current.weather_code);
-      const lastUpdatedStr = new Date().toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Manila',
-      });
-
-      const newWeather: WeatherInfo = {
-        temp: Math.round(current.temperature_2m),
-        feelsLike: Math.round(current.apparent_temperature),
-        humidity: current.relative_humidity_2m,
-        windSpeed: Math.round(current.wind_speed_10m),
-        code: current.weather_code,
-        label: details.label,
-        locationName: city,
-        lastUpdated: lastUpdatedStr,
-      };
-
-      setWeather(newWeather);
-      await AsyncStorage.setItem('cached_weather', JSON.stringify(newWeather));
-      await AsyncStorage.setItem('cached_weather_time', Date.now().toString());
-    } catch (err) {
-      console.error('Failed to fetch mobile weather on selection screen:', err);
-      const lastUpdatedStr = new Date().toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Manila',
-      });
-      setWeather({
-        temp: 30,
-        feelsLike: 34,
-        humidity: 78,
-        windSpeed: 8,
-        code: 2,
-        label: 'Partly Cloudy',
-        locationName: 'Manila, PH',
-        lastUpdated: lastUpdatedStr,
-      });
-    } finally {
-      setWeatherLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchWeather();
-  }, []);
 
   // Live clock
   useEffect(() => {
@@ -360,134 +198,9 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                   timeZone: 'Asia/Manila',
                 })}
               </Text>
-              <TouchableOpacity
-                style={styles.weatherRow}
-                onPress={() => setShowModal(true)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="Open weather details popup"
-              >
-                {weatherLoading ? (
-                  <RefreshCw size={12} color="#64748b" />
-                ) : (
-                  React.createElement(weather ? getWeatherDetails(weather.code).icon : CloudSun, {
-                    size: 12,
-                    color: weather ? getWeatherDetails(weather.code).color : '#fbbf24',
-                  })
-                )}
-                <Text style={styles.weatherText}>
-                  {weather ? `${weather.temp}°C • ${weather.locationName.split(',')[0]}` : '--°C'}
-                </Text>
-              </TouchableOpacity>
+              <WeatherWidget />
             </View>
           </Animated.View>
-
-          <Modal
-            visible={showModal}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setShowModal(false)}
-          >
-            <TouchableOpacity
-              style={styles.modalOverlay}
-              activeOpacity={1}
-              onPress={() => setShowModal(false)}
-            >
-              <TouchableOpacity
-                style={[styles.modalContainer, { backgroundColor: '#161c2a', borderColor: '#2d3748' }]}
-                activeOpacity={1}
-              >
-                {/* Modal Header */}
-                <View style={styles.modalHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {weather ? (
-                      React.createElement(getWeatherDetails(weather.code).icon, {
-                        size: 24,
-                        color: getWeatherDetails(weather.code).color,
-                      })
-                    ) : (
-                      <CloudSun size={24} color="#fbbf24" />
-                    )}
-                    <View>
-                      <Text style={[styles.modalTitle, { color: '#f8fafc' }]}>
-                        {weather ? weather.label : 'Weather Status'}
-                      </Text>
-                      {weather && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <Navigation size={10} color="#94a3b8" />
-                          <Text style={[styles.modalSubtitle, { color: '#94a3b8' }]}>
-                            {weather.locationName}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity
-                      onPress={() => fetchWeather(true)}
-                      style={[styles.modalActionBtn, { borderColor: 'rgba(255, 255, 255, 0.08)' }]}
-                      disabled={weatherLoading}
-                      accessibilityRole="button"
-                      accessibilityLabel="Refresh weather information"
-                    >
-                      <RefreshCw size={14} color="#94a3b8" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setShowModal(false)}
-                      style={[styles.modalActionBtn, { borderColor: 'rgba(255, 255, 255, 0.08)' }]}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close weather details modal"
-                    >
-                      <X size={14} color="#94a3b8" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Modal Body */}
-                {weather ? (
-                  <View style={styles.modalBody}>
-                    <View style={styles.metricsGrid}>
-                      <View style={[styles.metricCard, { backgroundColor: 'rgba(255, 255, 255, 0.03)', borderColor: 'rgba(255, 255, 255, 0.08)' }]}>
-                        <Text style={[styles.metricLabel, { color: '#94a3b8' }]}>TEMPERATURE</Text>
-                        <Text style={[styles.metricValue, { color: '#f8fafc' }]}>{weather.temp}°C</Text>
-                        <Text style={[styles.metricSub, { color: '#94a3b8' }]}>Feels like {weather.feelsLike}°C</Text>
-                      </View>
-
-                      <View style={[styles.metricCard, { backgroundColor: 'rgba(255, 255, 255, 0.03)', borderColor: 'rgba(255, 255, 255, 0.08)' }]}>
-                        <Text style={[styles.metricLabel, { color: '#94a3b8' }]}>HUMIDITY</Text>
-                        <Text style={[styles.metricValue, { color: '#f8fafc' }]}>{weather.humidity}%</Text>
-                        <Text style={[styles.metricSub, { color: '#94a3b8' }]}>Moisture index</Text>
-                      </View>
-                    </View>
-
-                    <View style={[styles.metricCardFull, { backgroundColor: 'rgba(255, 255, 255, 0.03)', borderColor: 'rgba(255, 255, 255, 0.08)' }]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <View>
-                          <Text style={[styles.metricLabel, { color: '#94a3b8' }]}>WIND VELOCITY</Text>
-                          <Text style={[styles.metricValueSmall, { color: '#f8fafc' }]}>{weather.windSpeed} km/h</Text>
-                        </View>
-                        <Compass size={20} color="#94a3b8" />
-                      </View>
-                    </View>
-
-                    {/* Modal Footer */}
-                    {weather.lastUpdated && (
-                      <View style={[styles.modalFooter, { borderTopColor: '#2d3748' }]}>
-                        <Text style={[styles.lastUpdatedText, { color: '#94a3b8' }]}>
-                          Last updated: {weather.lastUpdated}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.modalLoading}>
-                    <RefreshCw size={24} color="#94a3b8" style={{ marginBottom: 8 }} />
-                    <Text style={{ color: '#94a3b8', fontSize: 12 }}>Loading forecast...</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </Modal>
 
           {/* Section Subtitle */}
           <Animated.View style={[styles.sectionTitleCol, subtitleAnim.style]}>
