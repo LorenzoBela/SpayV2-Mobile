@@ -324,7 +324,7 @@ export default function AdminDashboardScreen() {
 
   // Parity additions states
   const [operationsTab, setOperationsTab] = useState<'orders' | 'timeline'>('orders');
-  const [trendsTab, setTrendsTab] = useState<'categories' | 'installments' | 'cashflow'>('categories');
+  const [trendsTab, setTrendsTab] = useState<'categories' | 'installments' | 'cashflow' | 'milestones'>('categories');
   const [rankingToggle, setRankingToggle] = useState<'spenders' | 'delinquents' | 'signups'>('spenders');
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(6); // Default to current month index
 
@@ -344,6 +344,36 @@ export default function AdminDashboardScreen() {
   const problemClients = dashboardData?.problemClients || [];
   const recentClients = dashboardData?.recentClients || [];
   const clientsList = dashboardData?.clientsList || [];
+
+  // Memoized Near-to-Unlock Milestones (Top 5)
+  const nearToUnlockMilestones = useMemo(() => {
+    const milestones = dashboardData?.milestones || [];
+    return milestones
+      .filter((m: any) => !m.isUnlocked)
+      .map((m: any) => {
+        const ratio = m.currentValue / (m.targetValue || 1);
+        return {
+          ...m,
+          progressRatio: ratio,
+          progressPercent: Math.min(100, Math.round(ratio * 100))
+        };
+      })
+      .sort((a: any, b: any) => b.progressRatio - a.progressRatio)
+      .slice(0, 5);
+  }, [dashboardData?.milestones]);
+
+  const getMilestoneIcon = (category: string) => {
+    switch (category) {
+      case 'finance':
+        return Trophy;
+      case 'orders':
+        return ShoppingBag;
+      case 'payments':
+        return Receipt;
+      default:
+        return Trophy;
+    }
+  };
 
   // Time & Weather Live display
   const [currentTime, setCurrentTime] = useState(() => dayjs());
@@ -1408,6 +1438,18 @@ export default function AdminDashboardScreen() {
                   Cashflow
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.tabButton,
+                  trendsTab === 'milestones' && { backgroundColor: isDarkMode ? '#1e293b' : '#0f172a' }
+                ]}
+                onPress={() => setTrendsTab('milestones')}
+              >
+                <Trophy size={14} color={trendsTab === 'milestones' ? '#fff' : t.textSecondary} />
+                <Text style={[styles.tabButtonText, { color: trendsTab === 'milestones' ? '#fff' : t.textSecondary }]}>
+                  Milestones
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1657,6 +1699,62 @@ export default function AdminDashboardScreen() {
                   </View>
                 ) : (
                   <Text style={[styles.emptyText, { color: t.textSecondary }]}>No cashflow coordinates computed.</Text>
+                )}
+              </View>
+            )}
+
+            {trendsTab === 'milestones' && (
+              <View style={styles.trendsContainer}>
+                {nearToUnlockMilestones.length > 0 ? (
+                  nearToUnlockMilestones.map((m: any, idx: number) => {
+                    const MilestoneIcon = getMilestoneIcon(m.category);
+                    return (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.milestoneRow,
+                          {
+                            borderColor: t.cardBorder,
+                            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+                          }
+                        ]}
+                      >
+                        <View style={styles.milestoneMeta}>
+                          <View style={[styles.milestoneIconBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+                            <MilestoneIcon size={16} color={t.accent} />
+                          </View>
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={[styles.milestoneTitle, { color: t.textPrimary }]} numberOfLines={1}>
+                              {m.title}
+                            </Text>
+                            <Text style={[styles.milestoneDesc, { color: t.textSecondary }]} numberOfLines={1}>
+                              {m.description}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.milestoneValueText, { color: t.textPrimary }]}>
+                              {m.category === 'finance'
+                                ? `₱${Math.round(m.currentValue).toLocaleString()} / ₱${m.targetValue.toLocaleString()}`
+                                : `${m.currentValue} / ${m.targetValue}`}
+                            </Text>
+                            <View style={[styles.progressBadge, { backgroundColor: 'rgba(238, 77, 45, 0.1)' }]}>
+                              <Text style={styles.progressBadgeText}>{m.progressPercent}%</Text>
+                            </View>
+                          </View>
+                        </View>
+                        <View style={[styles.categoryProgressTrack, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : '#f1f5f9', marginTop: 8 }]}>
+                          <View
+                            style={[
+                              styles.categoryProgressBar,
+                              { width: `${m.progressPercent}%`, backgroundColor: t.accent }
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <Text style={[styles.emptyText, { color: t.textSecondary }]}>All milestones unlocked! 🎉</Text>
                 )}
               </View>
             )}
@@ -3151,6 +3249,51 @@ const styles = StyleSheet.create({
   categoryProgressBar: {
     height: '100%',
     borderRadius: 3,
+  },
+  milestoneRow: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  milestoneMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  milestoneIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  milestoneTitle: {
+    fontSize: 12,
+    fontFamily: 'Outfit-Bold',
+  },
+  milestoneDesc: {
+    fontSize: 10,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 1,
+  },
+  milestoneValueText: {
+    fontSize: 10,
+    fontFamily: 'Outfit-Bold',
+    textAlign: 'right',
+  },
+  progressBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+    alignSelf: 'flex-end',
+  },
+  progressBadgeText: {
+    fontSize: 8,
+    fontFamily: 'Outfit-Black',
+    color: '#ee4d2d',
   },
   inflowsCard: {
     borderRadius: 20,

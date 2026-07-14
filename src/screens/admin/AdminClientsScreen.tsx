@@ -574,7 +574,7 @@ export default function AdminClientsScreen() {
         <View style={styles.statsRow}>
           <View style={[styles.miniStatCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <Text style={styles.miniStatLabel}>Total Clients</Text>
-            <Text style={[styles.miniStatVal, { color: t.textPrimary }]}>{processedClients.length}</Text>
+            <Text style={[styles.miniStatVal, { color: t.textPrimary }]}>{clientsData?.totalCount || 0}</Text>
           </View>
           <View style={[styles.miniStatCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <Text style={styles.miniStatLabel}>Outstanding Balance</Text>
