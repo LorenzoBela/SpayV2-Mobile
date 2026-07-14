@@ -18,6 +18,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabBar } from '../../navigation/TabBarContext';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -60,7 +61,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import Svg, { Circle, Text as SvgText, Path, Rect, Defs, LinearGradient, Stop, G } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 
 const formatCurrency = (val: number | string) => {
@@ -84,6 +85,7 @@ export default function AdminReportsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const { hideTabBar, showTabBar } = useTabBar();
 
   // Timeframe Filter States
   const [allTime, setAllTime] = useState(true);
@@ -146,6 +148,7 @@ export default function AdminReportsScreen() {
     queryKey: ['admin-reports', { allTime, startMonth, startYear, endMonth, endYear }],
     queryFn: () => fetchAdminReports({ allTime, startMonth, startYear, endMonth, endYear }),
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 
   const { data: clientsSelectionData } = useQuery({
@@ -163,6 +166,17 @@ export default function AdminReportsScreen() {
 
   const allProfiles = clientsSelectionData?.clients || [];
   const error = queryError ? (queryError as Error).message : null;
+
+  useEffect(() => {
+    if (loading) {
+      hideTabBar();
+    } else {
+      showTabBar();
+    }
+    return () => {
+      showTabBar();
+    };
+  }, [loading, hideTabBar, showTabBar]);
 
   const loadData = async (showLoader?: boolean) => {
     await Promise.all([
@@ -523,7 +537,7 @@ export default function AdminReportsScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && !reportsData) {
     return (
       <PremiumLoader
         title="Admin Control Center"

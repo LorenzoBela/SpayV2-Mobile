@@ -146,7 +146,7 @@ const AuthNavigator = () => (
 
 // Custom Floating Tab Bar Component matching verified Apple Podcasts style
 const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unreadCount }: any) => {
-  const { isCollapsed } = useTabBar();
+  const { isCollapsed, tabBarVisible } = useTabBar();
   const { width: windowWidth } = useWindowDimensions();
   const sliderScale = useSharedValue(1);
   const insets = useSafeAreaInsets();
@@ -178,11 +178,21 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
     const currentPadding = interpolate(collapsed, [0, 1], [14, 12]);
     const currentRadius = interpolate(collapsed, [0, 1], [28, 24]);
 
+    const visible = tabBarVisible.value;
+    const opacity = visible;
+    const translateY = interpolate(visible, [0, 1], [120, 0]);
+    const scale = interpolate(visible, [0, 1], [0.9, 1]);
+
     return {
       width: currentWidth,
       height: currentHeight,
       borderRadius: currentRadius,
       paddingHorizontal: currentPadding,
+      opacity,
+      transform: [
+        { translateY },
+        { scale }
+      ]
     };
   });
 
@@ -509,9 +519,30 @@ export default function AppNavigator() {
   const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
   const navigationRef = React.useRef<any>(null);
 
-  // Theme state — defaults to dark mode
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const toggleTheme = useCallback(() => setIsDarkMode((prev) => !prev), []);
+  // Theme state — loads from MMKV and defaults to dark mode
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    try {
+      const savedTheme = storage.getString('theme_preference');
+      if (savedTheme) {
+        return savedTheme === 'dark';
+      }
+    } catch (e) {
+      console.warn('Failed to read theme from MMKV:', e);
+    }
+    return true;
+  });
+
+  const toggleTheme = useCallback(() => {
+    setIsDarkMode((prev) => {
+      const next = !prev;
+      try {
+        storage.set('theme_preference', next ? 'dark' : 'light');
+      } catch (e) {
+        console.warn('Failed to save theme to MMKV:', e);
+      }
+      return next;
+    });
+  }, []);
 
   const navigationTheme = React.useMemo(() => {
     const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
@@ -559,7 +590,26 @@ export default function AppNavigator() {
       const data = await getLinkedProfileForUser(user);
 
       if (!active) return;
-      setLinkedProfileId(data?.id || user.id);
+      const targetId = data?.id || user.id;
+      setLinkedProfileId(targetId);
+
+      // Fetch theme preference to sync on startup
+      const { data: themeData } = await supabase
+        .from('profiles')
+        .select('theme')
+        .eq('id', targetId)
+        .maybeSingle();
+
+      if (themeData?.theme) {
+        const isProfileDark = themeData.theme === 'dark';
+        setIsDarkMode(isProfileDark);
+        try {
+          storage.set('theme_preference', themeData.theme);
+        } catch (e) {
+          console.warn('Failed to save theme to MMKV:', e);
+        }
+      }
+
       if (data?.role === 'ADMIN') {
         setUserRole('ADMIN');
       } else {
@@ -576,7 +626,6 @@ export default function AppNavigator() {
       }
     }
   };
-
   // Fetch profile to check role
   useEffect(() => {
     let active = true;

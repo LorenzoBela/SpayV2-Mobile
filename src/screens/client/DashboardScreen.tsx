@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTabBarScroll } from '../../navigation/TabBarContext';
+import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import {
   Wallet,
   Calendar,
@@ -535,6 +535,7 @@ export default function DashboardScreen() {
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+  const { hideTabBar, showTabBar } = useTabBar();
   const quickActionColumns = layout.isTablet ? 4 : 2;
   const quickActionWidth = layout.getGridItemWidth(quickActionColumns, 10);
 
@@ -630,6 +631,17 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (showOverlay) {
+      hideTabBar();
+    } else {
+      showTabBar();
+    }
+    return () => {
+      showTabBar();
+    };
+  }, [showOverlay, hideTabBar, showTabBar]);
 
   // Live widgets
   const [timeLeft, setTimeLeft] = useState({

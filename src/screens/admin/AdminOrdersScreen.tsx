@@ -19,7 +19,7 @@ import {
 import { Image } from "expo-image";
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
-import { useTabBarScroll } from '../../navigation/TabBarContext';
+import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   ShoppingBag,
@@ -53,7 +53,7 @@ import PremiumLoader from '../../components/PremiumLoader';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 import { fetchAdminOrders, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
 import AdminHeader from '../../components/AdminHeader';
@@ -84,11 +84,21 @@ export default function AdminOrdersScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const insets = useSafeAreaInsets();
+  const { hideTabBar, showTabBar } = useTabBar();
 
   const queryClient = useQueryClient();
 
   // Search & Filter state
+  const [searchVal, setSearchVal] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchVal);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchVal]);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'paid' | 'shared'>('all');
   const [filterMonthKey, setFilterMonthKey] = useState<string | null>(null);
   const [showMonthlyBreakdown, setShowMonthlyBreakdown] = useState(false);
@@ -210,9 +220,21 @@ export default function AdminOrdersScreen() {
       filterMonthKey: filterMonthKey || undefined,
     }),
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 
   const error = queryError ? (queryError as Error).message : (ordersData && !ordersData.success ? ordersData.error : null);
+
+  useEffect(() => {
+    if (loading) {
+      hideTabBar();
+    } else {
+      showTabBar();
+    }
+    return () => {
+      showTabBar();
+    };
+  }, [loading, hideTabBar, showTabBar]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -522,7 +544,7 @@ export default function AdminOrdersScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
-  if (loading) {
+  if (loading && !ordersData) {
     return (
       <PremiumLoader
         title="Admin Control Center"
@@ -548,11 +570,11 @@ export default function AdminOrdersScreen() {
             style={[styles.searchInput, { color: t.textPrimary }]}
             placeholder="Search by product name or client..."
             placeholderTextColor={t.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={searchVal}
+            onChangeText={setSearchVal}
           />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+          {searchVal ? (
+            <TouchableOpacity onPress={() => setSearchVal('')}>
               <X size={16} color={t.textSecondary} />
             </TouchableOpacity>
           ) : null}

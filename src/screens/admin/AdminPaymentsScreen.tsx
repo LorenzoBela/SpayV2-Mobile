@@ -20,7 +20,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from "expo-image";
-import { useTabBarScroll } from '../../navigation/TabBarContext';
+import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
@@ -68,7 +68,7 @@ import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DatePar
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminPayments, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
 import AdminHeader from '../../components/AdminHeader';
@@ -301,6 +301,7 @@ export default function AdminPaymentsScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const insets = useSafeAreaInsets();
+  const { hideTabBar, showTabBar } = useTabBar();
 
   const queryClient = useQueryClient();
 
@@ -309,7 +310,16 @@ export default function AdminPaymentsScreen() {
   const PAGE_SIZE = 8;
 
   // Tab 1: Ledger Search & filter state
+  const [searchVal, setSearchVal] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchVal);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchVal]);
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'pending' | 'paid' | 'overdue' | 'proof'>('all');
 
   // Shopee Imports search
@@ -324,6 +334,7 @@ export default function AdminPaymentsScreen() {
       ledgerFilter
     }),
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 
   const { data: shopeeImportsData, refetch: refetchImports } = useQuery({
@@ -348,6 +359,17 @@ export default function AdminPaymentsScreen() {
   }, [shopeeImports, shopeeSearchQuery]);
 
   const error = queryError ? (queryError as Error).message : (paymentsData && !paymentsData.success ? paymentsData.error : null);
+
+  useEffect(() => {
+    if (loading) {
+      hideTabBar();
+    } else {
+      showTabBar();
+    }
+    return () => {
+      showTabBar();
+    };
+  }, [loading, hideTabBar, showTabBar]);
 
   const paymentsList = useMemo(() => {
     const now = Date.now();
@@ -1686,7 +1708,7 @@ export default function AdminPaymentsScreen() {
     imports: 'Shopee Imports',
   };
 
-  if (loading) {
+  if (loading && !paymentsData) {
     return (
       <PremiumLoader
         title="Admin Control Center"
@@ -1751,7 +1773,14 @@ export default function AdminPaymentsScreen() {
             </View>
 
             {/* Countdown timer layout */}
-            <View style={[styles.countdownCardBody, layout.isTablet && styles.rowLayout]}>
+            <View style={[
+              styles.countdownCardBody,
+              layout.isTablet && styles.rowLayout,
+              {
+                backgroundColor: isDarkMode ? 'rgba(22, 28, 42, 0.35)' : 'rgba(148, 163, 184, 0.12)',
+                borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+              }
+            ]}>
               {/* Left section: Countdown Clock */}
               <View style={[styles.countdownLeftSection, layout.isTablet && { flex: 7, borderBottomWidth: 0, paddingBottom: 0 }]}>
                 <View style={styles.flipClockRow}>
@@ -2063,11 +2092,11 @@ export default function AdminPaymentsScreen() {
                   style={[styles.searchInput, { color: t.textPrimary }]}
                   placeholder="Search by client name, item..."
                   placeholderTextColor={t.textSecondary}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
+                  value={searchVal}
+                  onChangeText={setSearchVal}
                 />
-                {searchQuery ? (
-                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                {searchVal ? (
+                  <TouchableOpacity onPress={() => setSearchVal('')}>
                     <X size={16} color={t.textSecondary} />
                   </TouchableOpacity>
                 ) : null}

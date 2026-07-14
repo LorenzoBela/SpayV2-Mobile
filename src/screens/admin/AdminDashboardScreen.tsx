@@ -18,7 +18,7 @@ import {
   KeyboardAvoidingView,
   Switch,
 } from 'react-native';
-import { useTabBarScroll } from '../../navigation/TabBarContext';
+import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -280,6 +280,7 @@ export default function AdminDashboardScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const insets = useSafeAreaInsets();
+  const { hideTabBar, showTabBar } = useTabBar();
 
   const queryClient = useQueryClient();
 
@@ -290,6 +291,17 @@ export default function AdminDashboardScreen() {
   });
 
   const error = queryError ? (queryError as Error).message : (dashboardData && !dashboardData.success ? dashboardData.error : null);
+
+  useEffect(() => {
+    if (loading) {
+      hideTabBar();
+    } else {
+      showTabBar();
+    }
+    return () => {
+      showTabBar();
+    };
+  }, [loading, hideTabBar, showTabBar]);
 
   const stats = dashboardData?.stats || {
     activeLimitExposure: 0,
@@ -808,7 +820,7 @@ export default function AdminDashboardScreen() {
     ? parsedGlobalLimit / clientsList.length
     : 0;
 
-  if (loading) {
+  if (loading && !dashboardData) {
     return (
       <PremiumLoader
         title="Admin Control Center"
@@ -895,7 +907,14 @@ export default function AdminDashboardScreen() {
           </View>
 
           {/* Countdown timer layout */}
-          <View style={[styles.countdownCardBody, layout.isTablet && styles.rowLayout]}>
+          <View style={[
+            styles.countdownCardBody,
+            layout.isTablet && styles.rowLayout,
+            {
+              backgroundColor: isDarkMode ? 'rgba(22, 28, 42, 0.35)' : 'rgba(148, 163, 184, 0.12)',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+            }
+          ]}>
             {/* Left section: Countdown Clock */}
             <View style={[styles.countdownLeftSection, layout.isTablet && { flex: 7, borderBottomWidth: 0, paddingBottom: 0 }]}>
               <View style={styles.flipClockRow}>

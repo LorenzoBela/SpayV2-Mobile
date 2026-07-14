@@ -16,7 +16,7 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
-import { useTabBarScroll } from '../../navigation/TabBarContext';
+import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Users,
@@ -48,7 +48,7 @@ import { PremiumAlert } from '../../services/PremiumAlertService';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminClients, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 
@@ -132,10 +132,12 @@ export default function AdminClientsScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const insets = useSafeAreaInsets();
+  const { hideTabBar, showTabBar } = useTabBar();
 
   const queryClient = useQueryClient();
 
   // Search & Filter state
+  const [searchVal, setSearchVal] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'pending'>('all');
 
@@ -265,6 +267,14 @@ export default function AdminClientsScreen() {
   const [monthlyYearFilter, setMonthlyYearFilter] = useState<string>('');
   const MONTHLY_PAGE_SIZE = 5;
 
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearchQuery(searchVal);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchVal]);
+
   const toggleOrderExpand = (orderId: string) => {
     setExpandedOrders(prev => ({
       ...prev,
@@ -281,9 +291,21 @@ export default function AdminClientsScreen() {
       status: activeTab
     }),
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 
   const error = queryError ? (queryError as Error).message : (clientsData && !clientsData.success ? clientsData.error : null);
+
+  useEffect(() => {
+    if (loading) {
+      hideTabBar();
+    } else {
+      showTabBar();
+    }
+    return () => {
+      showTabBar();
+    };
+  }, [loading, hideTabBar, showTabBar]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -486,7 +508,7 @@ export default function AdminClientsScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
-  if (loading) {
+  if (loading && !clientsData) {
     return (
       <PremiumLoader
         title="Admin Control Center"
@@ -512,11 +534,11 @@ export default function AdminClientsScreen() {
             style={[styles.searchInput, { color: t.textPrimary }]}
             placeholder="Search by client name or email..."
             placeholderTextColor={t.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={searchVal}
+            onChangeText={setSearchVal}
           />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+          {searchVal ? (
+            <TouchableOpacity onPress={() => setSearchVal('')}>
               <X size={16} color={t.textSecondary} />
             </TouchableOpacity>
           ) : null}

@@ -6,6 +6,9 @@ interface TabBarContextType {
   isCollapsed: SharedValue<number>;
   collapse: () => void;
   expand: () => void;
+  tabBarVisible: SharedValue<number>;
+  hideTabBar: () => void;
+  showTabBar: () => void;
 }
 
 const TabBarContext = createContext<TabBarContextType | null>(null);
@@ -13,6 +16,7 @@ const TabBarContext = createContext<TabBarContextType | null>(null);
 export const TabBarProvider = ({ children }: { children: React.ReactNode }) => {
   const isCollapsed = useSharedValue(0);
   const targetCollapsed = useSharedValue(0); // Lock to prevent redundant animation triggers
+  const tabBarVisible = useSharedValue(1);
 
   const collapse = useCallback(() => {
     if (targetCollapsed.value !== 1) {
@@ -34,8 +38,22 @@ export const TabBarProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [isCollapsed, targetCollapsed]);
 
+  const hideTabBar = useCallback(() => {
+    tabBarVisible.value = withTiming(0, {
+      duration: 250,
+      easing: Easing.bezier(0.25, 1, 0.5, 1),
+    });
+  }, [tabBarVisible]);
+
+  const showTabBar = useCallback(() => {
+    tabBarVisible.value = withTiming(1, {
+      duration: 250,
+      easing: Easing.bezier(0.25, 1, 0.5, 1),
+    });
+  }, [tabBarVisible]);
+
   return (
-    <TabBarContext.Provider value={{ isCollapsed, collapse, expand }}>
+    <TabBarContext.Provider value={{ isCollapsed, collapse, expand, tabBarVisible, hideTabBar, showTabBar }}>
       {children}
     </TabBarContext.Provider>
   );

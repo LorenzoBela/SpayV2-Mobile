@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { ThemeContext } from '../navigation/navigationTypes';
 import {
   StyleSheet,
   Text,
@@ -63,6 +64,8 @@ export default function PremiumLoader({
   useSystemFonts = false,
 }: PremiumLoaderProps) {
   const [trackWidth, setTrackWidth] = useState(0);
+  const themeContext = useContext(ThemeContext);
+  const isDarkMode = themeContext ? themeContext.isDarkMode : true;
   const [activeSlide, setActiveSlide] = useState(0);
   const [isTimeout, setIsTimeout] = useState(false);
 
@@ -227,19 +230,30 @@ export default function PremiumLoader({
   const showErrorOrTimeout = error || isTimeout;
   const displayErrorMsg = error || 'Connecting taking longer than expected. Please check network.';
 
+  const containerBg = isDarkMode ? '#0b0f19' : '#f8fafc';
+  const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
+  const cardBorder = isDarkMode ? '#2d3748' : '#e2e8f0';
+  const titleColor = isDarkMode ? '#f8fafc' : '#0f172a';
+  const subtitleColor = isDarkMode ? '#64748b' : '#475569';
+  const barTrackBg = isDarkMode ? '#1f293d' : '#e2e8f0';
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: containerBg }]}>
       <View style={styles.content}>
         
         {/* Logo Badge with micro-animation */}
-        <Animated.View style={[styles.logoBadge, { transform: [{ scale: logoScale }] }]}>
+        <Animated.View style={[styles.logoBadge, { 
+          transform: [{ scale: logoScale }],
+          backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.04)' : 'rgba(238, 77, 45, 0.03)',
+          borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.2)' : 'rgba(238, 77, 45, 0.1)'
+        }]}>
           <Wallet size={40} color="#ee4d2d" strokeWidth={1.8} />
         </Animated.View>
         
         {/* Dynamic Branding & Loading Titles */}
         <View style={styles.header}>
-          <Text style={font('loaderTitle')}>{title}</Text>
-          <Text style={font('loaderSubtitle')} numberOfLines={2}>
+          <Text style={[font('loaderTitle'), { color: titleColor }]}>{title}</Text>
+          <Text style={[font('loaderSubtitle'), { color: subtitleColor }]} numberOfLines={2}>
             {showErrorOrTimeout ? 'Network latency encountered' : subtitle}
           </Text>
         </View>
@@ -247,7 +261,7 @@ export default function PremiumLoader({
         {/* Premium Progress Bar Wrapper */}
         <View style={styles.barWrapper}>
           <View
-            style={styles.barTrack}
+            style={[styles.barTrack, { backgroundColor: barTrackBg }]}
             onLayout={(e) => {
               setTrackWidth(e.nativeEvent.layout.width);
             }}
@@ -255,7 +269,7 @@ export default function PremiumLoader({
             <Animated.View style={[styles.barFill, getProgressStyle()]} />
           </View>
           {progress !== undefined && (
-            <Text style={font('progressPercent')}>
+            <Text style={[font('progressPercent'), { color: subtitleColor }]}>
               {Math.round((progress || 0) * 100)}%
             </Text>
           )}
@@ -263,12 +277,12 @@ export default function PremiumLoader({
 
         {/* Retry Actions / Information Widget */}
         {showErrorOrTimeout ? (
-          <View style={styles.errorCard}>
+          <View style={[styles.errorCard, { backgroundColor: cardBg, borderColor: error ? 'rgba(239, 68, 68, 0.2)' : cardBorder }]}>
             <View style={styles.errorHeader}>
               <AlertCircle size={20} color="#ef4444" />
               <Text style={font('errorTitle')}>Latency Alert</Text>
             </View>
-            <Text style={font('errorDesc')}>{displayErrorMsg}</Text>
+            <Text style={[font('errorDesc'), { color: subtitleColor }]}>{displayErrorMsg}</Text>
             
             {onRetry && (
               <TouchableOpacity
@@ -291,6 +305,8 @@ export default function PremiumLoader({
               {
                 opacity: slideOpacity,
                 transform: [{ translateX: slideTranslateX }],
+                backgroundColor: cardBg,
+                borderColor: cardBorder,
               },
             ]}
           >
@@ -298,9 +314,9 @@ export default function PremiumLoader({
               <View style={styles.iconBox}>
                 <SlideIcon size={20} color="#ee4d2d" />
               </View>
-              <Text style={font('carouselSlideTitle')}>{currentSlideItem.title}</Text>
+              <Text style={[font('carouselSlideTitle'), { color: titleColor }]}>{currentSlideItem.title}</Text>
             </View>
-            <Text style={font('carouselSlideDesc')}>{currentSlideItem.desc}</Text>
+            <Text style={[font('carouselSlideDesc'), { color: subtitleColor }]}>{currentSlideItem.desc}</Text>
             
             {/* Carousel Index Indicator Dots */}
             <View style={styles.dotRow}>
@@ -310,6 +326,7 @@ export default function PremiumLoader({
                   style={[
                     styles.dot,
                     activeSlide === i ? styles.dotActive : styles.dotInactive,
+                    { backgroundColor: activeSlide === i ? '#ee4d2d' : (isDarkMode ? '#334155' : '#cbd5e1') }
                   ]}
                 />
               ))}

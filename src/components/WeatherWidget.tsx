@@ -476,7 +476,7 @@ export default function WeatherWidget() {
             activeOpacity={1}
           >
             {/* Header */}
-            <View style={styles.modalHeader}>
+            <View style={[styles.modalHeader, { borderBottomColor: t.border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <WeatherIcon size={24} color={weatherColor} />
                 <View>
@@ -690,7 +690,7 @@ export default function WeatherWidget() {
                                   <Text style={[styles.chartPercent, { color: t.textSecondary }]}>
                                     {slot.prob}%
                                   </Text>
-                                  <View style={styles.barTrack}>
+                                  <View style={[styles.barTrack, { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.06)' }]}>
                                     <View
                                       style={[
                                         styles.barFill,

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { ThemeContext } from '../../navigation/navigationTypes';
 import {
   StyleSheet,
   Text,
@@ -166,9 +167,15 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
     }
   }, [loading, fetchError]);
 
+  const { isDarkMode } = useContext(ThemeContext);
+  const containerBg = isDarkMode ? '#0b0f19' : '#f8fafc';
+  const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
+  const cardBorderColorAdmin = isDarkMode ? 'rgba(238, 77, 45, 0.24)' : 'rgba(238, 77, 45, 0.15)';
+  const cardBorderColorClient = isDarkMode ? 'rgba(59, 130, 246, 0.24)' : 'rgba(59, 130, 246, 0.15)';
+
   return (
-    <View style={styles.outerContainer}>
-      <StatusBar barStyle="light-content" backgroundColor="#0b0f19" />
+    <View style={[styles.outerContainer, { backgroundColor: containerBg }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={containerBg} />
 
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom', 'left', 'right']}>
         <View style={[styles.contentContainer, layout.centeredContentStyle]}>
@@ -179,18 +186,18 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
               {userPhoto ? (
                 <Image source={{ uri: userPhoto }} style={styles.avatar as any} />
               ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <User size={20} color="#94a3b8" />
+                <View style={[styles.avatarPlaceholder, { backgroundColor: cardBg, borderColor: isDarkMode ? '#2d3748' : '#e2e8f0' }]}>
+                  <User size={20} color={isDarkMode ? '#94a3b8' : '#64748b'} />
                 </View>
               )}
               <View style={styles.profileTextCol}>
                 <Text style={styles.greetingText}>Welcome back,</Text>
-                <Text style={[styles.nameText, { maxWidth: layout.contentWidth * 0.45 }]} numberOfLines={1}>{firstName}</Text>
+                <Text style={[styles.nameText, { color: isDarkMode ? '#f8fafc' : '#0f172a', maxWidth: layout.contentWidth * 0.45 }]} numberOfLines={1}>{firstName}</Text>
               </View>
             </View>
 
             <View style={styles.clockWidget}>
-              <Text style={styles.timeText}>
+              <Text style={[styles.timeText, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>
                 {currentTime.toLocaleTimeString('en-US', {
                   hour: 'numeric',
                   minute: '2-digit',
@@ -208,8 +215,8 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
               <Sparkles size={14} color="#ee4d2d" />
               <Text style={styles.sectionTitle}>WORKSPACE ROUTER</Text>
             </View>
-            <Text style={styles.heroTitle}>Choose Console</Text>
-            <Text style={styles.sectionDesc}>Switch between admin operations and customer view.</Text>
+            <Text style={[styles.heroTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Choose Console</Text>
+            <Text style={[styles.sectionDesc, { color: isDarkMode ? '#94a3b8' : '#64748b' }]}>Switch between admin operations and customer view.</Text>
           </Animated.View>
 
           {/* Big Workspace Buttons */}
@@ -223,36 +230,53 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                 onPress={() => onSelectRole('admin')}
                 style={({ pressed }) => [
                   styles.workspaceCard,
-                  pressed && styles.adminButtonPressed,
+                  {
+                    backgroundColor: pressed
+                      ? (isDarkMode ? '#1f293d' : '#f1f5f9')
+                      : cardBg,
+                    borderColor: cardBorderColorAdmin,
+                  }
                 ]}
               >
                 <View style={styles.cardInner}>
                   <View style={styles.workspaceCardTop}>
                     <View style={[styles.iconFrame, styles.iconFrameAdmin]}>
-                      <ShieldAlert size={25} color="#ff8a65" />
+                      <ShieldAlert size={25} color={isDarkMode ? '#ff8a65' : '#ee4d2d'} />
                     </View>
-                    <View style={styles.priorityBadge}>
-                      <Text style={styles.priorityBadgeText}>ADMIN</Text>
+                    <View style={[styles.priorityBadge, {
+                      backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.16)' : 'rgba(238, 77, 45, 0.06)',
+                      borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.28)' : 'rgba(238, 77, 45, 0.12)',
+                    }]}>
+                      <Text style={[styles.priorityBadgeText, { color: isDarkMode ? '#fed7aa' : '#ee4d2d' }]}>ADMIN</Text>
                     </View>
                   </View>
-                  <Text style={styles.bigButtonTitle}>Admin Control Panel</Text>
-                  <Text style={styles.bigButtonDesc}>Orders, payments, clients, limits, and audits.</Text>
+                  <Text style={[styles.bigButtonTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Admin Control Panel</Text>
+                  <Text style={[styles.bigButtonDesc, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Orders, payments, clients, limits, and audits.</Text>
                   <View style={styles.featureGrid}>
-                    <View style={styles.featurePill}>
-                      <Users size={13} color="#fed7aa" />
-                      <Text style={styles.featureText}>Clients</Text>
+                    <View style={[styles.featurePill, {
+                      backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.12)' : 'rgba(238, 77, 45, 0.05)',
+                      borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.16)' : 'rgba(238, 77, 45, 0.10)',
+                    }]}>
+                      <Users size={13} color={isDarkMode ? '#fed7aa' : '#ee4d2d'} />
+                      <Text style={[styles.featureText, { color: isDarkMode ? '#fed7aa' : '#ee4d2d' }]}>Clients</Text>
                     </View>
-                    <View style={styles.featurePill}>
-                      <Receipt size={13} color="#fed7aa" />
-                      <Text style={styles.featureText}>Ledger</Text>
+                    <View style={[styles.featurePill, {
+                      backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.12)' : 'rgba(238, 77, 45, 0.05)',
+                      borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.16)' : 'rgba(238, 77, 45, 0.10)',
+                    }]}>
+                      <Receipt size={13} color={isDarkMode ? '#fed7aa' : '#ee4d2d'} />
+                      <Text style={[styles.featureText, { color: isDarkMode ? '#fed7aa' : '#ee4d2d' }]}>Ledger</Text>
                     </View>
-                    <View style={styles.featurePill}>
-                      <Bell size={13} color="#fed7aa" />
-                      <Text style={styles.featureText}>Alerts</Text>
+                    <View style={[styles.featurePill, {
+                      backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.12)' : 'rgba(238, 77, 45, 0.05)',
+                      borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.16)' : 'rgba(238, 77, 45, 0.10)',
+                    }]}>
+                      <Bell size={13} color={isDarkMode ? '#fed7aa' : '#ee4d2d'} />
+                      <Text style={[styles.featureText, { color: isDarkMode ? '#fed7aa' : '#ee4d2d' }]}>Alerts</Text>
                     </View>
                   </View>
                   <View style={styles.cardActionRow}>
-                    <Text style={styles.cardActionText}>Open admin dashboard</Text>
+                    <Text style={[styles.cardActionText, { color: isDarkMode ? '#f8fafc' : '#ee4d2d' }]}>Open admin dashboard</Text>
                     <View style={[styles.arrowFrame, styles.arrowFrameAdmin]}>
                       <ArrowRight size={18} color="#ffffff" />
                     </View>
@@ -270,35 +294,52 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                 style={({ pressed }) => [
                   styles.workspaceCard,
                   styles.customerCard,
-                  pressed && styles.clientButtonPressed,
+                  {
+                    backgroundColor: pressed
+                      ? (isDarkMode ? '#1f293d' : '#f1f5f9')
+                      : cardBg,
+                    borderColor: cardBorderColorClient,
+                  }
                 ]}
               >
                 <View style={styles.workspaceCardTop}>
                   <View style={[styles.iconFrame, styles.iconFrameClient]}>
-                    <Wallet size={25} color="#93c5fd" />
+                    <Wallet size={25} color={isDarkMode ? '#93c5fd' : '#3b82f6'} />
                   </View>
-                  <View style={styles.customerBadge}>
-                    <Text style={styles.customerBadgeText}>CUSTOMER VIEW</Text>
+                  <View style={[styles.customerBadge, {
+                    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.14)' : 'rgba(59, 130, 246, 0.06)',
+                    borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.12)',
+                  }]}>
+                    <Text style={[styles.customerBadgeText, { color: isDarkMode ? '#bfdbfe' : '#3b82f6' }]}>CUSTOMER VIEW</Text>
                   </View>
                 </View>
-                <Text style={styles.bigButtonTitle}>Customer Portal</Text>
-                <Text style={styles.bigButtonDesc}>Balances, orders, payments, reports, and budgets.</Text>
+                <Text style={[styles.bigButtonTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Customer Portal</Text>
+                <Text style={[styles.bigButtonDesc, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Balances, orders, payments, reports, and budgets.</Text>
                 <View style={styles.featureGrid}>
-                  <View style={styles.featurePillBlue}>
-                    <LayoutDashboard size={13} color="#bfdbfe" />
-                    <Text style={styles.featureText}>Dashboard</Text>
+                  <View style={[styles.featurePillBlue, {
+                    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.05)',
+                    borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.16)' : 'rgba(59, 130, 246, 0.10)',
+                  }]}>
+                    <LayoutDashboard size={13} color={isDarkMode ? '#bfdbfe' : '#3b82f6'} />
+                    <Text style={[styles.featureText, { color: isDarkMode ? '#bfdbfe' : '#3b82f6' }]}>Dashboard</Text>
                   </View>
-                  <View style={styles.featurePillBlue}>
-                    <Wallet size={13} color="#bfdbfe" />
-                    <Text style={styles.featureText}>Budget</Text>
+                  <View style={[styles.featurePillBlue, {
+                    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.05)',
+                    borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.16)' : 'rgba(59, 130, 246, 0.10)',
+                  }]}>
+                    <Wallet size={13} color={isDarkMode ? '#bfdbfe' : '#3b82f6'} />
+                    <Text style={[styles.featureText, { color: isDarkMode ? '#bfdbfe' : '#3b82f6' }]}>Budget</Text>
                   </View>
-                  <View style={styles.featurePillBlue}>
-                    <Settings size={13} color="#bfdbfe" />
-                    <Text style={styles.featureText}>Profile</Text>
+                  <View style={[styles.featurePillBlue, {
+                    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.05)',
+                    borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.16)' : 'rgba(59, 130, 246, 0.10)',
+                  }]}>
+                    <Settings size={13} color={isDarkMode ? '#bfdbfe' : '#3b82f6'} />
+                    <Text style={[styles.featureText, { color: isDarkMode ? '#bfdbfe' : '#3b82f6' }]}>Profile</Text>
                   </View>
                 </View>
                 <View style={styles.cardActionRow}>
-                  <Text style={styles.cardActionText}>Enter customer dashboard</Text>
+                  <Text style={[styles.cardActionText, { color: isDarkMode ? '#f8fafc' : '#3b82f6' }]}>Enter customer dashboard</Text>
                   <View style={[styles.arrowFrame, styles.arrowFrameClient]}>
                     <ArrowRight size={18} color="#ffffff" />
                   </View>
@@ -310,9 +351,9 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 
           {/* Footer Actions */}
           <Animated.View style={[styles.footer, footerAnim.style]}>
-            <TouchableOpacity style={styles.signOutBtn} onPress={onSignOut} activeOpacity={0.8}>
-              <LogOut size={15} color="#94a3b8" />
-              <Text style={styles.signOutText}>Switch Account</Text>
+            <TouchableOpacity style={[styles.signOutBtn, { backgroundColor: cardBg, borderColor: isDarkMode ? '#2d3748' : '#e2e8f0' }]} onPress={onSignOut} activeOpacity={0.8}>
+              <LogOut size={15} color={isDarkMode ? '#94a3b8' : '#64748b'} />
+              <Text style={[styles.signOutText, { color: isDarkMode ? '#94a3b8' : '#64748b' }]}>Switch Account</Text>
             </TouchableOpacity>
           </Animated.View>
 
