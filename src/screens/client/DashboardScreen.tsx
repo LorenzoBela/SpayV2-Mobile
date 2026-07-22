@@ -1509,26 +1509,41 @@ export default function DashboardScreen() {
               <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>Personal Bill Breakdown</Text>
               <View style={[styles.breakdownDivider, { backgroundColor: t.divider }]} />
               {nextMonthlyPayment.payments.map((p: any, idx: number) => (
-                <View key={p.id || idx} style={{ marginBottom: 12 }}>
-                  <View style={[styles.breakdownItem, p.isShared && { borderLeftWidth: 2, borderLeftColor: '#ee4d2d', paddingLeft: 8 }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
-                      <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                        {p.itemName}
-                      </Text>
-                      {p.isShared && (
-                        <View style={[styles.badge, { borderColor: '#ee4d2d', backgroundColor: 'transparent', marginLeft: 6 }]}>
-                          <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.breakdownItemRight}>
-                      <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
-                        Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
-                      </Text>
-                      <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
-                        {formatCurrency(p.amount)}{p.isShared ? ' (Your Split)' : ''}
-                      </Text>
-                    </View>
+                <View
+                  key={p.id || idx}
+                  style={[
+                    {
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      marginBottom: 8,
+                      borderRadius: 10,
+                      backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.5)' : 'rgba(248, 250, 252, 0.8)',
+                      borderWidth: 1,
+                      borderColor: t.divider,
+                    },
+                    p.isShared && { borderLeftWidth: 3, borderLeftColor: '#ee4d2d' }
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-SemiBold' }} numberOfLines={1}>
+                      {p.itemName}
+                    </Text>
+                    {p.isShared && (
+                      <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
+                        <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ fontSize: 11, color: t.textSecondary, fontFamily: 'Jakarta-Medium' }}>
+                      Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: t.textPrimary, fontFamily: 'Outfit-Bold' }}>
+                      {formatCurrency(p.amount)}
+                    </Text>
                   </View>
                 </View>
               ))}

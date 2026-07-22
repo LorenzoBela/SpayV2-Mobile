@@ -1876,18 +1876,27 @@ export default function AdminPaymentsScreen() {
                           onPress={() => toggleClientExpand(client.clientId)}
                           activeOpacity={0.7}
                         >
-                          <View style={styles.scheduleItemLeft}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Text style={[styles.clientNameText, { color: t.textPrimary }]}>{client.clientName}</Text>
-                              {(client.hasShared || client.items?.some((i: any) => i.isShared)) && (
-                                <View style={{ backgroundColor: '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6, flexDirection: 'row', alignItems: 'center' }}>
-                                  <Users size={10} color="#ee4d2d" style={{ marginRight: 2 }} />
-                                  <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED</Text>
-                                </View>
-                              )}
+                            <View style={styles.scheduleItemLeft}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Text style={[styles.clientNameText, { color: t.textPrimary }]}>{client.clientName}</Text>
+                                {(client.hasShared || client.items?.some((i: any) => i.isShared)) && (
+                                  <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6, flexDirection: 'row', alignItems: 'center' }}>
+                                    <Users size={10} color="#ee4d2d" style={{ marginRight: 2 }} />
+                                    <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '800' }}>SHARED</Text>
+                                  </View>
+                                )}
+                              </View>
+                              {(() => {
+                                const itemNames = Array.from(new Set((client.items || []).map((i: any) => i.itemName).filter(Boolean)));
+                                const summary = itemNames.slice(0, 2).join(', ') + (itemNames.length > 2 ? ` +${itemNames.length - 2} more` : '');
+                                return summary ? (
+                                  <Text style={{ fontSize: 11, fontWeight: '600', color: t.accent, marginTop: 1 }} numberOfLines={1}>
+                                    📦 {summary}
+                                  </Text>
+                                ) : null;
+                              })()}
+                              <Text style={styles.clientEmailText}>{client.email}</Text>
                             </View>
-                            <Text style={styles.clientEmailText}>{client.email}</Text>
-                          </View>
                           <View style={styles.scheduleItemRight}>
                             <Text style={[styles.clientOwedText, { color: t.textPrimary }]}>{formatCurrency(client.totalOwed)}</Text>
                             {expanded ? <ChevronUp size={14} color={t.textSecondary} /> : <ChevronDown size={14} color={t.textSecondary} />}
@@ -2484,6 +2493,10 @@ export default function AdminPaymentsScreen() {
                             const clientUnpaidIds = getUnpaidIdsForClient(clientData);
                             const allClientSelected = clientUnpaidIds.length > 0 && clientUnpaidIds.every(id => selectedIds.includes(id));
 
+                            const itemNames = Array.from(new Set((clientData.payments || []).map((p: any) => p.itemName).filter(Boolean)));
+                            const itemsSummary = itemNames.slice(0, 2).join(', ') + (itemNames.length > 2 ? ` +${itemNames.length - 2} more` : '');
+                            const hasShared = (clientData.payments || []).some((p: any) => p.is_shared);
+
                             return (
                               <View key={clientId} style={[styles.clientSectionContainer, { borderColor: t.border }]}>
                                 <TouchableOpacity
@@ -2505,8 +2518,20 @@ export default function AdminPaymentsScreen() {
                                       )}
                                     </TouchableOpacity>
                                     <View style={{ flex: 1 }}>
-                                      <Text style={[styles.clientNameText, { color: t.textPrimary }]} numberOfLines={1}>{clientData.name}</Text>
-                                      <Text style={styles.dateLabelText}>Rate: {clientData.collectionRate.toFixed(0)}% • {formatCurrency(clientData.pendingAmount)} Pending</Text>
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={[styles.clientNameText, { color: t.textPrimary }]} numberOfLines={1}>{clientData.name}</Text>
+                                        {hasShared && (
+                                          <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                                            <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED</Text>
+                                          </View>
+                                        )}
+                                      </View>
+                                      {itemsSummary ? (
+                                        <Text style={{ fontSize: 11, fontWeight: '600', color: t.accent, marginTop: 1 }} numberOfLines={1}>
+                                          📦 {itemsSummary}
+                                        </Text>
+                                      ) : null}
+                                      <Text style={[styles.dateLabelText, { marginTop: 1 }]}>Rate: {clientData.collectionRate.toFixed(0)}% • {formatCurrency(clientData.pendingAmount)} Pending</Text>
                                     </View>
                                   </View>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

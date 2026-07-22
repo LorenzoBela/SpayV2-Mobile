@@ -538,10 +538,16 @@ export default function AppNavigator() {
 
   const effectiveUserId = isImpersonating && impersonatedUser?.id ? impersonatedUser.id : linkedProfileId;
 
+  const prevImpersonatingRef = React.useRef(isImpersonating);
+
   useEffect(() => {
     if (isImpersonating && activeRole !== 'client') {
       setActiveRole('client');
+    } else if (prevImpersonatingRef.current && !isImpersonating) {
+      // Always redirect admin to RoleSelection menu when exiting impersonation
+      setActiveRole(null);
     }
+    prevImpersonatingRef.current = isImpersonating;
   }, [isImpersonating, activeRole]);
 
   // Theme state — loads from MMKV and defaults to dark mode
