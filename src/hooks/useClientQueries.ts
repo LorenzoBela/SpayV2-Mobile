@@ -82,13 +82,22 @@ export interface ClientPaymentItem {
 }
 
 export function useClientOrdersQuery() {
-  // Query orders.list router
-  return trpc.orders.list.useQuery();
+  // Query orders.list router with instant refetch configuration
+  return trpc.orders.list.useQuery(undefined, {
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+  });
 }
 
 export function useClientPaymentsQuery() {
   // Query payments.listClient and transform to ClientPaymentItem[] to maintain compatibility
   return trpc.payments.listClient.useQuery(undefined, {
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
     select: (data): ClientPaymentItem[] => {
       return (data?.payments || []).map((p: any) => ({
         id: p.id,

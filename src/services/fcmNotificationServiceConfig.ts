@@ -1,4 +1,5 @@
-import { normalizeAndroidChannelId, type NotificationCategory } from './notificationServiceConfig';
+import { normalizeAndroidChannelId } from './notificationServiceConfig';
+import type { NotificationCategory } from './notificationServiceConfig';
 
 export type RemoteMessageLike = {
   notification?: {

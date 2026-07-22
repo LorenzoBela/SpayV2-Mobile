@@ -24,6 +24,7 @@ import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
+import Reanimated, { useAnimatedStyle, interpolate } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Receipt,
@@ -301,7 +302,27 @@ export default function AdminPaymentsScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const insets = useSafeAreaInsets();
-  const { hideTabBar, showTabBar } = useTabBar();
+  const { hideTabBar, showTabBar, isCollapsed, tabBarVisible } = useTabBar();
+
+  const animatedBulkBarContainerStyle = useAnimatedStyle(() => {
+    const collapsed = isCollapsed ? isCollapsed.value : 0;
+    const visible = tabBarVisible ? tabBarVisible.value : 1;
+
+    // CustomTabBar height: 64px expanded, 52px collapsed
+    const tabHeight = interpolate(collapsed, [0, 1], [64, 52]);
+    const baseTabBottom = Math.max(insets.bottom, 16);
+
+    // Dynamic bottom offset so bulk action bar floats cleanly above bottom navbar
+    const bottomOffset = interpolate(
+      visible,
+      [0, 1],
+      [Math.max(insets.bottom, 12), baseTabBottom + tabHeight + 12]
+    );
+
+    return {
+      bottom: bottomOffset,
+    };
+  });
 
   const queryClient = useQueryClient();
 
@@ -3120,7 +3141,7 @@ export default function AdminPaymentsScreen() {
 
       {/* Floating Bulk Actions Bar for Ledger */}
       {selectedIds.length > 0 && (
-        <View style={[styles.floatingBulkBar, { backgroundColor: t.cardBg, borderTopColor: t.border }]}>
+        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
           <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedIds.length} Selected</Text>
           <View style={styles.bulkBtnRow}>
             <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => setSelectedIds([])}>
@@ -3130,12 +3151,12 @@ export default function AdminPaymentsScreen() {
               <Text style={styles.bulkConfirmBtnText}>{actionLoading ? 'Clearing...' : 'Verify Paid'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Reanimated.View>
       )}
 
       {/* Floating Bulk Actions Bar for Shopee Imports */}
       {subTab === 'imports' && selectedImportIds.length > 0 && (
-        <View style={[styles.floatingBulkBar, { backgroundColor: t.cardBg, borderTopColor: t.border }]}>
+        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
           <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedImportIds.length} Selected</Text>
           <View style={styles.bulkBtnRow}>
             <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => setSelectedImportIds([])}>
@@ -3156,7 +3177,7 @@ export default function AdminPaymentsScreen() {
               <Text style={styles.bulkConfirmBtnText}>Review ({selectedImportIds.length})</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Reanimated.View>
       )}
 
 
@@ -5090,20 +5111,21 @@ const styles = StyleSheet.create({
   },
   floatingBulkBar: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 70,
-    borderTopWidth: 1,
+    left: 16,
+    right: 16,
+    height: 64,
+    borderRadius: 20,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 99,
   },
   bulkLabel: {
     fontSize: 14,

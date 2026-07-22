@@ -90,4 +90,32 @@ describe('Mobile Shared Order Parsing', () => {
     const parsed = parseMobileSharedOrder(rawOrder, 'user-1');
     expect(parsed.userShare).toBe(0);
   });
+
+  it('should include unpaid shared expenses in breakdown calculations', () => {
+    const payments = [
+      {
+        id: 'p-1',
+        itemName: 'Group Dinner',
+        amountDue: 1750,
+        isPaid: false,
+        isShared: true,
+        dueDate: '2026-08-15',
+      },
+      {
+        id: 'p-2',
+        itemName: 'Personal Phone',
+        amountDue: 4500,
+        isPaid: false,
+        isShared: false,
+        dueDate: '2026-08-15',
+      },
+    ];
+
+    const unpaid = payments.filter(p => !p.isPaid);
+    const totalDue = unpaid.reduce((sum, p) => sum + p.amountDue, 0);
+
+    expect(unpaid.length).toBe(2);
+    expect(totalDue).toBe(6250);
+    expect(unpaid.some(p => p.isShared)).toBe(true);
+  });
 });

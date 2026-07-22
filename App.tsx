@@ -6,13 +6,13 @@ import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import { trpc } from './src/utils/trpc';
 import { httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
-import { supabase } from './src/utils/supabase';
+import { supabase, expoSecureStorage } from './src/utils/supabase';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { clientPersister } from './src/utils/queryPersister';
 import { ProgressProvider } from './src/context/ProgressContext';
+import { ImpersonationProvider } from './src/context/ImpersonationContext';
 import AppNavigator from './src/navigation/AppNavigator';
-import PremiumLoader from './src/components/PremiumLoader';
 import AppUpdateGate from './src/components/AppUpdateGate';
 import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
 import GlobalProgressBar from './src/components/GlobalProgressBar';
@@ -43,11 +43,14 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 
 // Configure TanStack Query client for fetching states with custom cache/gc lifetime
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours cache retention/garbage collection time
-      staleTime: 1000 * 60 * 5, // 5 minutes stale time
+      staleTime: 0, // Always fetch fresh data on app open / screen focus
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: 'always',
+      refetchOnReconnect: 'always',
     },
   },
 });
@@ -64,8 +67,17 @@ const trpcClient = trpc.createClient({
       url: `${getApiUrl()}/api/trpc`,
       async headers() {
         const { data: { session } } = await supabase.auth.getSession();
+        let impersonateUserId: string | null = null;
+        try {
+          const stored = await expoSecureStorage.getItem('impersonated_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.id) impersonateUserId = parsed.id;
+          }
+        } catch (e) {}
         return {
           Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+          ...(impersonateUserId ? { 'x-impersonate-user-id': impersonateUserId } : {}),
         };
       },
       transformer: superjson as any,
@@ -116,29 +128,31 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PersistQueryClientProvider
-        client={queryClient}
-        persistOptions={{
-          persister: clientPersister,
-          maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
-          dehydrateOptions: {
-            shouldDehydrateQuery: () => true, // Persist all queries
-          },
-        }}
-      >
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <PaperProvider theme={darkTheme}>
-            <ProgressProvider>
-              <SafeAreaProvider>
-                <AppUpdateGate />
-                <AppNavigator />
-                <GlobalPremiumAlert />
-                <GlobalProgressBar />
-              </SafeAreaProvider>
-            </ProgressProvider>
-          </PaperProvider>
-        </trpc.Provider>
-      </PersistQueryClientProvider>
+      <ImpersonationProvider>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{
+            persister: clientPersister,
+            maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
+            dehydrateOptions: {
+              shouldDehydrateQuery: () => true, // Persist all queries
+            },
+          }}
+        >
+          <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <PaperProvider theme={darkTheme}>
+              <ProgressProvider>
+                <SafeAreaProvider>
+                  <AppUpdateGate />
+                  <AppNavigator />
+                  <GlobalPremiumAlert />
+                  <GlobalProgressBar />
+                </SafeAreaProvider>
+              </ProgressProvider>
+            </PaperProvider>
+          </trpc.Provider>
+        </PersistQueryClientProvider>
+      </ImpersonationProvider>
     </GestureHandlerRootView>
   );
 }

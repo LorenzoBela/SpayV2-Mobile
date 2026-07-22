@@ -34,12 +34,15 @@ import {
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import { useImpersonation } from '../../context/ImpersonationContext';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 
 
 export default function MoreScreen() {
   const navigation = useNavigation<any>();
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { isImpersonating, impersonatedUser } = useImpersonation();
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const gridColumns = layout.isTablet ? 3 : 2;
@@ -49,14 +52,21 @@ export default function MoreScreen() {
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client');
-        setUserEmail(user.email || '');
-        setUserPhoto(user.user_metadata?.avatar_url || user.user_metadata?.picture || null);
+    if (isImpersonating && impersonatedUser) {
+      setUserName(impersonatedUser.name || impersonatedUser.email?.split('@')[0] || 'Client User');
+      setUserEmail(impersonatedUser.email || '');
+      setUserPhoto(null);
+      return;
+    }
+
+    getLinkedProfileForCurrentUser().then(({ user, profile }) => {
+      if (user || profile) {
+        setUserName(profile?.name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Client');
+        setUserEmail(profile?.email || user?.email || '');
+        setUserPhoto(user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null);
       }
     });
-  }, []);
+  }, [isImpersonating, impersonatedUser]);
 
   const handleSignOut = async () => {
     PremiumAlert.alert('Confirm Sign Out', 'Are you sure you want to end your current session?', [

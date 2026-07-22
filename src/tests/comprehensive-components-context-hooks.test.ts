@@ -1,4 +1,60 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('lucide-react-native', () => {
+  const MockIcon = (props: any) => null;
+  return new Proxy({}, { get: () => MockIcon });
+});
+
+vi.mock('react-native-calendars', () => ({
+  Calendar: () => null,
+}));
+
+vi.mock('react-native-gesture-handler', () => ({
+  Gesture: {
+    Pan: () => ({
+      enabled: () => ({
+        activeOffsetY: () => ({
+          failOffsetX: () => ({
+            onEnd: () => ({}),
+          }),
+        }),
+      }),
+    }),
+  },
+  GestureDetector: ({ children }: any) => children,
+}));
+
+vi.mock('expo-linear-gradient', () => ({
+  LinearGradient: 'LinearGradient',
+}));
+
+vi.mock('react-native-shimmer-placeholder', () => {
+  const MockComponent = (props: any) => null;
+  return {
+    createShimmerPlaceholder: () => MockComponent,
+    default: MockComponent,
+  };
+});
+
+vi.mock('react-native-reanimated', () => ({
+  default: {
+    View: 'View',
+    Text: 'Text',
+  },
+  LinearGradient: 'LinearGradient',
+  createShimmerPlaceholder: () => () => null,
+  runOnJS: (fn: any) => fn,
+  useSharedValue: (val: any) => ({ value: val }),
+  useAnimatedStyle: (fn: any) => fn(),
+  withTiming: (val: any) => val,
+  withSpring: (val: any) => val,
+  withSequence: (...args: any[]) => args[0],
+  withRepeat: (val: any) => val,
+  cancelAnimation: () => {},
+  useAnimatedRef: () => ({ current: null }),
+  useDerivedValue: (fn: any) => ({ value: fn() }),
+}));
+
 import {
   ShimmerBlock,
   PaymentsSkeleton,
@@ -17,6 +73,8 @@ import SwipeDismissModal from '../components/SwipeDismissModal';
 import ExitConfirmationModal from '../components/ExitConfirmationModal';
 import DatePicker from '../components/DatePicker';
 import { ProgressProvider } from '../context/ProgressContext';
+import { ImpersonationProvider } from '../context/ImpersonationContext';
+import ImpersonationBanner from '../components/ImpersonationBanner';
 
 describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertions)', () => {
   describe('Skeleton Loaders Render Matrix (300 Assertions)', () => {
@@ -94,6 +152,16 @@ describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertion
   describe('Context Providers & Standalone UI Components', () => {
     it('renders ProgressProvider tree', () => {
       const vnode = (ProgressProvider as any)({ children: null });
+      expect(vnode).toBeDefined();
+    });
+
+    it('renders ImpersonationProvider tree', () => {
+      const vnode = (ImpersonationProvider as any)({ children: null });
+      expect(vnode).toBeDefined();
+    });
+
+    it('renders ImpersonationBanner tree', () => {
+      const vnode = (ImpersonationBanner as any)({});
       expect(vnode).toBeDefined();
     });
 

@@ -39,6 +39,7 @@ import {
   ChevronUp,
   Check,
   CheckCircle2,
+  UserCheck,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -51,6 +52,7 @@ import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
+import { useImpersonation } from '../../context/ImpersonationContext';
 
 
 const formatCurrency = (val: number | string) => {
@@ -129,6 +131,7 @@ function TrustTierBadge({ tier, score, isDarkMode }: { tier?: string; score?: nu
 
 export default function AdminClientsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
+  const { startImpersonation } = useImpersonation();
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
   const insets = useSafeAreaInsets();
@@ -653,7 +656,7 @@ export default function AdminClientsScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
                       <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
                     </View>
-                    <Text style={styles.clientGridEmail} numberOfLines={1}>{client.email}</Text>
+                    <Text style={[styles.clientGridEmail, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">{client.email}</Text>
                     
                     <View style={[styles.clientGridDivider, { backgroundColor: t.border }]} />
 
@@ -667,6 +670,26 @@ export default function AdminClientsScreen() {
                         <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]}>{client.activeOrders}</Text>
                       </View>
                     </View>
+
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                        marginTop: 8,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: t.accentLight,
+                      }}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        startImpersonation(client);
+                      }}
+                    >
+                      <UserCheck size={12} color={t.accent} />
+                      <Text style={{ color: t.accent, fontSize: 11, fontWeight: 'bold' }}>Impersonate</Text>
+                    </TouchableOpacity>
                   </TouchableOpacity>
                 );
               }
@@ -690,9 +713,30 @@ export default function AdminClientsScreen() {
                           <Text style={[styles.clientName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
                           <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
                         </View>
-                        <Text style={styles.clientEmail} numberOfLines={1}>{client.email}</Text>
+                        <Text style={[styles.clientEmail, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">{client.email}</Text>
                       </View>
                     </View>
+                    
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 10,
+                        backgroundColor: t.accentLight,
+                        marginRight: 6,
+                      }}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        startImpersonation(client);
+                      }}
+                    >
+                      <UserCheck size={12} color={t.accent} />
+                      <Text style={{ color: t.accent, fontSize: 11, fontWeight: 'bold' }}>Impersonate</Text>
+                    </TouchableOpacity>
+
                     <ChevronRight size={18} color={t.textSecondary} />
                   </View>
 
@@ -760,12 +804,33 @@ export default function AdminClientsScreen() {
                     <Text style={[styles.detailsHeroTitle, { color: t.textPrimary }]}>Account Profile</Text>
                   </View>
                 </View>
-                <TouchableOpacity 
-                  style={[styles.detailsHeroCloseBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', borderColor: t.cardBorder }]} 
-                  onPress={() => setIsDetailsOpen(false)}
-                >
-                  <X size={16} color={t.textPrimary} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: '#ee4d2d',
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 12,
+                    }}
+                    onPress={() => {
+                      startImpersonation(selectedClient);
+                      setIsDetailsOpen(false);
+                    }}
+                  >
+                    <UserCheck size={14} color="#ffffff" />
+                    <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: 'bold' }}>Impersonate</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.detailsHeroCloseBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#ffffff', borderColor: t.cardBorder }]} 
+                    onPress={() => setIsDetailsOpen(false)}
+                  >
+                    <X size={16} color={t.textPrimary} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.detailsHeroCardRow}>

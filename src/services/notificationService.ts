@@ -242,9 +242,8 @@ export async function mirrorToLocalTray(notification: AppNotification) {
   const hasPermission = await ensureTrayNotificationPermissions();
   if (!hasPermission) return;
 
-  const requestedChannelId = typeof notification.data?.channelId === 'string'
-    ? notification.data.channelId
-    : '';
+  const rawChannel = notification.data?.channelId;
+  const requestedChannelId = typeof rawChannel === 'string' ? rawChannel : '';
   const channelId = normalizeAndroidChannelId(requestedChannelId, notification.category);
 
   await Notifications.scheduleNotificationAsync({

@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
 
 // Custom storage adapter for React Native to store auth tokens securely
-const expoSecureStorage = {
+export const expoSecureStorage = {
   getItem: async (key: string) => {
     return SecureStore.getItemAsync(key)
   },
@@ -14,8 +14,8 @@ const expoSecureStorage = {
   },
 }
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co'
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

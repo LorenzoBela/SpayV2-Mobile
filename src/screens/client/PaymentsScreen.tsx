@@ -173,8 +173,8 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   const topFlipProgress = useRef(new Animated.Value(1)).current;
   const bottomFlipProgress = useRef(new Animated.Value(1)).current;
   const lastValueRef = useRef(newValue);
-  const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animTimerRef = useRef<any>(null);
+  const revealTimerRef = useRef<any>(null);
 
   useEffect(() => {
     if (newValue !== lastValueRef.current) {

@@ -99,8 +99,7 @@ export default function PremiumLoader({
   }, [logoScale]);
 
   // Helper to dynamically strip custom font family if system fonts are forced
-  type StylesMap = typeof styles;
-  const font = (styleName: keyof StylesMap) => {
+  const font = (styleName: any) => {
     const originalStyle = styles[styleName] as any;
     if (useSystemFonts) {
       const { fontFamily, ...rest } = originalStyle;

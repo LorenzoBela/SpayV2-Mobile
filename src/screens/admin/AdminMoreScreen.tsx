@@ -29,11 +29,13 @@ import {
   Moon,
   Users,
   Trophy,
+  UserCheck,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useNotifications } from '../../hooks/useNotifications';
+import AdminImpersonationModal from '../../components/AdminImpersonationModal';
 
 
 export default function AdminMoreScreen() {
@@ -47,6 +49,7 @@ export default function AdminMoreScreen() {
   const [adminName, setAdminName] = useState('Administrator');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhoto, setAdminPhoto] = useState<string | null>(null);
+  const [isImpersonationModalOpen, setIsImpersonationModalOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -134,6 +137,12 @@ export default function AdminMoreScreen() {
       icon: Trophy,
       desc: 'System-wide milestones',
       action: () => navigation.navigate('AdminMilestones'),
+    },
+    {
+      name: 'Impersonate Client',
+      icon: UserCheck,
+      desc: 'View portal as client user',
+      action: () => setIsImpersonationModalOpen(true),
     },
   ];
 
@@ -318,6 +327,11 @@ export default function AdminMoreScreen() {
         </View>
 
       </ScrollView>
+
+      <AdminImpersonationModal
+        visible={isImpersonationModalOpen}
+        onClose={() => setIsImpersonationModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

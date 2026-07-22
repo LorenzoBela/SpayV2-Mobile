@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 
-import { supabase } from './supabase';
+import { supabase, expoSecureStorage } from './supabase';
 
 export type LinkedProfile = {
   id: string;
@@ -56,6 +56,33 @@ export async function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>):
 }
 
 export async function getLinkedProfileForCurrentUser() {
+  try {
+    const raw = await expoSecureStorage.getItem('impersonated_user');
+    if (raw) {
+      const imp = JSON.parse(raw);
+      if (imp?.id) {
+        const profile = await getLinkedProfileForUser({ id: imp.id, email: imp.email });
+        return {
+          user: {
+            id: imp.id,
+            email: imp.email,
+            user_metadata: { full_name: imp.name },
+          } as any,
+          profile: profile || {
+            id: imp.id,
+            email: imp.email,
+            name: imp.name,
+            role: 'CLIENT',
+            mobile_number: null,
+          },
+          profileId: imp.id,
+        };
+      }
+    }
+  } catch (e) {
+    // Fall back to default session user
+  }
+
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {

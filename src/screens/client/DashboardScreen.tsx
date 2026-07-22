@@ -1,5 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,7 +11,9 @@ import {
   Animated,
   Easing,
   Platform,
+  AppState,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Image } from "expo-image";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
@@ -605,6 +607,7 @@ export default function DashboardScreen() {
 
       const unpaidMonthsList = groupUnpaidBillingMonths(paymentsForGrouping);
       setUnpaidBillingMonths(unpaidMonthsList);
+      setAllPaymentsList(paymentsForGrouping);
       setIsDemo(false);
     }
   }, [queryPayments]);
@@ -853,7 +856,7 @@ export default function DashboardScreen() {
   };
 
   // Main Data Fetching Logic
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -877,16 +880,18 @@ export default function DashboardScreen() {
       const globalUnpaid = globalStats && globalStats[0] ? parseFloat(globalStats[0].unpaid_amount_total) : 65000.0;
       const globalAvailable = Math.max(0, globalLimit - globalUnpaid);
 
-      // Check orders where user is owner or participant
+      // Check orders where user is owner or participant using all candidate user IDs
+      const userIdsToQuery = Array.from(new Set([profileId, user.id].filter(Boolean)));
+
       const [ownedResult, participantResult] = await Promise.all([
         supabase
           .from('orders')
           .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared')
-          .eq('user_id', profileId),
+          .in('user_id', userIdsToQuery),
         supabase
           .from('order_participants')
           .select('order_id')
-          .eq('user_id', profileId)
+          .in('user_id', userIdsToQuery)
       ]);
 
       if (ownedResult.error) throw ownedResult.error;
@@ -911,9 +916,21 @@ export default function DashboardScreen() {
         (a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
       );
 
-      // If empty transactions, fallback to high fidelity demo account parameters
+      // For logged in user with 0 orders, display genuine clean empty state, never overwrite with demo data
       if (dbOrders.length === 0) {
-        setDemoData(profileName, profileEmail, photoUrl);
+        setIsDemo(false);
+        setUnpaidBillingMonths([]);
+        setRecentOrders([]);
+        setAllOrdersList([]);
+        setAllPaymentsList([]);
+        setFinancialMetrics({
+          healthScore: 100,
+          onTimeRate: 100,
+          paymentStreak: 0,
+          recommendedMonthlyBudget: 0,
+        });
+        setSpendingCategories([]);
+        setMonthlyTrends([]);
         return;
       }
 
@@ -937,52 +954,53 @@ export default function DashboardScreen() {
 
       if (participantsErr) throw participantsErr;
 
-      // Fetch client's own split payments for shared orders
-      const { data: myParticipantPayments, error: myPartPaymentsErr } = await supabase
-        .from('order_participant_payments')
-        .select(`
-          id,
-          payment_id,
-          amount_due,
-          is_paid,
-          paid_at,
-          participant:order_participants!inner (
-            id,
-            order_id,
-            user_id
-          )
-        `)
-        .eq('participant.user_id', profileId);
+      // Fetch client's own split payments for shared orders directly by participant_id
+      const myPartRecords = (dbParticipants || []).filter(part => userIdsToQuery.includes(part.user_id));
+      const myPartIds = myPartRecords.map(part => part.id);
 
-      if (myPartPaymentsErr) throw myPartPaymentsErr;
+      let myParticipantPayments: any[] = [];
+      if (myPartIds.length > 0) {
+        const { data: myPartPayments, error: myPartPaymentsErr } = await supabase
+          .from('order_participant_payments')
+          .select('id, payment_id, amount_due, is_paid, paid_at, participant_id')
+          .in('participant_id', myPartIds);
+
+        if (myPartPaymentsErr) throw myPartPaymentsErr;
+        myParticipantPayments = myPartPayments || [];
+      }
 
       // Fetch all participant payments for everyone on these orders
-      const { data: allParticipantPayments, error: allPartPaymentsErr } = await supabase
-        .from('order_participant_payments')
-        .select(`
-          id,
-          payment_id,
-          amount_due,
-          is_paid,
-          participant:order_participants!inner (
+      let allParticipantPayments: any[] = [];
+      const allPartIds = (dbParticipants || []).map(part => part.id);
+      if (allPartIds.length > 0) {
+        const { data: allPartPayments, error: allPartPaymentsErr } = await supabase
+          .from('order_participant_payments')
+          .select(`
             id,
-            order_id,
-            user_id,
-            profile:profiles (
-              name,
-              email
+            payment_id,
+            amount_due,
+            is_paid,
+            participant:order_participants (
+              id,
+              order_id,
+              user_id,
+              profile:profiles (
+                name,
+                email
+              )
             )
-          )
-        `)
-        .in('participant.order_id', orderIds);
+          `)
+          .in('participant_id', allPartIds);
 
-      if (allPartPaymentsErr) throw allPartPaymentsErr;
+        if (allPartPaymentsErr) throw allPartPaymentsErr;
+        allParticipantPayments = allPartPayments || [];
+      }
 
       // Process in-memory mappings
       const ordersMap = new Map();
       dbOrders.forEach(o => {
         const isShared = o.is_shared === true;
-        const myPartRecord = dbParticipants?.find(part => part.order_id === o.id && part.user_id === profileId);
+        const myPartRecord = dbParticipants?.find(part => part.order_id === o.id && userIdsToQuery.includes(part.user_id));
         const splitAmount = isShared && myPartRecord ? parseFloat(myPartRecord.split_amount) : parseFloat(o.amount);
         const isOrderPaid = isShared ? (myPartRecord?.is_paid ?? false) : o.is_paid;
 
@@ -1003,10 +1021,17 @@ export default function DashboardScreen() {
 
         if (isShared) {
           const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
+          const myPartRecord = dbParticipants?.find(part => part.order_id === p.order_id && userIdsToQuery.includes(part.user_id));
+
           if (mySplitPay) {
             isPaid = mySplitPay.is_paid;
             amountDue = parseFloat(mySplitPay.amount_due);
             paymentDate = mySplitPay.paid_at ? parseUtcDate(mySplitPay.paid_at) : null;
+          } else if (myPartRecord) {
+            isPaid = myPartRecord.is_paid;
+            const splitTotal = parseFloat(myPartRecord.split_amount);
+            const months = order?.installment_months || 1;
+            amountDue = splitTotal / months;
           }
         }
 
@@ -1057,10 +1082,17 @@ export default function DashboardScreen() {
 
         if (isShared) {
           const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
+          const myPartRecord = dbParticipants?.find(part => part.order_id === p.order_id && part.user_id === profileId);
+
           if (mySplitPay) {
             isPaid = mySplitPay.is_paid;
             amountDue = parseFloat(mySplitPay.amount_due);
             paymentDate = mySplitPay.paid_at ? parseUtcDate(mySplitPay.paid_at) : null;
+          } else if (myPartRecord) {
+            isPaid = myPartRecord.is_paid;
+            const splitTotal = parseFloat(myPartRecord.split_amount);
+            const months = order?.installment_months || 1;
+            amountDue = splitTotal / months;
           }
         }
 
@@ -1086,10 +1118,12 @@ export default function DashboardScreen() {
       setGlobalAvailableCredit(globalAvailable);
       setIsDemo(false);
 
-      // Process next monthly payment cycles
-      const unpaidMonthsList = groupUnpaidBillingMonths(allPayments);
-      setUnpaidBillingMonths(unpaidMonthsList);
-      setSelectedMonthIndex(0);
+      // Only update unpaidBillingMonths from direct Supabase fetch if TRPC queryPayments is not already populated
+      if (!queryPayments || queryPayments.length === 0) {
+        const unpaidMonthsList = groupUnpaidBillingMonths(allPayments);
+        setUnpaidBillingMonths(unpaidMonthsList);
+        setSelectedMonthIndex(0);
+      }
 
       // Process recent orders
       setRecentOrders(dbOrders.slice(0, 4).map(o => {
@@ -1217,18 +1251,44 @@ export default function DashboardScreen() {
       setMonthlyTrends(monthsArray.map(key => trendsMap.get(key)));
 
     } catch (err: any) {
-      console.warn('DB read issues, defaulting to demo placeholders:', err);
-      setError(err?.message || 'DB Sync Failure');
-      setDemoData();
+      console.warn('Dashboard fetch issue:', err);
+      setError(err?.message || 'DB Sync Warning');
+      const { user } = await getLinkedProfileForCurrentUser();
+      if (!user) {
+        setDemoData();
+      } else {
+        setIsDemo(false);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardData]);
+
+  // Instantly refetch live data whenever screen becomes focused
+  useFocusEffect(
+    useCallback(() => {
+      refetchPayments();
+      refetchOrders();
+      fetchDashboardData();
+    }, [refetchPayments, refetchOrders, fetchDashboardData])
+  );
+
+  // Instantly refetch live data whenever app returns from background
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active') {
+        refetchPayments();
+        refetchOrders();
+        fetchDashboardData();
+      }
+    });
+    return () => subscription.remove();
+  }, [refetchPayments, refetchOrders, fetchDashboardData]);
 
   useRealtimeSync(['orders', 'payments', 'account_limits'], fetchDashboardData);
 
@@ -1470,29 +1530,6 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
                   </View>
-                  {p.isShared && p.sharingProgress && p.sharingProgress.length > 0 && (
-                    <View style={{ paddingLeft: 12, marginTop: 4, borderLeftWidth: 1, borderLeftColor: t.divider }}>
-                      {p.sharingProgress.map((part: any, pIdx: number) => (
-                        <View key={pIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 }}>
-                          <Text style={{ fontSize: 9, color: t.textSecondary, flex: 1 }} numberOfLines={1}>
-                            {part.name} <Text style={{ opacity: 0.6, fontSize: 8 }}>({part.email})</Text>
-                          </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 9, color: t.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
-                              {formatCurrency(part.amountDue)}
-                            </Text>
-                            <Text style={{
-                              fontSize: 8,
-                              fontWeight: '800',
-                              color: part.isPaid ? '#10b981' : '#f59e0b',
-                            }}>
-                              {part.isPaid ? 'PAID' : 'UNPAID'}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )}
                 </View>
               ))}
             </View>

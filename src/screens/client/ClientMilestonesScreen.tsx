@@ -367,7 +367,7 @@ export default function ClientMilestonesScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
-  const tabs: { key: typeof activeTab; label: string }[] = [
+  const tabs = [
     { key: 'all', label: 'All' },
     { key: 'unlocked', label: 'Unlocked' },
     { key: 'locked', label: 'Locked' },
@@ -386,7 +386,7 @@ export default function ClientMilestonesScreen() {
     { key: 'LEGENDARY', label: 'Legendary' },
   ];
 
-  const sortOptions: { key: typeof sortBy; label: string }[] = [
+  const sortOptions = [
     { key: 'default', label: 'Default Sorting' },
     { key: 'recently_unlocked', label: 'Recently Unlocked' },
     { key: 'unlock_date_oldest', label: 'Unlock Date (Oldest)' },

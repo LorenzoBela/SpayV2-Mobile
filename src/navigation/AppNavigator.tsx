@@ -18,8 +18,8 @@ import {
   HelpCircle,
   Users,
   LayoutDashboard,
-  type LucideIcon,
 } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,6 +27,8 @@ import { storage } from '../utils/queryPersister';
 
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForUser } from '../utils/authProfile';
+import { useImpersonation } from '../context/ImpersonationContext';
+import ImpersonationBanner from '../components/ImpersonationBanner';
 import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
 import AppLockGate from '../components/AppLockGate';
@@ -524,6 +526,7 @@ const AdminNavigator = () => {
 
 export default function AppNavigator() {
   const queryClient = useQueryClient();
+  const { impersonatedUser, isImpersonating } = useImpersonation();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -532,6 +535,14 @@ export default function AppNavigator() {
   const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
   const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
   const navigationRef = React.useRef<any>(null);
+
+  const effectiveUserId = isImpersonating && impersonatedUser?.id ? impersonatedUser.id : linkedProfileId;
+
+  useEffect(() => {
+    if (isImpersonating && activeRole !== 'client') {
+      setActiveRole('client');
+    }
+  }, [isImpersonating, activeRole]);
 
   // Theme state — loads from MMKV and defaults to dark mode
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -662,7 +673,7 @@ export default function AppNavigator() {
   }, []);
 
   useEffect(() => {
-    if (!linkedProfileId) return;
+    if (!effectiveUserId) return;
 
     let nativeFcmRegistered = false;
     let unsubscribeFcmTokenRefresh: (() => void) | undefined;
@@ -670,23 +681,23 @@ export default function AppNavigator() {
     // Wrap notification registration to prevent PromiseLike catch method type error
     (async () => {
       try {
-        const fcmToken = await registerForFcmNotifications(linkedProfileId);
+        const fcmToken = await registerForFcmNotifications(effectiveUserId);
         nativeFcmRegistered = Boolean(fcmToken);
         if (fcmToken) {
-          unsubscribeFcmTokenRefresh = subscribeToFcmTokenRefresh(linkedProfileId);
+          unsubscribeFcmTokenRefresh = subscribeToFcmTokenRefresh(effectiveUserId);
         }
       } catch (error: any) {
         console.warn('[FCM] Registration skipped:', error?.message || error);
       }
 
       try {
-        await registerForTrayNotifications(linkedProfileId);
+        await registerForTrayNotifications(effectiveUserId);
       } catch (error: any) {
         console.warn('[Notifications] Registration skipped:', error?.message || error);
       }
     })();
 
-    const unsubscribeRealtime = subscribeToRealtimeNotifications(linkedProfileId, (notification) => {
+    const unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
       if (nativeFcmRegistered) return;
       void mirrorToLocalTray(notification);
     });
@@ -716,7 +727,7 @@ export default function AppNavigator() {
       unsubscribeRealtime();
       responseSubscription.remove();
     };
-  }, [linkedProfileId]);
+  }, [effectiveUserId]);
 
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
@@ -747,7 +758,7 @@ export default function AppNavigator() {
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
-        <NotificationProvider userId={linkedProfileId || undefined}>
+        <NotificationProvider userId={effectiveUserId || undefined}>
           <TabBarProvider>
             <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
               <StatusBar
@@ -756,6 +767,8 @@ export default function AppNavigator() {
                 translucent={false}
                 animated
               />
+
+              <ImpersonationBanner />
 
               {!isActuallyLoading && (
                 <AppLockGate sessionExists={!!session}>

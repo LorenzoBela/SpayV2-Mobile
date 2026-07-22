@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useWindowDimensions, type ViewStyle } from 'react-native';
+import { useWindowDimensions } from 'react-native';
+import type { ViewStyle } from 'react-native';
 
 const TABLET_BREAKPOINT = 768;
 const LARGE_PHONE_BREAKPOINT = 430;
