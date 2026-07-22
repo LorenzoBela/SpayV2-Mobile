@@ -41,7 +41,7 @@ export function useRealtimeSync(
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const channelName = `realtime-sync-${tables.join('-')}-${uniqueId}`;
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let debounceTimer: any = null;
     const triggerSync = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {

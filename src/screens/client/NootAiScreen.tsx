@@ -11,12 +11,13 @@ import {
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, Send, Sparkles, Brain, Trash2, AlertTriangle } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBar } from '../../navigation/TabBarContext';
 import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import NetInfo from '@react-native-community/netinfo';
@@ -219,6 +220,18 @@ function renderFormattedMessage(text: string, t: any) {
 export default function NootAiScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = useContext(ThemeContext);
+  const insets = useSafeAreaInsets();
+  const { hideTabBar, showTabBar } = useTabBar();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      hideTabBar();
+      return () => {
+        showTabBar();
+      };
+    }, [hideTabBar, showTabBar])
+  );
+
   const chatMutation = trpc.nootai.chat.useMutation();
 
   const [loading, setLoading] = useState(true);
@@ -665,7 +678,7 @@ export default function NootAiScreen() {
         )}
 
         {/* Input area */}
-        <View style={[styles.inputContainer, { backgroundColor: t.headerBg, borderTopColor: t.headerBorder, opacity: isOffline ? 0.6 : 1 }]}>
+        <View style={[styles.inputContainer, { backgroundColor: t.headerBg, borderTopColor: t.headerBorder, opacity: isOffline ? 0.6 : 1, paddingBottom: Math.max(insets.bottom, 12) }]}>
           <TextInput
             style={[styles.textInput, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: isOffline ? t.textSecondary : t.textPrimary }]}
             placeholder={isOffline ? "NootAI is disabled offline" : "Ask me anything about your installments..."}

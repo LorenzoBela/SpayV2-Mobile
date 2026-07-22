@@ -51,6 +51,7 @@ import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
+import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
 
 
 // Interfaces
@@ -138,12 +139,14 @@ const getCategory = (itemName: string): string => {
 function groupUnpaidBillingMonths(
   payments: Array<{
     id: string;
-    dueDate: Date;
+    dueDate: Date | string;
+    rawDueDate?: string;
     amountDue: number;
     isPaid: boolean;
     itemName: string;
     monthNumber?: number;
     installmentMonths?: number;
+    orderId?: string;
     isShared?: boolean;
     sharingProgress?: Array<{
       name: string;
@@ -153,11 +156,14 @@ function groupUnpaidBillingMonths(
     }>;
   }>,
 ) {
-  const unpaidPaymentsByMonth = new Map<string, typeof payments>();
+  const unpaidPaymentsByMonth = new Map<string, any[]>();
   payments.forEach(payment => {
     if (payment.isPaid) return;
 
-    const monthKey = getBillingMonthKey(payment.dueDate);
+    const dateObj = payment.dueDate instanceof Date 
+      ? payment.dueDate 
+      : parseUtcDate(payment.rawDueDate || (payment.dueDate as string));
+    const monthKey = getBillingMonthKey(dateObj);
     const list = unpaidPaymentsByMonth.get(monthKey) || [];
     list.push(payment);
     unpaidPaymentsByMonth.set(monthKey, list);
@@ -167,8 +173,19 @@ function groupUnpaidBillingMonths(
   return sortedMonthKeys.map(monthKey => {
     const monthPayments = unpaidPaymentsByMonth
       .get(monthKey)!
-      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-    const earliestDueDate = monthPayments[0]?.dueDate ?? new Date();
+      .sort((a, b) => {
+        const dA = a.dueDate instanceof Date 
+          ? a.dueDate.getTime() 
+          : parseUtcDate(a.rawDueDate || (a.dueDate as string)).getTime();
+        const dB = b.dueDate instanceof Date 
+          ? b.dueDate.getTime() 
+          : parseUtcDate(b.rawDueDate || (b.dueDate as string)).getTime();
+        return dA - dB;
+      });
+    const earliestDate = monthPayments[0]?.dueDate;
+    const earliestDueDate = earliestDate instanceof Date 
+      ? earliestDate 
+      : parseUtcDate(monthPayments[0]?.rawDueDate || (earliestDate as string) || Date.now());
     const totalDue = monthPayments.reduce((sum, payment) => sum + payment.amountDue, 0);
 
     return {
@@ -182,9 +199,10 @@ function groupUnpaidBillingMonths(
         id: payment.id,
         itemName: payment.itemName,
         amount: payment.amountDue,
-        dueDate: payment.dueDate.toISOString(),
-        isShared: payment.isShared,
-        sharingProgress: payment.sharingProgress,
+        dueDate: payment.dueDate instanceof Date ? payment.dueDate.toISOString() : (payment.rawDueDate || (payment.dueDate as string)),
+        orderId: payment.orderId,
+        isShared: payment.isShared === true,
+        sharingProgress: payment.sharingProgress || [],
       })),
     };
   });
@@ -215,8 +233,8 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   const topFlipProgress = useRef(new Animated.Value(1)).current;
   const bottomFlipProgress = useRef(new Animated.Value(1)).current;
   const lastValueRef = useRef(newValue);
-  const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const animTimerRef = useRef<any>(null);
+  const revealTimerRef = useRef<any>(null);
 
   useEffect(() => {
     if (newValue !== lastValueRef.current) {
@@ -544,6 +562,10 @@ export default function DashboardScreen() {
   const [userEmail, setUserEmail] = useState('client@spay.com');
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
 
+  // TRPC Client Queries
+  const { data: queryPayments, isLoading: queryPaymentsLoading, refetch: refetchPayments } = useClientPaymentsQuery();
+  const { data: queryOrdersData, isLoading: queryOrdersLoading, refetch: refetchOrders } = useClientOrdersQuery();
+
   // Financial Limits States
   const [globalCreditLimit, setGlobalCreditLimit] = useState(250000);
   const [globalAvailableCredit, setGlobalAvailableCredit] = useState(185000);
@@ -562,6 +584,49 @@ export default function DashboardScreen() {
   });
   const [spendingCategories, setSpendingCategories] = useState<SpendingCategory[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
+
+  // Sync TRPC payments data with countdown breakdown & metrics
+  useEffect(() => {
+    if (queryPayments && queryPayments.length > 0) {
+      const paymentsForGrouping = queryPayments.map((p: any) => ({
+        id: p.id,
+        dueDate: parseUtcDate(p.rawDueDate),
+        rawDueDate: p.rawDueDate,
+        amountDue: p.amountDue,
+        isPaid: p.isPaid,
+        paymentDate: p.paymentDate ? parseUtcDate(p.paymentDate) : null,
+        itemName: p.itemName,
+        monthNumber: p.monthNumber,
+        installmentMonths: p.installmentMonths,
+        orderId: p.orderId,
+        isShared: p.isShared === true,
+        sharingProgress: p.sharingProgress || [],
+      }));
+
+      const unpaidMonthsList = groupUnpaidBillingMonths(paymentsForGrouping);
+      setUnpaidBillingMonths(unpaidMonthsList);
+      setIsDemo(false);
+    }
+  }, [queryPayments]);
+
+  // Sync TRPC orders data with recent orders
+  useEffect(() => {
+    if (queryOrdersData?.orders && queryOrdersData.orders.length > 0) {
+      setRecentOrders(
+        queryOrdersData.orders.slice(0, 4).map((o: any) => ({
+          id: o.id,
+          itemName: o.itemName,
+          amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : o.amount,
+          installmentMonths: o.installmentMonths,
+          orderDate: o.orderDate,
+          isPaid: o.isPaid,
+          isShared: o.isShared === true,
+        }))
+      );
+      setIsDemo(false);
+    }
+  }, [queryOrdersData]);
+
 
   // Heatmap data states
   const [allOrdersList, setAllOrdersList] = useState<any[]>([]);
@@ -713,11 +778,33 @@ export default function DashboardScreen() {
     const demoDueDate3 = new Date(demoNowMs + 65 * 24 * 60 * 60 * 1000);
 
     const demoPayments = [
-      { id: 'p1', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate1 },
-      { id: 'p2', itemName: 'AirPods Pro 2', amountDue: 10000, isPaid: false, dueDate: demoDueDate1 },
-      { id: 'p3', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate2 },
-      { id: 'p4', itemName: 'AirPods Pro 2', amountDue: 5000, isPaid: false, dueDate: demoDueDate2 },
-      { id: 'p5', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate3 },
+      { id: 'p1', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate1, isShared: false },
+      {
+        id: 'p2',
+        itemName: 'Group Dining & Lounge Split',
+        amountDue: 3500,
+        isPaid: false,
+        dueDate: demoDueDate1,
+        isShared: true,
+        sharingProgress: [
+          { name: 'Alex Rivera', email: 'alex@example.com', amountDue: 1750, isPaid: true },
+          { name: 'Client User', email: email, amountDue: 1750, isPaid: false },
+        ],
+      },
+      { id: 'p3', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate2, isShared: false },
+      {
+        id: 'p4',
+        itemName: 'Office Workstation Setup',
+        amountDue: 4000,
+        isPaid: false,
+        dueDate: demoDueDate2,
+        isShared: true,
+        sharingProgress: [
+          { name: 'Sarah Chen', email: 'sarah@example.com', amountDue: 2000, isPaid: false },
+          { name: 'Client User', email: email, amountDue: 2000, isPaid: false },
+        ],
+      },
+      { id: 'p5', itemName: 'iPhone 15 Pro Max', amountDue: 4500, isPaid: false, dueDate: demoDueDate3, isShared: false },
     ];
 
     const unpaidMonthsList = groupUnpaidBillingMonths(demoPayments);
@@ -725,8 +812,8 @@ export default function DashboardScreen() {
     setSelectedMonthIndex(0);
 
     setRecentOrders([
-      { id: '1', itemName: 'iPhone 15 Pro Max', amount: 54000, installmentMonths: 12, orderDate: new Date(demoNowMs - 30 * 24 * 60 * 60 * 1000).toISOString(), isPaid: false },
-      { id: '2', itemName: 'AirPods Pro 2', amount: 15000, installmentMonths: 3, orderDate: new Date(demoNowMs - 15 * 24 * 60 * 60 * 1000).toISOString(), isPaid: false },
+      { id: '1', itemName: 'iPhone 15 Pro Max', amount: 54000, installmentMonths: 12, orderDate: new Date(demoNowMs - 30 * 24 * 60 * 60 * 1000).toISOString(), isPaid: false, isShared: false },
+      { id: '2', itemName: 'Group Dining & Lounge Split', amount: 10500, installmentMonths: 3, orderDate: new Date(demoNowMs - 15 * 24 * 60 * 60 * 1000).toISOString(), isPaid: false, isShared: true },
     ]);
 
     setFinancialMetrics({
@@ -1147,6 +1234,8 @@ export default function DashboardScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    refetchPayments();
+    refetchOrders();
     fetchDashboardData();
   };
 

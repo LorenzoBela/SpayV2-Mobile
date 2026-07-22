@@ -290,7 +290,7 @@ export default function ActivityHeatmap({
     }
 
     // Build orders map
-    const ordersMap = new Map<string, { count: number; total: number; names: string[]; items: typeof allOrders }>();
+    const ordersMap = new Map<string, { count: number; total: number; names: string[]; items: any[] }>();
     allOrders.forEach(o => {
       const key = getManilaDateKey(o.orderDate);
       if (!key) return;
@@ -303,7 +303,7 @@ export default function ActivityHeatmap({
     });
 
     // Build payments map (only paid payments)
-    const paymentsMap = new Map<string, { count: number; total: number; names: string[]; items: typeof allPayments }>();
+    const paymentsMap = new Map<string, { count: number; total: number; names: string[]; items: any[] }>();
     allPayments.forEach(p => {
       if (!p.isPaid) return;
       const dateVal = p.paymentDate || p.dueDate;
