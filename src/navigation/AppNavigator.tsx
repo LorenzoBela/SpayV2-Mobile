@@ -158,15 +158,20 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
     return options.tabBarButton !== null && options.tabBarItemStyle?.display !== 'none';
   });
 
-  const activeIndex = visibleRoutes.findIndex((r: any) => {
+  let activeIndex = visibleRoutes.findIndex((r: any) => {
     const activeRouteName = state.routes[state.index].name;
-    const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones',
+    const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones', 'Wishlist',
                          'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones'].includes(activeRouteName);
     if (isSubScreen) {
       return r.name === 'More' || r.name === 'AdminMore';
     }
     return r.name === activeRouteName;
   });
+
+  if (activeIndex === -1) {
+    const fallbackIndex = visibleRoutes.findIndex((r: any) => r.name === 'More' || r.name === 'AdminMore');
+    activeIndex = fallbackIndex !== -1 ? fallbackIndex : 0;
+  }
 
   // 358px expanded (390 screen - 32 margins), 195px collapsed
   const expandedWidth = Math.min(windowWidth - 32, 500);
