@@ -52,6 +52,7 @@ import SettingsScreen from '../screens/client/SettingsScreen';
 import MoreScreen from '../screens/client/MoreScreen';
 import NootAiScreen from '../screens/client/NootAiScreen';
 import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen'; // refresh cache
+import WishlistScreen from '../screens/client/WishlistScreen';
 import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen'; // refresh cache
 import {
   mirrorToLocalTray,
@@ -420,6 +421,14 @@ const MainNavigator = () => {
       <Tab.Screen
         name="ClientMilestones"
         component={ClientMilestonesScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+        }}
+      />
+      <Tab.Screen
+        name="Wishlist"
+        component={WishlistScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,

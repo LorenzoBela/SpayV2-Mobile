@@ -9,6 +9,7 @@ export type RootStackParamList = {
   Budget: undefined;
   Calendar: undefined;
   Settings: undefined;
+  Wishlist: undefined;
 };
 
 export type AuthStackParamList = {
@@ -27,6 +28,7 @@ export type MainTabParamList = {
   Calendar: undefined;
   NootAi: undefined;
   ClientMilestones: undefined;
+  Wishlist: undefined;
 };
 
 export type AdminTabParamList = {

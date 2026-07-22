@@ -491,6 +491,50 @@ export default function AdminOrdersScreen() {
         setIsDetailsOpen(false);
         queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
         queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+      } else if (response.requiresForce) {
+        PremiumAlert.alert(
+          'Override Paid Order Restrictions',
+          'Some payments have already been collected for this order. Updating these details will recalculate and adjust the remaining unpaid installment amounts.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Override & Update',
+              style: 'destructive',
+              onPress: async () => {
+                setActionLoading(true);
+                try {
+                  const forceRes = await callAdminApi('edit-order', {
+                    orderId: selectedOrder.id,
+                    itemName: editItemName,
+                    amount: parseFloat(editAmount),
+                    months: parseInt(editMonths, 10),
+                    purchaseDate: editPurchaseDate,
+                    firstPaymentDate: editFirstPaymentDate || undefined,
+                    remarks: editRemarks || undefined,
+                    clientId: editClientId,
+                    participants: editIsShared ? editSharedParticipants : undefined,
+                    forceEdit: true,
+                  });
+                  if (forceRes.success) {
+                    PremiumAlert.alert('Success', `Order details updated!`);
+                    setIsEditOpen(false);
+                    setIsDetailsOpen(false);
+                    queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+                    queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
+                    queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+                  } else {
+                    PremiumAlert.alert('Error', forceRes.error || 'Failed to update order details.');
+                  }
+                } catch (e: any) {
+                  PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+                } finally {
+                  setActionLoading(false);
+                }
+              },
+            },
+          ]
+        );
       } else {
         PremiumAlert.alert('Error', response.error || 'Failed to update order details.');
       }
@@ -2030,46 +2074,37 @@ export default function AdminOrdersScreen() {
                   <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Allocation</Text>
                 </View>
 
-                {/* Client Selection card - Display current or edit client if not locked */}
+                {/* Client Selection card - Display current or edit client */}
                 {selectedOrder && (
-                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, opacity: selectedOrder.payments.some((p: any) => p.is_paid) ? 0.65 : 1 }]}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}</Text>
-                    
-                    {selectedOrder.payments.some((p: any) => p.is_paid) ? (
-                      <View style={{ paddingVertical: 4 }}>
-                        <Text style={[styles.premiumInput, { color: t.textPrimary }]}>{selectedOrder.clientName}</Text>
-                        <Text style={[styles.clientSelectEmailText, { marginTop: 2 }]}>{selectedOrder.clientEmail}</Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.clientSelectContainer, { borderColor: t.border, marginTop: 4 }]}>
-                        <ScrollView style={{ maxHeight: 100 }} nestedScrollEnabled={true}>
-                          {profiles.map((client: any) => (
-                            <TouchableOpacity
-                              key={client.id}
-                              style={[
-                                styles.clientSelectItem,
-                                editClientId === client.id && { backgroundColor: t.accentLight }
-                              ]}
-                              onPress={() => setEditClientId(client.id)}
-                            >
-                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                                <Text style={[styles.clientSelectItemText, { color: t.textPrimary, fontWeight: editClientId === client.id ? 'bold' : 'normal' }]}>
-                                  {client.name}
-                                </Text>
-                                {editClientId === client.id && <Check size={14} color={t.accent} />}
-                              </View>
-                              <Text style={styles.clientSelectEmailText}>{client.email}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    )}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT</Text>
+                    <View style={[styles.clientSelectContainer, { borderColor: t.border, marginTop: 4 }]}>
+                      <ScrollView style={{ maxHeight: 100 }} nestedScrollEnabled={true}>
+                        {profiles.map((client: any) => (
+                          <TouchableOpacity
+                            key={client.id}
+                            style={[
+                              styles.clientSelectItem,
+                              editClientId === client.id && { backgroundColor: t.accentLight }
+                            ]}
+                            onPress={() => setEditClientId(client.id)}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                              <Text style={[styles.clientSelectItemText, { color: t.textPrimary, fontWeight: editClientId === client.id ? 'bold' : 'normal' }]}>
+                                {client.name}
+                              </Text>
+                              {editClientId === client.id && <Check size={14} color={t.accent} />}
+                            </View>
+                            <Text style={styles.clientSelectEmailText}>{client.email}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
                   </View>
                 )}
-
-                {/* Shared Order Toggle for Edit */}
+                   {/* Shared Order Toggle for Edit */}
                 {selectedOrder && (
-                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12, opacity: selectedOrder.payments.some((p: any) => p.is_paid) ? 0.65 : 1 }]}>
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12 }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <View>
                         <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
@@ -2078,7 +2113,6 @@ export default function AdminOrdersScreen() {
                       <Switch
                         value={editIsShared}
                         onValueChange={setEditIsShared}
-                        disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
                         trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
                         thumbColor={editIsShared ? '#ee4d2d' : '#f4f3f4'}
                       />
@@ -2088,26 +2122,18 @@ export default function AdminOrdersScreen() {
                       <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 16 }}>
                         <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({editSharedParticipants.length})</Text>
                         
-                        {selectedOrder.payments.some((p: any) => p.is_paid) ? (
-                          <View style={{ marginTop: 8 }}>
-                            <Text style={[styles.selectedClientName, { color: t.textPrimary }]}>
-                              {editSharedParticipants.length} selected (Locked)
-                            </Text>
-                          </View>
-                        ) : (
-                          <TouchableOpacity
-                            style={[styles.inlineClientSelector, { marginTop: 8 }]}
-                            onPress={() => {
-                              setParticipantSelectorActiveOrderId('edit');
-                              setBulkClientSearchQuery('');
-                            }}
-                          >
-                            <Text style={[styles.selectedClientName, { color: editSharedParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
-                              {editSharedParticipants.length > 0 ? `${editSharedParticipants.length} selected` : 'Choose Participants...'}
-                            </Text>
-                            <ChevronDown size={14} color={t.textSecondary} />
-                          </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                          style={[styles.inlineClientSelector, { marginTop: 8 }]}
+                          onPress={() => {
+                            setParticipantSelectorActiveOrderId('edit');
+                            setBulkClientSearchQuery('');
+                          }}
+                        >
+                          <Text style={[styles.selectedClientName, { color: editSharedParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
+                            {editSharedParticipants.length > 0 ? `${editSharedParticipants.length} selected` : 'Choose Participants...'}
+                          </Text>
+                          <ChevronDown size={14} color={t.textSecondary} />
+                        </TouchableOpacity>
 
                         {/* Split-Billing Calculator Inline */}
                         {(() => {
@@ -2142,6 +2168,15 @@ export default function AdminOrdersScreen() {
                   </View>
                 )}
 
+                {/* Paid Warning Notice */}
+                {selectedOrder && selectedOrder.payments.some((p: any) => p.is_paid) && (
+                  <View style={{ marginTop: 12, backgroundColor: isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fffbe6', borderColor: '#f59e0b', borderWidth: 1, borderRadius: 12, padding: 12 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#d97706', lineHeight: 16 }}>
+                      Warning: One or more payments on this plan have already been paid. Editing these fields will recalculate remaining unpaid installments.
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.formSectionHeader}>
                   <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Purchase Specs</Text>
                 </View>
@@ -2163,11 +2198,10 @@ export default function AdminOrdersScreen() {
                   {selectedOrder && (
                     <View style={[
                       styles.premiumInputCard, 
-                      { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
-                      selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                      { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }
                     ]}>
                       <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
-                        PURCHASE VALUE (PHP) {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
+                        PURCHASE VALUE (PHP)
                       </Text>
                       <TextInput
                         style={[styles.premiumInput, { color: t.textPrimary }]}
@@ -2176,7 +2210,6 @@ export default function AdminOrdersScreen() {
                         placeholderTextColor={t.textSecondary}
                         value={editAmount}
                         onChangeText={setEditAmount}
-                        editable={!selectedOrder.payments.some((p: any) => p.is_paid)}
                       />
                     </View>
                   )}
@@ -2185,26 +2218,21 @@ export default function AdminOrdersScreen() {
                   {selectedOrder && (
                     <View style={[
                       styles.premiumInputCard, 
-                      { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder },
-                      selectedOrder.payments.some((p: any) => p.is_paid) && { opacity: 0.65 }
+                      { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }
                     ]}>
                       <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>
-                        INSTALLMENT TERM {selectedOrder.payments.some((p: any) => p.is_paid) && '(LOCKED)'}
-                      </Text>                     <View style={styles.monthsRow}>
+                        INSTALLMENT TERM
+                      </Text>
+                      <View style={styles.monthsRow}>
                         {['1', '3', '6', '12'].map((m) => {
-                          const editable = !selectedOrder.payments.some((p: any) => p.is_paid);
                           return (
                             <TouchableOpacity
                               key={m}
                               style={[
                                 styles.premiumMonthSelector,
-                                editMonths === m && { backgroundColor: t.accent },
-                                !editable && { opacity: 0.5 }
+                                editMonths === m && { backgroundColor: t.accent }
                               ]}
-                              onPress={() => {
-                                if (editable) setEditMonths(m);
-                              }}
-                              disabled={!editable}
+                              onPress={() => setEditMonths(m)}
                             >
                               <Text style={[styles.premiumMonthSelectorText, editMonths === m && { color: '#fff' }]}>{m}M</Text>
                             </TouchableOpacity>
@@ -2217,20 +2245,18 @@ export default function AdminOrdersScreen() {
                   {/* Purchase Date */}
                   {selectedOrder && (
                     <DatePicker
-                      label={`Purchase Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
+                      label="Purchase Date"
                       value={editPurchaseDate}
                       onChange={setEditPurchaseDate}
-                      disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
                     />
                   )}
 
                   {/* First Payment Date */}
                   {selectedOrder && (
                     <DatePicker
-                      label={`First Payment Due Date ${selectedOrder.payments.some((p: any) => p.is_paid) ? '(LOCKED)' : ''}`}
+                      label="First Payment Due Date"
                       value={editFirstPaymentDate}
                       onChange={setEditFirstPaymentDate}
-                      disabled={selectedOrder.payments.some((p: any) => p.is_paid)}
                     />
                   )}
 

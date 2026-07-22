@@ -29,6 +29,7 @@ import {
   Moon,
   Sparkles,
   Trophy,
+  Target,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -110,10 +111,16 @@ export default function MoreScreen() {
       action: () => navigation.navigate('Payments'),
     },
     {
-      name: 'Budget & Goals',
+      name: 'Budget & Limits',
       icon: PiggyBank,
-      desc: 'Limit & save',
+      desc: 'Limit & category',
       action: () => navigation.navigate('Budget'),
+    },
+    {
+      name: 'Wishlist / Ipon',
+      icon: Target,
+      desc: 'Set goals & save',
+      action: () => navigation.navigate('Wishlist'),
     },
     {
       name: 'Calendar',

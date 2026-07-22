@@ -697,6 +697,12 @@ export default function BudgetScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
+                onPress={() => navigation.navigate('Wishlist')}
+              >
+                <Target size={16} color="#ee4d2d" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.headerIconBtn, { backgroundColor: t.iconBtnBg, borderColor: t.iconBtnBorder }]}
                 onPress={() => setPlannerVisible(true)}
               >
                 <CircleDollarSign size={16} color="#ee4d2d" />
