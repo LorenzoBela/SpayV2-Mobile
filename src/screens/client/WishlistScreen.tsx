@@ -10,6 +10,7 @@ import {
   Modal,
   ActivityIndicator,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -904,150 +905,162 @@ function CreateGoalModal({
     }
   };
 
+  const insets = useSafeAreaInsets();
+  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : (StatusBar.currentHeight || 24)) + 12;
+
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
       <SwipeDismissModal onDismiss={onClose}>
-        <View style={[modalStyles.container, { backgroundColor: t.modalBg }]}>
-          <View style={[modalStyles.header, { borderBottomColor: t.cardBorder }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Target size={20} color={t.accent} />
-              <Text style={[modalStyles.title, { color: t.textPrimary }]}>New Wishlist Goal</Text>
+        <View style={[modalStyles.backdropOverlay, { paddingTop: topOffset }]}>
+          <View style={[modalStyles.container, { backgroundColor: t.modalBg }]}>
+            {/* Sleek Top Drag Handle */}
+            <View style={modalStyles.dragHandleWrapper}>
+              <View style={[modalStyles.dragHandleBar, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)' }]} />
             </View>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={t.textSecondary} />
-            </TouchableOpacity>
-          </View>
 
-          <ScrollView contentContainerStyle={modalStyles.body}>
-            {/* Goal Name & Target Amount */}
-            <Text style={[modalStyles.label, { color: t.textSecondary }]}>Goal Name *</Text>
-            <TextInput
-              style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
-              placeholder="e.g. iPhone 16 Pro"
-              placeholderTextColor={t.textSecondary}
-              value={goalType}
-              onChangeText={setGoalType}
-            />
-
-            <Text style={[modalStyles.label, { color: t.textSecondary }]}>Target Amount (₱) *</Text>
-            <TextInput
-              style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
-              placeholder="60000"
-              placeholderTextColor={t.textSecondary}
-              keyboardType="numeric"
-              value={targetAmount}
-              onChangeText={setTargetAmount}
-            />
-
-            <Text style={[modalStyles.label, { color: t.textSecondary }]}>Target Date (YYYY-MM-DD Optional)</Text>
-            <TextInput
-              style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
-              placeholder="2026-12-31"
-              placeholderTextColor={t.textSecondary}
-              value={targetDate}
-              onChangeText={setTargetDate}
-            />
-
-            {/* Auto Reminders */}
-            <TouchableOpacity
-              onPress={() => setIsRecurring(!isRecurring)}
-              style={[modalStyles.toggleRow, { borderColor: t.cardBorder }]}
-            >
-              <RefreshCcw size={16} color={t.accent} />
-              <Text style={[modalStyles.toggleText, { color: t.textPrimary }]}>Set Auto-Reminders</Text>
-              <View style={[modalStyles.checkbox, isRecurring && { backgroundColor: t.accent, borderColor: t.accent }]}>
-                {isRecurring && <Check size={12} color="#fff" />}
+            <View style={[modalStyles.header, { borderBottomColor: t.cardBorder }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Target size={20} color={t.accent} />
+                <Text style={[modalStyles.title, { color: t.textPrimary }]}>New Wishlist Goal</Text>
               </View>
-            </TouchableOpacity>
+              <TouchableOpacity onPress={onClose} style={modalStyles.closeIconButton}>
+                <X size={18} color={t.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-            {isRecurring && (
-              <View style={{ gap: 10, marginTop: 10 }}>
-                <Text style={[modalStyles.label, { color: t.textSecondary }]}>Reminder Interval</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {INTERVALS.map((item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() => setRecurrenceInterval(item.id)}
-                      style={[
-                        modalStyles.chip,
-                        {
-                          borderColor: recurrenceInterval === item.id ? t.accent : t.cardBorder,
-                          backgroundColor: recurrenceInterval === item.id ? t.accent + '15' : 'transparent',
-                        },
-                      ]}
-                    >
-                      <Text style={{ color: recurrenceInterval === item.id ? t.accent : t.textSecondary, fontSize: 12, fontWeight: '600' }}>
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+            <ScrollView contentContainerStyle={modalStyles.body} showsVerticalScrollIndicator={false}>
+              {/* Goal Name & Target Amount */}
+              <Text style={[modalStyles.label, { color: t.textSecondary }]}>Goal Name *</Text>
+              <TextInput
+                style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                placeholder="e.g. iPhone 16 Pro"
+                placeholderTextColor={t.textSecondary}
+                value={goalType}
+                onChangeText={setGoalType}
+              />
 
-                <Text style={[modalStyles.label, { color: t.textSecondary }]}>Planned Deposit Amount (₱)</Text>
-                <TextInput
-                  style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
-                  placeholder="Optional amount"
-                  placeholderTextColor={t.textSecondary}
-                  keyboardType="numeric"
-                  value={recurringAmount}
-                  onChangeText={setRecurringAmount}
-                />
+              <Text style={[modalStyles.label, { color: t.textSecondary }]}>Target Amount (₱) *</Text>
+              <TextInput
+                style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                placeholder="60000"
+                placeholderTextColor={t.textSecondary}
+                keyboardType="numeric"
+                value={targetAmount}
+                onChangeText={setTargetAmount}
+              />
+
+              <Text style={[modalStyles.label, { color: t.textSecondary }]}>Target Date (YYYY-MM-DD Optional)</Text>
+              <TextInput
+                style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                placeholder="2026-12-31"
+                placeholderTextColor={t.textSecondary}
+                value={targetDate}
+                onChangeText={setTargetDate}
+              />
+
+              {/* Auto Reminders */}
+              <TouchableOpacity
+                onPress={() => setIsRecurring(!isRecurring)}
+                style={[modalStyles.toggleRow, { borderColor: t.cardBorder }]}
+                activeOpacity={0.8}
+              >
+                <RefreshCcw size={16} color={t.accent} />
+                <Text style={[modalStyles.toggleText, { color: t.textPrimary }]}>Set Auto-Reminders</Text>
+                <View style={[modalStyles.checkbox, isRecurring && { backgroundColor: t.accent, borderColor: t.accent }]}>
+                  {isRecurring && <Check size={12} color="#fff" />}
+                </View>
+              </TouchableOpacity>
+
+              {isRecurring && (
+                <View style={{ gap: 10, marginTop: 10 }}>
+                  <Text style={[modalStyles.label, { color: t.textSecondary }]}>Reminder Interval</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {INTERVALS.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => setRecurrenceInterval(item.id)}
+                        style={[
+                          modalStyles.chip,
+                          {
+                            borderColor: recurrenceInterval === item.id ? t.accent : t.cardBorder,
+                            backgroundColor: recurrenceInterval === item.id ? t.accent + '15' : 'transparent',
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: recurrenceInterval === item.id ? t.accent : t.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <Text style={[modalStyles.label, { color: t.textSecondary }]}>Planned Deposit Amount (₱)</Text>
+                  <TextInput
+                    style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                    placeholder="Optional amount"
+                    placeholderTextColor={t.textSecondary}
+                    keyboardType="numeric"
+                    value={recurringAmount}
+                    onChangeText={setRecurringAmount}
+                  />
+                </View>
+              )}
+
+              {/* Theme & Accent Color */}
+              <Text style={[modalStyles.label, { color: t.textSecondary, marginTop: 16 }]}>Visual Theme</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {THEMES.map((th) => (
+                  <TouchableOpacity
+                    key={th.id}
+                    onPress={() => setTheme(th.id)}
+                    style={[
+                      modalStyles.chip,
+                      {
+                        borderColor: theme === th.id ? t.accent : t.cardBorder,
+                        backgroundColor: theme === th.id ? t.accent + '15' : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: theme === th.id ? t.accent : t.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      {th.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={[modalStyles.label, { color: t.textSecondary, marginTop: 16 }]}>Accent Color</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {COLORS.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    onPress={() => setColor(c)}
+                    style={[
+                      modalStyles.colorDot,
+                      { backgroundColor: c },
+                      color === c && modalStyles.colorDotActive,
+                    ]}
+                  />
+                ))}
               </View>
-            )}
-
-            {/* Theme & Accent Color */}
-            <Text style={[modalStyles.label, { color: t.textSecondary, marginTop: 16 }]}>Visual Theme</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {THEMES.map((th) => (
-                <TouchableOpacity
-                  key={th.id}
-                  onPress={() => setTheme(th.id)}
-                  style={[
-                    modalStyles.chip,
-                    {
-                      borderColor: theme === th.id ? t.accent : t.cardBorder,
-                      backgroundColor: theme === th.id ? t.accent + '15' : 'transparent',
-                    },
-                  ]}
-                >
-                  <Text style={{ color: theme === th.id ? t.accent : t.textSecondary, fontSize: 12, fontWeight: '600' }}>
-                    {th.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
             </ScrollView>
 
-            <Text style={[modalStyles.label, { color: t.textSecondary, marginTop: 16 }]}>Accent Color</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {COLORS.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  onPress={() => setColor(c)}
-                  style={[
-                    modalStyles.colorDot,
-                    { backgroundColor: c },
-                    color === c && modalStyles.colorDotActive,
-                  ]}
-                />
-              ))}
+            <View style={[modalStyles.footer, { borderTopColor: t.cardBorder }]}>
+              <TouchableOpacity onPress={onClose} style={modalStyles.cancelBtn}>
+                <Text style={{ color: t.textSecondary, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                disabled={isSubmitting}
+                style={[modalStyles.submitBtn, { backgroundColor: t.accent }]}
+                activeOpacity={0.85}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Create Goal</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-
-          <View style={[modalStyles.footer, { borderTopColor: t.cardBorder }]}>
-            <TouchableOpacity onPress={onClose} style={modalStyles.cancelBtn}>
-              <Text style={{ color: t.textSecondary, fontWeight: '600' }}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={isSubmitting}
-              style={[modalStyles.submitBtn, { backgroundColor: t.accent }]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Create Goal</Text>
-              )}
-            </TouchableOpacity>
           </View>
         </View>
       </SwipeDismissModal>
@@ -1068,6 +1081,8 @@ function GoalDetailsModal({
   wishlist: WishlistGoal | null;
 }) {
   const { isDarkMode } = useContext(ThemeContext);
+  const insets = useSafeAreaInsets();
+  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : (StatusBar.currentHeight || 24)) + 12;
 
   const stats = useMemo(() => {
     if (!wishlist) return null;
@@ -1139,9 +1154,15 @@ function GoalDetailsModal({
   return (
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
       <SwipeDismissModal onDismiss={onClose}>
-        <View style={[detailsStyles.container, { backgroundColor: t.modalBg }]}>
-          {/* Color Header Banner */}
-          <View style={[detailsStyles.banner, { backgroundColor: wishlist.color }]}>
+        <View style={[modalStyles.backdropOverlay, { paddingTop: topOffset }]}>
+          <View style={[detailsStyles.container, { backgroundColor: t.modalBg }]}>
+            {/* Sleek Top Drag Handle */}
+            <View style={modalStyles.dragHandleWrapper}>
+              <View style={[modalStyles.dragHandleBar, { backgroundColor: 'rgba(255,255,255,0.4)' }]} />
+            </View>
+
+            {/* Color Header Banner */}
+            <View style={[detailsStyles.banner, { backgroundColor: wishlist.color }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View>
                 <Text style={detailsStyles.bannerEyebrow}>GOAL OVERVIEW</Text>
@@ -1271,8 +1292,9 @@ function GoalDetailsModal({
             )}
           </ScrollView>
         </View>
-      </SwipeDismissModal>
-    </Modal>
+      </View>
+    </SwipeDismissModal>
+  </Modal>
   );
 }
 
@@ -1305,118 +1327,132 @@ const styles = StyleSheet.create({
 });
 
 const cardStyles = StyleSheet.create({
-  card: { borderRadius: 20, borderWidth: 1.5, padding: 16, marginBottom: 4 },
-  completedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', marginBottom: 10 },
-  completedBannerText: { color: '#10b981', fontSize: 11, fontWeight: '800' },
+  card: {
+    borderRadius: 24,
+    borderWidth: 1.5,
+    padding: 18,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  completedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, alignSelf: 'flex-start', marginBottom: 12 },
+  completedBannerText: { color: '#10b981', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  goalTitle: { fontSize: 18, fontWeight: '800' },
-  goalSubAmount: { fontSize: 13, fontWeight: '700', marginTop: 2 },
-  iconBtn: { padding: 6 },
-  badgeRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeText: { fontSize: 10, fontWeight: '600' },
+  goalTitle: { fontSize: 19, fontWeight: '900', fontFamily: 'Outfit-Bold' },
+  goalSubAmount: { fontSize: 13, fontWeight: '700', marginTop: 3 },
+  iconBtn: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
 
   // Themes
-  ringContainer: { height: 130, justifyContent: 'center', alignItems: 'center', marginVertical: 12 },
+  ringContainer: { height: 140, justifyContent: 'center', alignItems: 'center', marginVertical: 14 },
   ringCenter: { position: 'absolute', justifyContent: 'center', alignItems: 'center' },
-  ringPercentText: { fontSize: 24, fontWeight: '900' },
+  ringPercentText: { fontSize: 26, fontWeight: '900', fontFamily: 'Outfit-Bold' },
 
-  jarContainer: { height: 110, marginVertical: 12, justifyContent: 'center', alignItems: 'center' },
-  jarOutline: { width: 80, height: 100, borderWidth: 3, borderRadius: 16, position: 'absolute' },
-  jarCap: { width: 50, height: 10, borderWidth: 3, borderBottomWidth: 0, borderRadius: 4, position: 'absolute', top: 0 },
-  jarFillWrapper: { width: 74, height: 90, borderRadius: 12, overflow: 'hidden', justifyContent: 'flex-end', position: 'absolute', bottom: 8 },
+  jarContainer: { height: 120, marginVertical: 14, justifyContent: 'center', alignItems: 'center' },
+  jarOutline: { width: 84, height: 104, borderWidth: 3, borderRadius: 18, position: 'absolute' },
+  jarCap: { width: 52, height: 12, borderWidth: 3, borderBottomWidth: 0, borderRadius: 5, position: 'absolute', top: 0 },
+  jarFillWrapper: { width: 78, height: 94, borderRadius: 14, overflow: 'hidden', justifyContent: 'flex-end', position: 'absolute', bottom: 8 },
   jarFill: { width: '100%' },
-  themeLabelText: { fontSize: 16, fontWeight: '900', zIndex: 10 },
+  themeLabelText: { fontSize: 17, fontWeight: '900', zIndex: 10, fontFamily: 'Outfit-Bold' },
 
-  mapContainer: { height: 60, marginVertical: 12, justifyContent: 'center', paddingHorizontal: 16 },
-  mapTrack: { height: 2, borderWidth: 1, borderStyle: 'dashed' },
-  mapPinWrapper: { position: 'absolute', top: 10, alignItems: 'center' },
-  mapPinCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  mapPinText: { fontSize: 10, fontWeight: '800', marginTop: 2 },
-  mapTargetDot: { position: 'absolute', right: 16, width: 14, height: 14, borderRadius: 7, borderWidth: 3 },
+  mapContainer: { height: 64, marginVertical: 14, justifyContent: 'center', paddingHorizontal: 16 },
+  mapTrack: { height: 3, borderWidth: 1, borderStyle: 'dashed' },
+  mapPinWrapper: { position: 'absolute', top: 8, alignItems: 'center' },
+  mapPinCircle: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  mapPinText: { fontSize: 10, fontWeight: '900', marginTop: 2 },
+  mapTargetDot: { position: 'absolute', right: 16, width: 16, height: 16, borderRadius: 8, borderWidth: 3 },
 
-  batteryContainer: { height: 60, marginVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  batteryOutline: { width: 140, height: 44, borderWidth: 3, borderRadius: 10, padding: 3, justifyContent: 'center' },
-  batteryFill: { height: '100%', borderRadius: 6 },
-  batteryText: { position: 'absolute', alignSelf: 'center', color: '#fff', fontWeight: '900', fontSize: 13 },
-  batteryNub: { width: 6, height: 18, borderTopRightRadius: 3, borderBottomRightRadius: 3 },
+  batteryContainer: { height: 64, marginVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  batteryOutline: { width: 148, height: 48, borderWidth: 3, borderRadius: 12, padding: 3, justifyContent: 'center' },
+  batteryFill: { height: '100%', borderRadius: 8 },
+  batteryText: { position: 'absolute', alignSelf: 'center', color: '#fff', fontWeight: '900', fontSize: 14 },
+  batteryNub: { width: 7, height: 20, borderTopRightRadius: 4, borderBottomRightRadius: 4 },
 
-  mountainContainer: { height: 80, marginVertical: 12, justifyContent: 'center' },
-  climberBadge: { position: 'absolute', width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  climberText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  mountainContainer: { height: 84, marginVertical: 14, justifyContent: 'center' },
+  climberBadge: { position: 'absolute', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  climberText: { color: '#fff', fontSize: 9, fontWeight: '900' },
 
-  milestonesContainer: { height: 50, marginVertical: 12, justifyContent: 'center', paddingHorizontal: 10 },
-  milestonesTrack: { height: 4, width: '100%', borderRadius: 2, position: 'absolute', left: 10 },
-  milestonesFill: { height: 4, borderRadius: 2, position: 'absolute', left: 10 },
+  milestonesContainer: { height: 54, marginVertical: 14, justifyContent: 'center', paddingHorizontal: 10 },
+  milestonesTrack: { height: 5, width: '100%', borderRadius: 3, position: 'absolute', left: 10 },
+  milestonesFill: { height: 5, borderRadius: 3, position: 'absolute', left: 10 },
   milestonesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  milestoneDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  milestoneDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2.5, justifyContent: 'center', alignItems: 'center' },
 
-  completedBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#10b98115', borderRadius: 10 },
+  completedBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, backgroundColor: '#10b98118', borderRadius: 14 },
   completedBoxText: { color: '#10b981', fontWeight: '800', fontSize: 14 },
-  depositForm: { gap: 8 },
-  depositInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
-  cancelBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, justifyContent: 'center' },
-  saveBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  addSavingsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
-  addSavingsBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  depositForm: { gap: 10 },
+  depositInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, fontWeight: '600' },
+  cancelBtn: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, justifyContent: 'center' },
+  saveBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  addSavingsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 14 },
+  addSavingsBtnText: { color: '#fff', fontWeight: '800', fontSize: 15, fontFamily: 'Outfit-Bold' },
 
-  settingsPanel: { padding: 10, borderRadius: 12, borderWidth: 1, marginVertical: 8 },
-  settingsLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
-  chipRow: { gap: 6, paddingVertical: 2 },
-  chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
-  chipText: { fontSize: 11, fontWeight: '600' },
-  colorRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  colorDot: { width: 22, height: 22, borderRadius: 11 },
-  colorDotActive: { borderWidth: 2, borderColor: '#fff' },
+  settingsPanel: { padding: 12, borderRadius: 16, borderWidth: 1, marginVertical: 10 },
+  settingsLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 },
+  chipRow: { gap: 8, paddingVertical: 2 },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1 },
+  chipText: { fontSize: 12, fontWeight: '700' },
+  colorRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  colorDot: { width: 26, height: 26, borderRadius: 13 },
+  colorDotActive: { borderWidth: 3, borderColor: '#fff' },
 
-  historyContainer: { marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
+  historyContainer: { marginTop: 14, paddingTop: 12, borderTopWidth: 1 },
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  historyHeaderText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  historyItem: { padding: 8, borderRadius: 8, borderWidth: 1 },
-  historyAmount: { fontSize: 13, fontWeight: '800' },
-  historyDate: { fontSize: 10 },
-  historyMsg: { fontSize: 11, fontStyle: 'italic', marginTop: 2 },
-  editInput: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 12 },
+  historyHeaderText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  historyItem: { padding: 10, borderRadius: 12, borderWidth: 1 },
+  historyAmount: { fontSize: 14, fontWeight: '800' },
+  historyDate: { fontSize: 10, marginTop: 1 },
+  historyMsg: { fontSize: 11, fontStyle: 'italic', marginTop: 3 },
+  editInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13 },
 });
 
 const modalStyles = StyleSheet.create({
-  container: { flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1 },
-  title: { fontSize: 16, fontWeight: '800' },
-  body: { padding: 16, gap: 10 },
-  label: { fontSize: 12, fontWeight: '600', marginTop: 4 },
-  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderTopWidth: 1, marginTop: 8 },
+  backdropOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.65)' },
+  container: { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  dragHandleWrapper: { width: '100%', alignItems: 'center', paddingTop: 10, paddingBottom: 4 },
+  dragHandleBar: { width: 36, height: 5, borderRadius: 2.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1 },
+  title: { fontSize: 17, fontWeight: '800' },
+  closeIconButton: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  body: { padding: 20, gap: 12, paddingBottom: 40 },
+  label: { fontSize: 12, fontWeight: '700', marginTop: 4 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontWeight: '600' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, borderTopWidth: 1, marginTop: 8 },
   toggleText: { fontSize: 13, fontWeight: '700', flex: 1 },
-  checkbox: { width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: '#ccc', justifyContent: 'center', alignItems: 'center' },
-  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
-  colorDot: { width: 28, height: 28, borderRadius: 14 },
-  colorDotActive: { borderWidth: 2, borderColor: '#000' },
-  footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, padding: 16, borderTopWidth: 1 },
-  cancelBtn: { paddingHorizontal: 16, paddingVertical: 10 },
-  submitBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: '#ccc', justifyContent: 'center', alignItems: 'center' },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  colorDot: { width: 32, height: 32, borderRadius: 16 },
+  colorDotActive: { borderWidth: 3, borderColor: '#fff' },
+  footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1 },
+  cancelBtn: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  submitBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
 });
 
 const detailsStyles = StyleSheet.create({
-  container: { flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  container: { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   banner: { padding: 20, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  bannerEyebrow: { color: 'rgba(255,255,255,0.8)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  bannerEyebrow: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
   bannerTitle: { color: '#fff', fontSize: 24, fontWeight: '900', marginTop: 2 },
   bannerAmounts: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 4 },
-  closeBtn: { padding: 4 },
+  closeBtn: { padding: 6 },
   progressLabel: { color: '#fff', fontSize: 12, fontWeight: '700' },
   progressPercent: { color: '#fff', fontSize: 16, fontWeight: '900' },
   progressBarTrack: { height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.2)', overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: '#fff', borderRadius: 4 },
 
-  body: { padding: 16, gap: 12 },
-  grid4: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statBox: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
-  statBoxLabel: { fontSize: 10, fontWeight: '600', marginTop: 4 },
-  statBoxValue: { fontSize: 14, fontWeight: '800', marginTop: 2 },
+  body: { padding: 20, gap: 14, paddingBottom: 40 },
+  grid4: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statBox: { flex: 1, minWidth: '45%', padding: 14, borderRadius: 14, borderWidth: 1, alignItems: 'center' },
+  statBoxLabel: { fontSize: 10, fontWeight: '700', marginTop: 4 },
+  statBoxValue: { fontSize: 15, fontWeight: '800', marginTop: 2 },
 
-  sectionTitle: { fontSize: 14, fontWeight: '800', marginTop: 8 },
-  projCard: { padding: 12, borderRadius: 12, borderWidth: 1 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', marginTop: 8 },
+  projCard: { padding: 14, borderRadius: 14, borderWidth: 1 },
   projRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   projRowLabel: { fontSize: 12, fontWeight: '600' },
   projRowVal: { fontSize: 13, fontWeight: '800' },
