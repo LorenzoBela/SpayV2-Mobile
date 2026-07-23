@@ -1,5 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import {
   View,
   Text,
@@ -307,10 +307,18 @@ export default function CalendarScreen() {
     fetchCalendarPayments();
   }, []);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchCalendarPayments();
-  };
+    try {
+      await Promise.allSettled([
+        fetchCalendarPayments(),
+      ]);
+    } catch (err) {
+      console.warn('Calendar pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchCalendarPayments]);
 
   // Perform calculations identical to web
   const calculatedData = useMemo(() => {

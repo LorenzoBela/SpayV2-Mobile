@@ -18,7 +18,7 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
   DeviceEventEmitter.emit('progress-start', action);
   try {
     // 1. Try tRPC mutation
-    const result = await trpcVanillaClient.admin.dispatch.mutate({
+    const result = await (trpcVanillaClient.admin as any).dispatch.mutate({
       action,
       ...bodyData,
     });
@@ -97,7 +97,7 @@ export const getExportLedgerCsv = async (filters: {
 }) => {
   try {
     // 1. Try tRPC query
-    const csvContent = await trpcVanillaClient.admin.exportReport.query({
+    const csvContent = await (trpcVanillaClient.admin as any).exportReport.query({
       allTime: filters.allTime,
       startYear: filters.startYear,
       startMonth: filters.startMonth,

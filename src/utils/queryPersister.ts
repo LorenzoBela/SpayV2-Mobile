@@ -32,34 +32,46 @@ function getOrCreateEncryptionKey(): string {
   }
 }
 
-const encryptionKey = getOrCreateEncryptionKey();
+let mmkvInstance: ReturnType<typeof createMMKV> | null = null;
 
-/**
- * Instantiate MMKV client with AES-256 encryption.
- * The encryptionKey must be a hex string of 32 bytes (64 characters).
- * Wrapped in a try-catch block to prevent decryption/corruption failure crashes.
- */
-export const storage = (() => {
-  try {
-    return createMMKV({
-      id: 'spay-query-cache',
-      encryptionKey: encryptionKey,
-      encryptionType: 'AES-256',
-    });
-  } catch (error) {
-    console.error('[queryPersister] Failed to initialize encrypted MMKV. Re-initializing unencrypted fallback storage:', error);
+function getStorageInstance(): ReturnType<typeof createMMKV> {
+  if (!mmkvInstance) {
+    const encryptionKey = getOrCreateEncryptionKey();
     try {
-      return createMMKV({ id: 'spay-query-cache-fallback' });
-    } catch (fallbackError) {
-      console.error('[queryPersister] Fallback MMKV also failed. Using memory-only mock storage:', fallbackError);
-      return {
-        getString: (k: string) => undefined,
-        set: (k: string, v: string) => {},
-        remove: (k: string) => {},
-      } as any;
+      mmkvInstance = createMMKV({
+        id: 'spay-query-cache',
+        encryptionKey: encryptionKey,
+        encryptionType: 'AES-256',
+      });
+    } catch (error) {
+      console.error('[queryPersister] Failed to initialize encrypted MMKV. Re-initializing unencrypted fallback storage:', error);
+      try {
+        mmkvInstance = createMMKV({ id: 'spay-query-cache-fallback' });
+      } catch (fallbackError) {
+        console.error('[queryPersister] Fallback MMKV also failed. Using memory-only mock storage:', fallbackError);
+        mmkvInstance = {
+          getString: (k: string) => undefined,
+          set: (k: string, v: string) => {},
+          remove: (k: string) => {},
+          clearAll: () => {},
+        } as any;
+      }
     }
   }
-})();
+  return mmkvInstance!;
+}
+
+/**
+ * Exported MMKV storage proxy that lazily instantiates the underlying MMKV client
+ * and encryption key on first access rather than module load time.
+ */
+export const storage = new Proxy({} as ReturnType<typeof createMMKV>, {
+  get(_target, prop, receiver) {
+    const instance = getStorageInstance();
+    const value = Reflect.get(instance, prop, instance);
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+});
 
 /**
  * Custom Persister for TanStack Query using encrypted MMKV.

@@ -374,6 +374,7 @@ const MainNavigator = () => {
 
   return (
     <Tab.Navigator
+      detachInactiveScreens={true}
       tabBar={(props) => <CustomTabBar {...props} icons={TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
       screenOptions={{ headerShown: false }}
     >
@@ -391,7 +392,8 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <Tab.Screen
         name="Reports"
@@ -399,7 +401,8 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <Tab.Screen
         name="Settings"
@@ -415,7 +418,8 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <Tab.Screen
         name="NootAi"
@@ -423,7 +427,8 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <Tab.Screen
         name="ClientMilestones"
@@ -439,7 +444,8 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
     </Tab.Navigator>
   );
@@ -452,6 +458,7 @@ const AdminNavigator = () => {
 
   return (
     <AdminTab.Navigator
+      detachInactiveScreens={true}
       tabBar={(props) => <CustomTabBar {...props} icons={ADMIN_TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
       screenOptions={{ headerShown: false }}
     >
@@ -486,7 +493,8 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <AdminTab.Screen
         name="AdminReports"
@@ -494,7 +502,8 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <AdminTab.Screen
         name="AdminSettings"
@@ -510,7 +519,8 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
       <AdminTab.Screen
         name="AdminMilestones"
@@ -518,7 +528,8 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-        }}
+          unmountOnBlur: true,
+        } as any}
       />
     </AdminTab.Navigator>
   );
@@ -527,13 +538,30 @@ const AdminNavigator = () => {
 export default function AppNavigator() {
   const queryClient = useQueryClient();
   const { impersonatedUser, isImpersonating } = useImpersonation();
+
+  // Instant 0ms cached profile read from MMKV
+  const cachedProfile = React.useMemo(() => {
+    try {
+      const raw = storage.getString('cached_user_profile');
+      if (raw) {
+        return JSON.parse(raw) as { role?: string; linkedProfileId?: string; theme?: string };
+      }
+    } catch (e) {
+      console.warn('[AppNavigator] Failed to parse cached_user_profile:', e);
+    }
+    return null;
+  }, []);
+
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(!cachedProfile);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
-  const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(cachedProfile?.role || null);
+  const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(() => {
+    if (cachedProfile?.role === 'CLIENT') return 'client';
+    return null;
+  });
+  const [linkedProfileId, setLinkedProfileId] = useState<string | null>(cachedProfile?.linkedProfileId || null);
   const navigationRef = React.useRef<any>(null);
 
   const effectiveUserId = isImpersonating && impersonatedUser?.id ? impersonatedUser.id : linkedProfileId;
@@ -550,8 +578,11 @@ export default function AppNavigator() {
     prevImpersonatingRef.current = isImpersonating;
   }, [isImpersonating, activeRole]);
 
-  // Theme state — loads from MMKV and defaults to dark mode
+  // Theme state — loads from MMKV cached profile or theme preference and defaults to dark mode
   const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (cachedProfile?.theme) {
+      return cachedProfile.theme === 'dark';
+    }
     try {
       const savedTheme = storage.getString('theme_preference');
       if (savedTheme) {
@@ -606,6 +637,9 @@ export default function AppNavigator() {
         } catch (e) {
           console.warn('[AppNavigator] Failed to clear storage on sign out:', e);
         }
+        setUserRole(null);
+        setActiveRole(null);
+        setLinkedProfileId(null);
       }
     });
 
@@ -615,7 +649,10 @@ export default function AppNavigator() {
   }, []);
 
   const fetchProfileRole = async (user: Session['user'], active: boolean) => {
-    setProfileLoading(true);
+    // Only set profileLoading to true if no cached profile exists
+    if (!storage.getString('cached_user_profile')) {
+      setProfileLoading(true);
+    }
     setProfileError(null);
     try {
       const data = await getLinkedProfileForUser(user);
@@ -631,6 +668,7 @@ export default function AppNavigator() {
         .eq('id', targetId)
         .maybeSingle();
 
+      const resolvedTheme = themeData?.theme || (isDarkMode ? 'dark' : 'light');
       if (themeData?.theme) {
         const isProfileDark = themeData.theme === 'dark';
         setIsDarkMode(isProfileDark);
@@ -641,16 +679,28 @@ export default function AppNavigator() {
         }
       }
 
-      if (data?.role === 'ADMIN') {
-        setUserRole('ADMIN');
-      } else {
-        setUserRole('CLIENT');
+      const role = data?.role === 'ADMIN' ? 'ADMIN' : 'CLIENT';
+      setUserRole(role);
+      if (role === 'CLIENT') {
         setActiveRole('client');
+      }
+
+      // Update MMKV cache on change (stale-while-revalidate)
+      try {
+        storage.set('cached_user_profile', JSON.stringify({
+          role,
+          linkedProfileId: targetId,
+          theme: resolvedTheme,
+        }));
+      } catch (e) {
+        console.warn('Failed to save cached_user_profile to MMKV:', e);
       }
     } catch (error: any) {
       console.warn('[AppNavigator] Failed to fetch profile role:', error);
       if (!active) return;
-      setProfileError(error?.message || 'Failed to sync account role settings.');
+      if (!storage.getString('cached_user_profile')) {
+        setProfileError(error?.message || 'Failed to sync account role settings.');
+      }
     } finally {
       if (active) {
         setProfileLoading(false);
@@ -672,7 +722,7 @@ export default function AppNavigator() {
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     void setupAndroidNotificationChannels();

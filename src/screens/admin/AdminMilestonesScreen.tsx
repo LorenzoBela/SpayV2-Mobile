@@ -233,7 +233,7 @@ export default function AdminMilestonesScreen() {
   const { data: milestones = [], isLoading } = trpc.milestones.getAdminMilestones.useQuery();
 
   const totalCount = milestones.length;
-  const unlockedCount = milestones.filter(m => m.isUnlocked).length;
+  const unlockedCount = milestones.filter((m: any) => m.isUnlocked).length;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -264,7 +264,7 @@ export default function AdminMilestonesScreen() {
   };
 
   const filteredAndSortedMilestones = useMemo(() => {
-    let result = milestones.filter((milestone) => {
+    let result = milestones.filter((milestone: any) => {
       const matchesSearch =
         milestone.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         milestone.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -518,7 +518,7 @@ export default function AdminMilestonesScreen() {
                     ]}
                     onPress={() => {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setActiveTab(tab.key);
+                      setActiveTab(tab.key as any);
                     }}
                   >
                     <Text style={[styles.tabButtonText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
@@ -551,7 +551,7 @@ export default function AdminMilestonesScreen() {
           scrollEventThrottle={16}
         >
           <View style={styles.grid}>
-            {paginatedMilestones.map((milestone) => {
+            {paginatedMilestones.map((milestone: any) => {
               const rarity = getMilestoneRarity(milestone.id);
               const c = getRarityColors(rarity, milestone.isUnlocked, isDarkMode);
               const Icon = getMilestoneIcon(milestone.id);
@@ -701,7 +701,7 @@ export default function AdminMilestonesScreen() {
                 key={opt.key}
                 style={styles.dropdownOption}
                 onPress={() => {
-                  setSortBy(opt.key);
+                  setSortBy(opt.key as any);
                   setShowSortDropdown(false);
                 }}
               >

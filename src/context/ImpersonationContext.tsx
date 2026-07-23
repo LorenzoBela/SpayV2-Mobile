@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { expoSecureStorage } from '../utils/supabase';
+import { setCachedImpersonatedUserId } from '../utils/trpc';
 
 export interface ImpersonatedUser {
   id: string;
@@ -40,6 +41,7 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode }> = ({
           const parsed = JSON.parse(stored);
           if (parsed && parsed.id) {
             setImpersonatedUser(parsed);
+            setCachedImpersonatedUserId(parsed.id);
           }
         }
       } catch (e) {
@@ -65,6 +67,7 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode }> = ({
         role: clientUser.role || 'CLIENT',
       };
       setImpersonatedUser(userData);
+      setCachedImpersonatedUserId(userData.id);
       await expoSecureStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
       try {
         const { queryClient } = require('../../App');
@@ -78,6 +81,7 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode }> = ({
   const stopImpersonation = useCallback(async () => {
     try {
       setImpersonatedUser(null);
+      setCachedImpersonatedUserId(null);
       await expoSecureStorage.removeItem(STORAGE_KEY);
       try {
         const { queryClient } = require('../../App');
@@ -88,16 +92,19 @@ export const ImpersonationProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  const value = useMemo(
+    () => ({
+      isImpersonating,
+      impersonatedUser,
+      startImpersonation,
+      stopImpersonation,
+      exitImpersonation: stopImpersonation,
+    }),
+    [isImpersonating, impersonatedUser, startImpersonation, stopImpersonation]
+  );
+
   return (
-    <ImpersonationContext.Provider
-      value={{
-        isImpersonating,
-        impersonatedUser,
-        startImpersonation,
-        stopImpersonation,
-        exitImpersonation: stopImpersonation,
-      }}
-    >
+    <ImpersonationContext.Provider value={value}>
       {children}
     </ImpersonationContext.Provider>
   );

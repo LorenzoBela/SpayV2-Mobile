@@ -1,6 +1,7 @@
 import type { User } from '@supabase/supabase-js';
 
 import { supabase, expoSecureStorage } from './supabase';
+import { storage } from './queryPersister';
 
 export type LinkedProfile = {
   id: string;
@@ -9,6 +10,32 @@ export type LinkedProfile = {
   role?: string | null;
   mobile_number?: string | null;
 };
+
+export type CachedUserProfile = {
+  role: string;
+  linkedProfileId: string;
+  theme?: string;
+};
+
+export function getCachedUserProfile(): CachedUserProfile | null {
+  try {
+    const raw = storage.getString('cached_user_profile');
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn('[AuthProfile] Failed to read cached_user_profile from MMKV:', e);
+  }
+  return null;
+}
+
+export function setCachedUserProfile(cached: CachedUserProfile): void {
+  try {
+    storage.set('cached_user_profile', JSON.stringify(cached));
+  } catch (e) {
+    console.warn('[AuthProfile] Failed to write cached_user_profile to MMKV:', e);
+  }
+}
 
 const PROFILE_SELECT = 'id, email, name, role, mobile_number';
 

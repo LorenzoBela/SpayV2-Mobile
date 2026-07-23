@@ -439,7 +439,13 @@ export default function SettingsScreen() {
       {/* Avatar Preview */}
       <View style={styles.avatarEditContainer}>
         {profile.avatarUrl ? (
-          <Image source={{ uri: profile.avatarUrl }} style={styles.avatarEditPreview} />
+          <Image
+            source={{ uri: profile.avatarUrl }}
+            style={styles.avatarEditPreview}
+            cachePolicy="memory-disk"
+            contentFit="cover"
+            transition={200}
+          />
         ) : (
           <View style={[styles.avatarEditPreview, { backgroundColor: '#0f172a' }]}>
             <Text style={styles.avatarLargeText}>{profile.name.charAt(0).toUpperCase()}</Text>
@@ -957,7 +963,13 @@ export default function SettingsScreen() {
             <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.avatarRow}>
                 {profile.avatarUrl ? (
-                  <Image source={{ uri: profile.avatarUrl }} style={styles.avatarCircle} />
+                  <Image
+                    source={{ uri: profile.avatarUrl }}
+                    style={styles.avatarCircle}
+                    cachePolicy="memory-disk"
+                    contentFit="cover"
+                    transition={200}
+                  />
                 ) : (
                   <View style={[styles.avatarCircle, { backgroundColor: t.accent }]}>
                     <Text style={styles.avatarText}>{profile.name.charAt(0).toUpperCase()}</Text>

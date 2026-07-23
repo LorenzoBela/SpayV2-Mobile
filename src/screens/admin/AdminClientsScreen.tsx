@@ -1,5 +1,5 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -310,10 +310,18 @@ export default function AdminClientsScreen() {
     };
   }, [loading, hideTabBar, showTabBar]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refetch().finally(() => setRefreshing(false));
-  };
+    try {
+      await Promise.allSettled([
+        refetch(),
+      ]);
+    } catch (err) {
+      console.warn('AdminClients pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -604,6 +612,9 @@ export default function AdminClientsScreen() {
                     <Image
                       source={{ uri: spender.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(spender.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
                       style={styles.spenderAvatar}
+                      cachePolicy="memory-disk"
+                      contentFit="cover"
+                      transition={200}
                     />
                     <View>
                       <Text style={[styles.spenderName, { color: t.textPrimary }]}>{spender.name}</Text>
@@ -649,6 +660,9 @@ export default function AdminClientsScreen() {
                     <Image
                       source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
                       style={styles.clientGridAvatar}
+                      cachePolicy="memory-disk"
+                      contentFit="cover"
+                      transition={200}
                     />
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
                       <Text style={[styles.clientGridName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
@@ -707,6 +721,9 @@ export default function AdminClientsScreen() {
                       <Image
                         source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
                         style={styles.clientListAvatar}
+                        cachePolicy="memory-disk"
+                        contentFit="cover"
+                        transition={200}
                       />
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -838,6 +855,9 @@ export default function AdminClientsScreen() {
                   <Image
                     source={{ uri: selectedClient.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedClient.name)}&background=ee4d2d&color=fff&size=150&bold=true` }}
                     style={styles.detailsHeroAvatar}
+                    cachePolicy="memory-disk"
+                    contentFit="cover"
+                    transition={200}
                   />
                   <View style={[styles.detailsHeroStatusDot, { borderColor: t.cardBg }]} />
                 </View>

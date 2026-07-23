@@ -1,6 +1,6 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,8 +15,8 @@ import {
   TextInput,
   Dimensions,
   ActivityIndicator,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTabBar } from '../../navigation/TabBarContext';
 import {
@@ -179,17 +179,24 @@ export default function AdminReportsScreen() {
   }, [loading, hideTabBar, showTabBar]);
 
   const loadData = async (showLoader?: boolean) => {
-    await Promise.all([
+    await Promise.allSettled([
       refetch(),
       queryClient.invalidateQueries({ queryKey: ['admin-clients-selection'] })
     ]);
   };
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
-  };
+    try {
+      await Promise.allSettled([
+        loadData(),
+      ]);
+    } catch (err) {
+      console.warn('AdminReports pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, queryClient]);
 
   useRealtimeSync(
     ['orders', 'payments', 'profiles'],
@@ -2076,6 +2083,9 @@ export default function AdminReportsScreen() {
                               <Image
                                 source={{ uri: client.avatarUrl }}
                                 style={[styles.clientAvatarImage, isSelected && { borderColor: t.accent, borderWidth: 1.5 }]}
+                                cachePolicy="memory-disk"
+                                contentFit="cover"
+                                transition={200}
                               />
                             ) : (
                               <View style={[styles.clientAvatarInitials, { backgroundColor: isSelected ? t.accent : (isDarkMode ? '#1e293b' : '#e2e8f0') }]}>
@@ -2109,7 +2119,13 @@ export default function AdminReportsScreen() {
                   <View style={styles.profileHeader}>
                     <View style={styles.profileAvatarLarge}>
                       {selectedClientData.profile.avatarUrl ? (
-                        <Image source={{ uri: selectedClientData.profile.avatarUrl }} style={styles.avatarLargeImage} />
+                        <Image
+                          source={{ uri: selectedClientData.profile.avatarUrl }}
+                          style={styles.avatarLargeImage}
+                          cachePolicy="memory-disk"
+                          contentFit="cover"
+                          transition={200}
+                        />
                       ) : (
                         <View style={[styles.avatarLargeInitials, { backgroundColor: t.accent }]}>
                           <Text style={styles.avatarLargeInitialsText}>

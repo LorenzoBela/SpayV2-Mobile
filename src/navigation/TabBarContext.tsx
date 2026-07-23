@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useSharedValue, withTiming, Easing, SharedValue } from 'react-native-reanimated';
 import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 
@@ -52,8 +52,13 @@ export const TabBarProvider = ({ children }: { children: React.ReactNode }) => {
     });
   }, [tabBarVisible]);
 
+  const value = useMemo(
+    () => ({ isCollapsed, collapse, expand, tabBarVisible, hideTabBar, showTabBar }),
+    [isCollapsed, collapse, expand, tabBarVisible, hideTabBar, showTabBar]
+  );
+
   return (
-    <TabBarContext.Provider value={{ isCollapsed, collapse, expand, tabBarVisible, hideTabBar, showTabBar }}>
+    <TabBarContext.Provider value={value}>
       {children}
     </TabBarContext.Provider>
   );

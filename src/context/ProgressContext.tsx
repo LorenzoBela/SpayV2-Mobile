@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useMemo } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import { useSharedValue, withTiming, withSequence, withDelay, cancelAnimation } from 'react-native-reanimated';
 
@@ -79,8 +79,13 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [start, finish, handleProgressUpdate]);
 
+  const value = useMemo(
+    () => ({ progress, opacity, start, finish }),
+    [progress, opacity, start, finish]
+  );
+
   return (
-    <ProgressContext.Provider value={{ progress, opacity, start, finish }}>
+    <ProgressContext.Provider value={value}>
       {children}
     </ProgressContext.Provider>
   );

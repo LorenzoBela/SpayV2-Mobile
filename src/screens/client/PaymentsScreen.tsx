@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, { useEffect, useState, useContext, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -619,10 +619,19 @@ export default function PaymentsScreen() {
 
   useRealtimeSync(['orders', 'payments'], undefined, [['client-payments']]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchPayments();
-  };
+    try {
+      await Promise.allSettled([
+        refetch(),
+        fetchPayments(),
+      ]);
+    } catch (err) {
+      console.warn('Payments pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   // Clock Countdown logic
   useEffect(() => {

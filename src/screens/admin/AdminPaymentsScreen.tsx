@@ -1,6 +1,6 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import DatePicker from '../../components/DatePicker';
-import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -723,11 +723,18 @@ export default function AdminPaymentsScreen() {
 
 
   const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
+    try {
+      await Promise.allSettled([
+        refetch(),
+      ]);
+    } catch (err) {
+      console.warn('AdminPayments pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   const handleSubTabPress = (nextTab: PaymentSubTab) => {
     if (nextTab === subTab) return;
@@ -3364,7 +3371,9 @@ export default function AdminPaymentsScreen() {
                   <Image
                     source={{ uri: selectedPayment.proof_of_payment }}
                     style={styles.proofImage}
-                    resizeMode="contain"
+                    cachePolicy="memory-disk"
+                    contentFit="cover"
+                    transition={200}
                   />
                   {!selectedPayment.is_paid && (
                     <View style={styles.proofActionsRow}>
@@ -4174,6 +4183,9 @@ export default function AdminPaymentsScreen() {
                             <Image
                               source={{ uri: c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                               style={{ width: 36, height: 36, borderRadius: 18 }}
+                              cachePolicy="memory-disk"
+                              contentFit="cover"
+                              transition={200}
                             />
                             <Text style={[styles.clientRailName, { color: t.textPrimary }]} numberOfLines={1}>
                               {c.name}
@@ -4371,6 +4383,9 @@ export default function AdminPaymentsScreen() {
                                         <Image
                                           source={{ uri: c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                                           style={{ width: 36, height: 36, borderRadius: 18 }}
+                                          cachePolicy="memory-disk"
+                                          contentFit="cover"
+                                          transition={200}
                                         />
                                         <Text style={[styles.clientRailName, { color: t.textPrimary }]} numberOfLines={1}>
                                           {c.name}
@@ -4731,6 +4746,9 @@ export default function AdminPaymentsScreen() {
                         <Image
                           source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                           style={{ width: 40, height: 40, borderRadius: 20 }}
+                          cachePolicy="memory-disk"
+                          contentFit="cover"
+                          transition={200}
                         />
                         <View style={{ flex: 1, marginLeft: 12 }}>
                           <Text style={[{ color: t.textPrimary, fontWeight: '600' }]}>{client.name}</Text>

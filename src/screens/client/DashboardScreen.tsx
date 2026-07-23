@@ -855,449 +855,264 @@ export default function DashboardScreen() {
     setMonthlyTrends(monthsArray.map(key => trendsMap.get(key)));
   };
 
-  // Main Data Fetching Logic
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { user, profile, profileId } = await getLinkedProfileForCurrentUser();
-      if (!user) {
-        setDemoData();
-        return;
+  // User Profile effect
+  useEffect(() => {
+    getLinkedProfileForCurrentUser().then(({ user, profile }) => {
+      if (user) {
+        const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
+        const profileEmail = profile?.email || user.email || 'client@spay.com';
+        const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+        setUserName(profileName);
+        setUserEmail(profileEmail);
+        setUserPhoto(photoUrl);
       }
+    });
+  }, []);
 
-      const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
-      const profileEmail = profile?.email || user.email || 'client@spay.com';
-      const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+  // Derive financial metrics, recent orders, payment countdowns, categories, and trends synchronously from query cache (0ms MMKV)
+  useEffect(() => {
+    const hasOrders = queryOrdersData?.orders && queryOrdersData.orders.length > 0;
+    const hasPayments = queryPayments && queryPayments.length > 0;
 
-      // Fetch global shared credit limit and global available credit matching web
-      const { data: globalStats, error: globalStatsErr } = await supabase
-        .rpc('get_global_shared_limits');
-
-      if (globalStatsErr) throw globalStatsErr;
-
-      const globalLimit = globalStats && globalStats[0] ? parseFloat(globalStats[0].credit_limit_total) : 250000.0;
-      const globalUnpaid = globalStats && globalStats[0] ? parseFloat(globalStats[0].unpaid_amount_total) : 65000.0;
-      const globalAvailable = Math.max(0, globalLimit - globalUnpaid);
-
-      // Check orders where user is owner or participant using all candidate user IDs
-      const userIdsToQuery = Array.from(new Set([profileId, user.id].filter(Boolean)));
-
-      const [ownedResult, participantResult] = await Promise.all([
-        supabase
-          .from('orders')
-          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared')
-          .in('user_id', userIdsToQuery),
-        supabase
-          .from('order_participants')
-          .select('order_id')
-          .in('user_id', userIdsToQuery)
-      ]);
-
-      if (ownedResult.error) throw ownedResult.error;
-      if (participantResult.error) throw participantResult.error;
-
-      const ownedOrders = ownedResult.data || [];
-      const participantOrderIds = (participantResult.data || []).map(p => p.order_id);
-
-      // Fetch the actual orders for those participant IDs the user doesn't already own
-      const missingOrderIds = participantOrderIds.filter(id => !ownedOrders.some(o => o.id === id));
-      let participantOrders: any[] = [];
-      if (missingOrderIds.length > 0) {
-        const { data: partOrders, error: partOrdersErr } = await supabase
-          .from('orders')
-          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared')
-          .in('id', missingOrderIds);
-        if (partOrdersErr) throw partOrdersErr;
-        participantOrders = partOrders || [];
-      }
-
-      const dbOrders = [...ownedOrders, ...participantOrders].sort(
-        (a, b) => new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
-      );
-
-      // For logged in user with 0 orders, display genuine clean empty state, never overwrite with demo data
-      if (dbOrders.length === 0) {
-        setIsDemo(false);
-        setUnpaidBillingMonths([]);
-        setRecentOrders([]);
-        setAllOrdersList([]);
-        setAllPaymentsList([]);
-        setFinancialMetrics({
-          healthScore: 100,
-          onTimeRate: 100,
-          paymentStreak: 0,
-          recommendedMonthlyBudget: 0,
-        });
-        setSpendingCategories([]);
-        setMonthlyTrends([]);
-        return;
-      }
-
-      const orderIds = dbOrders.map(o => o.id);
-
-      // Fetch all payments for those orders
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payments')
-        .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
-        .in('order_id', orderIds)
-        .order('due_date', { ascending: true });
-
-      if (paymentsError) throw paymentsError;
-      const dbPayments = paymentsData || [];
-
-      // Fetch participants for split amount calculation
-      const { data: dbParticipants, error: participantsErr } = await supabase
-        .from('order_participants')
-        .select('id, order_id, user_id, split_amount, is_paid')
-        .in('order_id', orderIds);
-
-      if (participantsErr) throw participantsErr;
-
-      // Fetch client's own split payments for shared orders directly by participant_id
-      const myPartRecords = (dbParticipants || []).filter(part => userIdsToQuery.includes(part.user_id));
-      const myPartIds = myPartRecords.map(part => part.id);
-
-      let myParticipantPayments: any[] = [];
-      if (myPartIds.length > 0) {
-        const { data: myPartPayments, error: myPartPaymentsErr } = await supabase
-          .from('order_participant_payments')
-          .select('id, payment_id, amount_due, is_paid, paid_at, participant_id')
-          .in('participant_id', myPartIds);
-
-        if (myPartPaymentsErr) throw myPartPaymentsErr;
-        myParticipantPayments = myPartPayments || [];
-      }
-
-      // Fetch all participant payments for everyone on these orders
-      let allParticipantPayments: any[] = [];
-      const allPartIds = (dbParticipants || []).map(part => part.id);
-      if (allPartIds.length > 0) {
-        const { data: allPartPayments, error: allPartPaymentsErr } = await supabase
-          .from('order_participant_payments')
-          .select(`
-            id,
-            payment_id,
-            amount_due,
-            is_paid,
-            participant:order_participants (
-              id,
-              order_id,
-              user_id,
-              profile:profiles (
-                name,
-                email
-              )
-            )
-          `)
-          .in('participant_id', allPartIds);
-
-        if (allPartPaymentsErr) throw allPartPaymentsErr;
-        allParticipantPayments = allPartPayments || [];
-      }
-
-      // Process in-memory mappings
-      const ordersMap = new Map();
-      dbOrders.forEach(o => {
-        const isShared = o.is_shared === true;
-        const myPartRecord = dbParticipants?.find(part => part.order_id === o.id && userIdsToQuery.includes(part.user_id));
-        const splitAmount = isShared && myPartRecord ? parseFloat(myPartRecord.split_amount) : parseFloat(o.amount);
-        const isOrderPaid = isShared ? (myPartRecord?.is_paid ?? false) : o.is_paid;
-
-        ordersMap.set(o.id, {
-          ...o,
-          amount: splitAmount,
-          is_paid: isOrderPaid
-        });
-      });
-
-      const allPayments = dbPayments.map(p => {
-        const order = ordersMap.get(p.order_id);
-        const isShared = order?.is_shared === true;
-
-        let isPaid = p.is_paid;
-        let amountDue = parseFloat(p.amount_due);
-        let paymentDate = p.payment_date ? parseUtcDate(p.payment_date) : null;
-
-        if (isShared) {
-          const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
-          const myPartRecord = dbParticipants?.find(part => part.order_id === p.order_id && userIdsToQuery.includes(part.user_id));
-
-          if (mySplitPay) {
-            isPaid = mySplitPay.is_paid;
-            amountDue = parseFloat(mySplitPay.amount_due);
-            paymentDate = mySplitPay.paid_at ? parseUtcDate(mySplitPay.paid_at) : null;
-          } else if (myPartRecord) {
-            isPaid = myPartRecord.is_paid;
-            const splitTotal = parseFloat(myPartRecord.split_amount);
-            const months = order?.installment_months || 1;
-            amountDue = splitTotal / months;
-          }
+    if (!hasOrders && !hasPayments) {
+      if (!queryPaymentsLoading && !queryOrdersLoading) {
+        if (queryOrdersData?.orders && queryOrdersData.orders.length === 0) {
+          // Logged in user with 0 orders -> genuine empty state
+          setIsDemo(false);
+          setUnpaidBillingMonths([]);
+          setRecentOrders([]);
+          setAllOrdersList([]);
+          setAllPaymentsList([]);
+          setFinancialMetrics({
+            healthScore: 100,
+            onTimeRate: 100,
+            paymentStreak: 0,
+            recommendedMonthlyBudget: 0,
+          });
+          setSpendingCategories([]);
+          setMonthlyTrends([]);
+          setGlobalCreditLimit(250000);
+          setGlobalAvailableCredit(250000);
+          setLoading(false);
+          return;
         }
-
-        const sharingProgress = isShared ? (allParticipantPayments || [])
-          .filter(ap => ap.payment_id === p.id)
-          .map(ap => {
-            const part = Array.isArray(ap.participant) ? ap.participant[0] : ap.participant;
-            const prof = part?.profile ? (Array.isArray(part.profile) ? part.profile[0] : part.profile) : null;
-            return {
-              name: (prof as any)?.name || 'Unknown',
-              email: (prof as any)?.email || '',
-              amountDue: parseFloat(ap.amount_due),
-              isPaid: ap.is_paid
-            };
-          }) : [];
-
-        return {
-          id: p.id,
-          dueDate: parseUtcDate(p.due_date),
-          amountDue,
-          isPaid,
-          paymentDate,
-          itemName: order?.item_name || 'Purchase Order',
-          monthNumber: p.month_number,
-          installmentMonths: order?.installment_months || 0,
-          isShared: isShared,
-          sharingProgress,
-        };
-      });
-
-      setAllOrdersList(dbOrders.map(o => {
-        const order = ordersMap.get(o.id);
-        return {
-          id: o.id,
-          itemName: o.item_name,
-          amount: order?.amount || parseFloat(o.amount),
-          orderDate: parseUtcDate(o.order_date),
-        };
-      }));
-
-      setAllPaymentsList(dbPayments.map(p => {
-        const order = ordersMap.get(p.order_id);
-        const isShared = order?.is_shared === true;
-
-        let isPaid = p.is_paid;
-        let amountDue = parseFloat(p.amount_due);
-        let paymentDate = p.payment_date ? parseUtcDate(p.payment_date) : null;
-
-        if (isShared) {
-          const mySplitPay = myParticipantPayments?.find(mp => mp.payment_id === p.id);
-          const myPartRecord = dbParticipants?.find(part => part.order_id === p.order_id && part.user_id === profileId);
-
-          if (mySplitPay) {
-            isPaid = mySplitPay.is_paid;
-            amountDue = parseFloat(mySplitPay.amount_due);
-            paymentDate = mySplitPay.paid_at ? parseUtcDate(mySplitPay.paid_at) : null;
-          } else if (myPartRecord) {
-            isPaid = myPartRecord.is_paid;
-            const splitTotal = parseFloat(myPartRecord.split_amount);
-            const months = order?.installment_months || 1;
-            amountDue = splitTotal / months;
-          }
-        }
-
-        return {
-          id: p.id,
-          dueDate: parseUtcDate(p.due_date),
-          amountDue,
-          isPaid,
-          paymentDate,
-          monthNumber: p.month_number,
-          order: {
-            itemName: order?.item_name || 'Purchase Order',
-          },
-        };
-      }));
-
-      const unpaidAmount = allPayments.reduce((sum, p) => p.isPaid ? sum : sum + p.amountDue, 0);
-
-      setUserName(profileName);
-      setUserEmail(profileEmail);
-      setUserPhoto(photoUrl);
-      setGlobalCreditLimit(globalLimit);
-      setGlobalAvailableCredit(globalAvailable);
-      setIsDemo(false);
-
-      // Only update unpaidBillingMonths from direct Supabase fetch if TRPC queryPayments is not already populated
-      if (!queryPayments || queryPayments.length === 0) {
-        const unpaidMonthsList = groupUnpaidBillingMonths(allPayments);
-        setUnpaidBillingMonths(unpaidMonthsList);
-        setSelectedMonthIndex(0);
       }
+      return;
+    }
 
-      // Process recent orders
-      setRecentOrders(dbOrders.slice(0, 4).map(o => {
-        const order = ordersMap.get(o.id);
-        return {
-          id: o.id,
-          itemName: o.item_name,
-          amount: order?.amount || parseFloat(o.amount),
-          installmentMonths: o.installment_months,
-          orderDate: o.order_date,
-          isPaid: order?.is_paid || o.is_paid,
-          isShared: o.is_shared === true
-        };
-      }));
+    setIsDemo(false);
 
-      // 1. Calculate On-Time Rate & Health Score
-      let totalCompletedCount = 0;
-      let onTimeCount = 0;
-      let totalDaysLate = 0;
+    // 1. Payments & Billing Months (Countdowns)
+    const paymentsList = queryPayments || [];
+    const paymentsForGrouping = paymentsList.map((p: any) => ({
+      id: p.id,
+      dueDate: parseUtcDate(p.rawDueDate),
+      rawDueDate: p.rawDueDate,
+      amountDue: p.amountDue,
+      isPaid: p.isPaid,
+      paymentDate: p.paymentDate ? parseUtcDate(p.paymentDate) : null,
+      itemName: p.itemName,
+      monthNumber: p.monthNumber,
+      installmentMonths: p.installmentMonths,
+      orderId: p.orderId,
+      isShared: p.isShared === true,
+      sharingProgress: p.sharingProgress || [],
+    }));
 
-      allPayments.forEach(p => {
-        if (p.isPaid) {
-          totalCompletedCount++;
-          if (p.paymentDate && p.dueDate) {
-            const payTime = p.paymentDate.getTime();
-            const dueTime = p.dueDate.getTime();
-            if (payTime <= dueTime) {
-              onTimeCount++;
-            } else {
-              const daysLate = Math.ceil((payTime - dueTime) / (1000 * 60 * 60 * 24));
-              totalDaysLate += Math.max(0, daysLate);
-            }
-          } else {
+    const unpaidMonthsList = groupUnpaidBillingMonths(paymentsForGrouping);
+    setUnpaidBillingMonths(unpaidMonthsList);
+    setAllPaymentsList(
+      paymentsList.map((p: any) => ({
+        id: p.id,
+        dueDate: parseUtcDate(p.rawDueDate),
+        amountDue: p.amountDue,
+        isPaid: p.isPaid,
+        paymentDate: p.paymentDate ? parseUtcDate(p.paymentDate) : null,
+        monthNumber: p.monthNumber,
+        order: {
+          itemName: p.itemName,
+        },
+      }))
+    );
+
+    // Global credit limit calculations
+    const unpaidAmountTotal = paymentsList.reduce((sum: number, p: any) => (p.isPaid ? sum : sum + p.amountDue), 0);
+    const limitTotal = 250000;
+    setGlobalCreditLimit(limitTotal);
+    setGlobalAvailableCredit(Math.max(0, limitTotal - unpaidAmountTotal));
+
+    // 2. Orders & Recent Orders
+    const ordersList = queryOrdersData?.orders || [];
+    setRecentOrders(
+      ordersList.slice(0, 4).map((o: any) => ({
+        id: o.id,
+        itemName: o.itemName,
+        amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : o.amount,
+        installmentMonths: o.installmentMonths,
+        orderDate: o.orderDate,
+        isPaid: o.isPaid,
+        isShared: o.isShared === true,
+      }))
+    );
+
+    setAllOrdersList(
+      ordersList.map((o: any) => ({
+        id: o.id,
+        itemName: o.itemName,
+        amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : o.amount,
+        orderDate: parseUtcDate(o.orderDate),
+      }))
+    );
+
+    // 3. Financial Metrics (Health Score, On-Time Rate, Payment Streak, Recommended Budget)
+    let totalCompletedCount = 0;
+    let onTimeCount = 0;
+    let totalDaysLate = 0;
+
+    paymentsList.forEach((p: any) => {
+      if (p.isPaid) {
+        totalCompletedCount++;
+        if (p.paymentDate && p.rawDueDate) {
+          const payTime = parseUtcDate(p.paymentDate).getTime();
+          const dueTime = parseUtcDate(p.rawDueDate).getTime();
+          if (payTime <= dueTime) {
             onTimeCount++;
-          }
-        }
-      });
-
-      const onTimeRate = totalCompletedCount > 0 ? (onTimeCount / totalCompletedCount) * 105 : 100;
-      const actualOnTimeRate = Math.min(100, onTimeRate);
-      const avgDaysLate = (totalCompletedCount - onTimeCount) > 0 ? totalDaysLate / (totalCompletedCount - onTimeCount) : 0;
-      const healthScore = Math.min(100, Math.max(0, Math.round(actualOnTimeRate - (avgDaysLate * 2))));
-
-      // 2. Calculate Payment Streak
-      const completedPaymentsSorted = [...allPayments]
-        .filter(p => p.isPaid)
-        .sort((a, b) => {
-          const dateA = a.paymentDate ? a.paymentDate.getTime() : a.dueDate.getTime();
-          const dateB = b.paymentDate ? b.paymentDate.getTime() : b.dueDate.getTime();
-          return dateB - dateA;
-        });
-      
-      let streak = 0;
-      for (const p of completedPaymentsSorted) {
-        if (p.paymentDate && p.dueDate) {
-          if (p.paymentDate.getTime() <= p.dueDate.getTime()) {
-            streak++;
           } else {
-            break;
+            const daysLate = Math.ceil((payTime - dueTime) / (1000 * 60 * 60 * 24));
+            totalDaysLate += Math.max(0, daysLate);
           }
         } else {
-          streak++;
+          onTimeCount++;
         }
       }
+    });
 
-      // 3. Recommended monthly budget
-      const recommendedMonthlyBudget = unpaidAmount > 0 ? Math.ceil(unpaidAmount / 6) : 0;
+    const onTimeRate = totalCompletedCount > 0 ? (onTimeCount / totalCompletedCount) * 105 : 100;
+    const actualOnTimeRate = Math.min(100, onTimeRate);
+    const avgDaysLate = (totalCompletedCount - onTimeCount) > 0 ? totalDaysLate / (totalCompletedCount - onTimeCount) : 0;
+    const healthScore = Math.min(100, Math.max(0, Math.round(actualOnTimeRate - (avgDaysLate * 2))));
 
-      setFinancialMetrics({
-        healthScore,
-        onTimeRate: actualOnTimeRate,
-        paymentStreak: streak,
-        recommendedMonthlyBudget,
+    // Calculate Streak
+    const completedPaymentsSorted = [...paymentsList]
+      .filter((p: any) => p.isPaid)
+      .sort((a: any, b: any) => {
+        const dateA = a.paymentDate ? parseUtcDate(a.paymentDate).getTime() : parseUtcDate(a.rawDueDate).getTime();
+        const dateB = b.paymentDate ? parseUtcDate(b.paymentDate).getTime() : parseUtcDate(b.rawDueDate).getTime();
+        return dateB - dateA;
       });
 
-      // 4. Categorized spending analysis
-      const categoriesMap = new Map();
-      dbOrders.forEach(order => {
-        const category = getCategory(order.item_name);
-        const amount = parseFloat(order.amount);
-        const current = categoriesMap.get(category) || { count: 0, spent: 0 };
-        categoriesMap.set(category, {
-          count: current.count + 1,
-          spent: current.spent + amount,
-        });
-      });
+    let streak = 0;
+    for (const p of completedPaymentsSorted) {
+      if (p.paymentDate && p.rawDueDate) {
+        if (parseUtcDate(p.paymentDate).getTime() <= parseUtcDate(p.rawDueDate).getTime()) {
+          streak++;
+        } else {
+          break;
+        }
+      } else {
+        streak++;
+      }
+    }
 
-      const totalSpentAllCategories = Array.from(categoriesMap.values()).reduce((sum, item: any) => sum + item.spent, 0);
-      const spendingCategoriesList = Array.from(categoriesMap.entries()).map(([category, details]: any) => ({
+    const recommendedMonthlyBudget = unpaidAmountTotal > 0 ? Math.ceil(unpaidAmountTotal / 6) : 0;
+
+    setFinancialMetrics({
+      healthScore,
+      onTimeRate: actualOnTimeRate,
+      paymentStreak: queryOrdersData?.analytics?.paymentStreak ?? streak,
+      recommendedMonthlyBudget,
+    });
+
+    // 4. Spending Categories
+    const categoriesMap = new Map();
+    ordersList.forEach((order: any) => {
+      const category = getCategory(order.itemName);
+      const amount = order.isShared && order.splitAmount !== undefined ? order.splitAmount : order.amount;
+      const current = categoriesMap.get(category) || { count: 0, spent: 0 };
+      categoriesMap.set(category, {
+        count: current.count + 1,
+        spent: current.spent + amount,
+      });
+    });
+
+    const totalSpentAllCategories = Array.from(categoriesMap.values()).reduce((sum, item: any) => sum + item.spent, 0);
+    const spendingCategoriesList = Array.from(categoriesMap.entries())
+      .map(([category, details]: any) => ({
         category,
         orderCount: details.count,
         totalSpent: details.spent,
         percentage: totalSpentAllCategories > 0 ? (details.spent / totalSpentAllCategories) * 100 : 0,
-      })).sort((a, b) => b.totalSpent - a.totalSpent);
+      }))
+      .sort((a, b) => b.totalSpent - a.totalSpent);
 
-      setSpendingCategories(spendingCategoriesList);
+    setSpendingCategories(spendingCategoriesList);
 
-      // 5. Monthly trends (last 6 months)
-      const monthsArray = [];
-      const trendsMap = new Map();
-      const nowParts = getUtc8DateParts(new Date());
-      
-      for (let i = 5; i >= 0; i--) {
-        const utcTime = Date.UTC(nowParts.year, nowParts.month - i, 1);
-        const d = new Date(utcTime);
-        const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-        const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-        monthsArray.push(monthKey);
-        trendsMap.set(monthKey, { totalSpent: 0, orderCount: 0, monthName });
-      }
+    // 5. Monthly Trends (last 6 months)
+    const monthsArray = [];
+    const trendsMap = new Map();
+    const nowParts = getUtc8DateParts(new Date());
 
-      dbOrders.forEach(order => {
-        const parts = getUtc8DateParts(parseUtcDate(order.order_date));
-        const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
-        if (trendsMap.has(monthKey)) {
-          const current = trendsMap.get(monthKey);
-          trendsMap.set(monthKey, {
-            ...current,
-            totalSpent: current.totalSpent + parseFloat(order.amount),
-            orderCount: current.orderCount + 1,
-          });
-        }
-      });
-
-      setMonthlyTrends(monthsArray.map(key => trendsMap.get(key)));
-
-    } catch (err: any) {
-      console.warn('Dashboard fetch issue:', err);
-      setError(err?.message || 'DB Sync Warning');
-      const { user } = await getLinkedProfileForCurrentUser();
-      if (!user) {
-        setDemoData();
-      } else {
-        setIsDemo(false);
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    for (let i = 5; i >= 0; i--) {
+      const utcTime = Date.UTC(nowParts.year, nowParts.month - i, 1);
+      const d = new Date(utcTime);
+      const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const monthName = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+      monthsArray.push(monthKey);
+      trendsMap.set(monthKey, { totalSpent: 0, orderCount: 0, monthName });
     }
-  }, []);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    ordersList.forEach((order: any) => {
+      const parts = getUtc8DateParts(parseUtcDate(order.orderDate));
+      const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
+      if (trendsMap.has(monthKey)) {
+        const current = trendsMap.get(monthKey);
+        const amount = order.isShared && order.splitAmount !== undefined ? order.splitAmount : order.amount;
+        trendsMap.set(monthKey, {
+          ...current,
+          totalSpent: current.totalSpent + amount,
+          orderCount: current.orderCount + 1,
+        });
+      }
+    });
+
+    setMonthlyTrends(monthsArray.map((key) => trendsMap.get(key)));
+    setLoading(false);
+  }, [queryPayments, queryOrdersData, queryPaymentsLoading, queryOrdersLoading]);
 
   // Instantly refetch live data whenever screen becomes focused
   useFocusEffect(
     useCallback(() => {
       refetchPayments();
       refetchOrders();
-      fetchDashboardData();
-    }, [refetchPayments, refetchOrders, fetchDashboardData])
+    }, [refetchPayments, refetchOrders])
   );
 
   // Instantly refetch live data whenever app returns from background
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         refetchPayments();
         refetchOrders();
-        fetchDashboardData();
       }
     });
     return () => subscription.remove();
-  }, [refetchPayments, refetchOrders, fetchDashboardData]);
+  }, [refetchPayments, refetchOrders]);
 
-  useRealtimeSync(['orders', 'payments', 'account_limits'], fetchDashboardData);
-
-  const onRefresh = () => {
-    setRefreshing(true);
+  useRealtimeSync(['orders', 'payments', 'account_limits'], () => {
     refetchPayments();
     refetchOrders();
-    fetchDashboardData();
-  };
+  });
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([refetchPayments(), refetchOrders()]);
+    } catch (err) {
+      console.warn('Dashboard pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchPayments, refetchOrders]);
 
 
 
@@ -1351,7 +1166,13 @@ export default function DashboardScreen() {
             showWeatherTime={false}
             avatar={
               userPhoto ? (
-                <Image source={{ uri: userPhoto }} style={styles.avatar as any} />
+                <Image
+                  source={{ uri: userPhoto }}
+                  style={styles.avatar as any}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                  transition={200}
+                />
               ) : (
                 <View style={[styles.avatarPlaceholder, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                   <Text style={[styles.avatarText, { color: t.accent }]}>{userName.charAt(0).toUpperCase()}</Text>
@@ -1852,7 +1673,10 @@ export default function DashboardScreen() {
             title="Customer Portal"
             subtitle="Syncing credit limits, ledger history, and streak metrics..."
             error={error}
-            onRetry={fetchDashboardData}
+            onRetry={() => {
+              refetchPayments();
+              refetchOrders();
+            }}
           />
         </Animated.View>
       )}

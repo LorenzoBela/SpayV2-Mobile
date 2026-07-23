@@ -238,7 +238,7 @@ export default function ClientMilestonesScreen() {
   const { data: milestones = [], isLoading, refetch } = trpc.milestones.getClientMilestones.useQuery();
 
   const totalCount = milestones.length;
-  const unlockedCount = milestones.filter(m => m.isUnlocked).length;
+  const unlockedCount = milestones.filter((m: any) => m.isUnlocked).length;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -270,7 +270,7 @@ export default function ClientMilestonesScreen() {
   };
 
   const filteredAndSortedMilestones = useMemo(() => {
-    let result = milestones.filter((milestone) => {
+    let result = milestones.filter((milestone: any) => {
       const matchesSearch =
         milestone.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         milestone.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -524,7 +524,7 @@ export default function ClientMilestonesScreen() {
                     ]}
                     onPress={() => {
                       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setActiveTab(tab.key);
+                      setActiveTab(tab.key as any);
                     }}
                   >
                     <Text style={[styles.tabButtonText, { color: isSelected ? '#ffffff' : t.textPrimary }]}>
@@ -557,7 +557,7 @@ export default function ClientMilestonesScreen() {
           scrollEventThrottle={16}
         >
           <View style={styles.grid}>
-            {paginatedMilestones.map((milestone) => {
+            {paginatedMilestones.map((milestone: any) => {
               const rarity = getMilestoneRarity(milestone.id);
               const c = getRarityColors(rarity, milestone.isUnlocked, isDarkMode);
               const Icon = getMilestoneIcon(milestone.id);
@@ -707,7 +707,7 @@ export default function ClientMilestonesScreen() {
                 key={opt.key}
                 style={styles.dropdownOption}
                 onPress={() => {
-                  setSortBy(opt.key);
+                  setSortBy(opt.key as any);
                   setShowSortDropdown(false);
                 }}
               >

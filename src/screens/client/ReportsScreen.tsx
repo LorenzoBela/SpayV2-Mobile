@@ -1,5 +1,5 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import {
   View,
   Text,
@@ -182,10 +182,18 @@ export default function ReportsScreen() {
     fetchReportsData();
   }, []);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchReportsData();
-  };
+    try {
+      await Promise.allSettled([
+        fetchReportsData(),
+      ]);
+    } catch (err) {
+      console.warn('Reports pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchReportsData]);
 
   // Perform client-side data transformations & summaries matching web formulas
   const calculatedData = useMemo(() => {

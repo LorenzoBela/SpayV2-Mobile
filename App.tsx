@@ -3,7 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
-import { trpc } from './src/utils/trpc';
+import { trpc, getTrpcHeaders, fetchWithTimeout } from './src/utils/trpc';
 import { httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
 import { supabase, expoSecureStorage } from './src/utils/supabase';
@@ -22,24 +22,18 @@ import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
 // Keep the native splash screen visible until the custom animated splash mounts
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// Import Google Fonts loaders
+// Import Google Fonts loaders (essential 3 font weights: Regular 400, SemiBold 600, Bold 700)
 import {
   useFonts,
-  Outfit_300Light,
   Outfit_400Regular,
-  Outfit_500Medium,
   Outfit_600SemiBold,
   Outfit_700Bold,
-  Outfit_800ExtraBold,
 } from '@expo-google-fonts/outfit';
 
 import {
-  PlusJakartaSans_300Light,
   PlusJakartaSans_400Regular,
-  PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
-  PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 
 // Configure TanStack Query client for fetching states with custom cache/gc lifetime
@@ -47,9 +41,9 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours cache retention/garbage collection time
-      staleTime: 0, // Always fetch fresh data on app open / screen focus
-      refetchOnMount: 'always',
-      refetchOnWindowFocus: 'always',
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnMount: false,
+      refetchOnWindowFocus: false,
       refetchOnReconnect: 'always',
     },
   },
@@ -65,21 +59,8 @@ const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
       url: `${getApiUrl()}/api/trpc`,
-      async headers() {
-        const { data: { session } } = await supabase.auth.getSession();
-        let impersonateUserId: string | null = null;
-        try {
-          const stored = await expoSecureStorage.getItem('impersonated_user');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed?.id) impersonateUserId = parsed.id;
-          }
-        } catch (e) {}
-        return {
-          Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
-          ...(impersonateUserId ? { 'x-impersonate-user-id': impersonateUserId } : {}),
-        };
-      },
+      headers: getTrpcHeaders,
+      fetch: fetchWithTimeout,
       transformer: superjson as any,
     }),
   ],
@@ -100,18 +81,18 @@ export default function App() {
   const [isSplashAnimationComplete, setIsSplashAnimationComplete] = useState(false);
 
   const [fontsLoaded] = useFonts({
-    'Outfit-Light': Outfit_300Light,
+    'Outfit-Light': Outfit_400Regular,
     'Outfit-Regular': Outfit_400Regular,
-    'Outfit-Medium': Outfit_500Medium,
+    'Outfit-Medium': Outfit_600SemiBold,
     'Outfit-SemiBold': Outfit_600SemiBold,
     'Outfit-Bold': Outfit_700Bold,
-    'Outfit-ExtraBold': Outfit_800ExtraBold,
-    'Jakarta-Light': PlusJakartaSans_300Light,
+    'Outfit-ExtraBold': Outfit_700Bold,
+    'Jakarta-Light': PlusJakartaSans_400Regular,
     'Jakarta-Regular': PlusJakartaSans_400Regular,
-    'Jakarta-Medium': PlusJakartaSans_500Medium,
+    'Jakarta-Medium': PlusJakartaSans_600SemiBold,
     'Jakarta-SemiBold': PlusJakartaSans_600SemiBold,
     'Jakarta-Bold': PlusJakartaSans_700Bold,
-    'Jakarta-ExtraBold': PlusJakartaSans_800ExtraBold,
+    'Jakarta-ExtraBold': PlusJakartaSans_700Bold,
   });
 
   if (!fontsLoaded) {

@@ -7,7 +7,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../utils/queryPersister';
 import * as Location from 'expo-location';
 import {
   Sun,
@@ -161,8 +161,8 @@ export default function WeatherWidget() {
 
     try {
       if (!force) {
-        const cached = await AsyncStorage.getItem('cached_weather');
-        const cachedTime = await AsyncStorage.getItem('cached_weather_time');
+        const cached = storage.getString('cached_weather');
+        const cachedTime = storage.getString('cached_weather_time');
         if (cached && cachedTime && Date.now() - Number(cachedTime) < 1800000) {
           // 30 min cache
           try {
@@ -384,8 +384,10 @@ export default function WeatherWidget() {
       };
 
       setWeather(newWeather);
-      await AsyncStorage.setItem('cached_weather', JSON.stringify(newWeather));
-      await AsyncStorage.setItem('cached_weather_time', Date.now().toString());
+      try {
+        storage.set('cached_weather', JSON.stringify(newWeather));
+        storage.set('cached_weather_time', Date.now().toString());
+      } catch (_) {}
     } catch (err) {
       console.error('Failed to fetch mobile weather details:', err);
       // Fallback with mock data

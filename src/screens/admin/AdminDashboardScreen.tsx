@@ -607,11 +607,18 @@ export default function AdminDashboardScreen() {
   }, [chartData]);
 
   const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
+    try {
+      await Promise.allSettled([
+        refetch(),
+      ]);
+    } catch (err) {
+      console.warn('AdminDashboard pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   // Flip countdown updater
   useEffect(() => {
@@ -1864,6 +1871,8 @@ export default function AdminDashboardScreen() {
                                 source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=120&bold=true` }}
                                 style={[styles.clientAvatar, { borderColor: selected ? t.accent : t.cardBorder }]}
                                 contentFit="cover"
+                                cachePolicy="memory-disk"
+                                transition={200}
                               />
                               {selected && (
                                 <View style={[styles.avatarCheckBadge, { backgroundColor: t.accent }]}>
@@ -2391,6 +2400,8 @@ export default function AdminDashboardScreen() {
                           source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={200}
                         />
                         <View style={{ flex: 1, marginLeft: 14 }}>
                           <Text style={[styles.clientListRowName, { color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>
@@ -2479,6 +2490,8 @@ export default function AdminDashboardScreen() {
                               source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=50&bold=true` }}
                               style={{ width: 20, height: 20, borderRadius: 10 }}
                               contentFit="cover"
+                              cachePolicy="memory-disk"
+                              transition={200}
                             />
                             <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>{client.name}</Text>
                             <TouchableOpacity
@@ -2568,6 +2581,8 @@ export default function AdminDashboardScreen() {
                           source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={200}
                         />
                         <View style={{ flex: 1, marginLeft: 14 }}>
                           <Text style={[styles.clientListRowName, { color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>

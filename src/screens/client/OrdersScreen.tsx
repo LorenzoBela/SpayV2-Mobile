@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -158,10 +158,19 @@ export default function OrdersScreen() {
 
   useRealtimeSync(['orders', 'payments'], undefined, [['client-orders']]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refetch();
-  };
+    try {
+      await Promise.allSettled([
+        refetch(),
+        fetchOrdersAndAnalytics(),
+      ]);
+    } catch (err) {
+      console.warn('Orders pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   const handleOpenPayModal = (orderId: string) => {
     setPayingOrderId(orderId);

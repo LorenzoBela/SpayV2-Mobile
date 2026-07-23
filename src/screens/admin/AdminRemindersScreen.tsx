@@ -1,6 +1,6 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -365,7 +365,7 @@ export default function AdminRemindersScreen() {
   const error = queryError ? (queryError as Error).message : null;
 
   const loadData = async (showLoader?: boolean) => {
-    await Promise.all([
+    await Promise.allSettled([
       refetch(),
       queryClient.invalidateQueries({ queryKey: ['admin-clients-selection'] })
     ]);
@@ -377,11 +377,18 @@ export default function AdminRemindersScreen() {
     [['admin-reminders']]
   );
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
-  };
+    try {
+      await Promise.allSettled([
+        loadData(),
+      ]);
+    } catch (err) {
+      console.warn('AdminReminders pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, queryClient]);
 
   const payload = remindersData?.success ? remindersData : null;
   const reminderTargets = payload?.reminderTargets || [];

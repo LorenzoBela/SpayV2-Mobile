@@ -237,10 +237,18 @@ export default function NotificationsScreen() {
     return pages;
   }, [currentPage, totalPages]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    void load();
-  };
+    try {
+      await Promise.allSettled([
+        load(),
+      ]);
+    } catch (err) {
+      console.warn('Notifications pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
   const handleItemPress = async (item: AppNotification) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -273,16 +281,23 @@ export default function NotificationsScreen() {
   };
 
   const handleClear = async (id: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    let previousItems: AppNotification[] = [];
+    setItems((current) => {
+      previousItems = current;
+      return current.filter((row) => row.id !== id);
+    });
+    if (selectedNotification?.id === id) {
+      setSelectedNotification(null);
+    }
+    void refreshUnreadCount();
+
     try {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await clearNotification(id);
-      setItems((current) => current.filter((row) => row.id !== id));
-      if (selectedNotification?.id === id) {
-        setSelectedNotification(null);
-      }
-      void refreshUnreadCount();
     } catch (error) {
       console.warn('[NotificationsScreen] clear failed:', error);
+      setItems(previousItems);
+      void refreshUnreadCount();
     }
   };
 
@@ -290,17 +305,22 @@ export default function NotificationsScreen() {
     const readOfTab = visibleItems.filter((item) => item.read_at);
     if (readOfTab.length === 0) return;
 
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    let previousItems: AppNotification[] = [];
+    setItems((current) => {
+      previousItems = current;
+      return current.filter((row) => !(row.category === activeTab && row.read_at));
+    });
+    void refreshUnreadCount();
+
     try {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       for (const item of readOfTab) {
         await clearNotification(item.id);
       }
-      setItems((current) =>
-        current.filter((row) => !(row.category === activeTab && row.read_at))
-      );
-      void refreshUnreadCount();
     } catch (error) {
       console.warn('[NotificationsScreen] clear all read failed:', error);
+      setItems(previousItems);
+      void refreshUnreadCount();
     }
   };
 

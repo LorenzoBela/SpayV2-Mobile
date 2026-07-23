@@ -1,5 +1,5 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -236,10 +236,18 @@ export default function AdminOrdersScreen() {
     };
   }, [loading, hideTabBar, showTabBar]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    refetch().finally(() => setRefreshing(false));
-  };
+    try {
+      await Promise.allSettled([
+        refetch(),
+      ]);
+    } catch (err) {
+      console.warn('AdminOrders pull-to-refresh error:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1235,6 +1243,9 @@ export default function AdminOrdersScreen() {
                               <Image
                                 source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=120&bold=true` }}
                                 style={[styles.clientAvatar, { borderColor: selected ? t.accent : t.cardBorder }]}
+                                cachePolicy="memory-disk"
+                                contentFit="cover"
+                                transition={200}
                               />
                               {selected && (
                                 <View style={[styles.avatarCheckBadge, { backgroundColor: t.accent }]}>
@@ -1773,6 +1784,9 @@ export default function AdminOrdersScreen() {
                         <Image
                           source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
+                          cachePolicy="memory-disk"
+                          contentFit="cover"
+                          transition={200}
                         />
                         <View style={{ flex: 1, marginLeft: 14 }}>
                           <Text style={[{ fontSize: 14, color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>
@@ -1863,6 +1877,8 @@ export default function AdminOrdersScreen() {
                               source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=50&bold=true` }}
                               style={{ width: 20, height: 20, borderRadius: 10 }}
                               contentFit="cover"
+                              cachePolicy="memory-disk"
+                              transition={200}
                             />
                             <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>{client.name}</Text>
                             <TouchableOpacity
@@ -1963,6 +1979,8 @@ export default function AdminOrdersScreen() {
                           source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           contentFit="cover"
+                          cachePolicy="memory-disk"
+                          transition={200}
                         />
                         <View style={{ flex: 1, marginLeft: 14 }}>
                           <Text style={[styles.clientListName, { color: t.textPrimary, fontWeight: isSelected ? '800' : 'bold' }]}>{client.name}</Text>

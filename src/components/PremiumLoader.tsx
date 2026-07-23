@@ -100,7 +100,7 @@ export default function PremiumLoader({
 
   // Helper to dynamically strip custom font family if system fonts are forced
   const font = (styleName: any) => {
-    const originalStyle = styles[styleName] as any;
+    const originalStyle = (styles as Record<string, any>)[styleName];
     if (useSystemFonts) {
       const { fontFamily, ...rest } = originalStyle;
       const isBold = fontFamily && (fontFamily.includes('Bold') || fontFamily.includes('SemiBold') || fontFamily.includes('ExtraBold'));

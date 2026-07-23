@@ -21,7 +21,7 @@ import { useTabBar } from '../../navigation/TabBarContext';
 import PremiumLoader from '../../components/PremiumLoader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import NetInfo from '@react-native-community/netinfo';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../../utils/queryPersister';
 import { trpc } from '../../utils/trpc';
 
 const formatCurrency = (val: number | string) => {
@@ -334,9 +334,9 @@ export default function NootAiScreen() {
     initializeChat(name, 92);
   };
 
-  const initializeChat = async (name: string, score: number) => {
+  const initializeChat = (name: string, score: number) => {
     try {
-      const saved = await AsyncStorage.getItem('@nootai_mobile_history');
+      const saved = storage.getString('@nootai_mobile_history');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -360,7 +360,9 @@ export default function NootAiScreen() {
 
   useEffect(() => {
     if (messages.length > 0) {
-      AsyncStorage.setItem('@nootai_mobile_history', JSON.stringify(messages)).catch(() => {});
+      try {
+        storage.set('@nootai_mobile_history', JSON.stringify(messages));
+      } catch {}
     }
   }, [messages]);
 
@@ -526,7 +528,9 @@ export default function NootAiScreen() {
                 timestamp: new Date(),
               }
             ]);
-            AsyncStorage.removeItem('@nootai_mobile_history').catch(() => {});
+            try {
+              storage.remove('@nootai_mobile_history');
+            } catch {}
           }
         }
       ]

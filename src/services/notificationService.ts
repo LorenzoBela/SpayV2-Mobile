@@ -158,7 +158,7 @@ export async function fetchNotifications(limit = 100) {
   if (!user) return [];
 
   try {
-    const data = await trpcVanillaClient.notifications.list.query({ limit });
+    const data = await (trpcVanillaClient.notifications as any).list.query({ limit });
     return (data?.notifications || []).map((n: any) => ({
       id: n.id,
       title: n.title,
@@ -189,7 +189,7 @@ export async function markNotificationRead(notificationId: string) {
   if (!user) return;
 
   try {
-    await trpcVanillaClient.notifications.markRead.mutate({ notificationId });
+    await (trpcVanillaClient.notifications as any).markRead.mutate({ notificationId });
   } catch (trpcError) {
     console.warn('[notificationService] tRPC markNotificationRead failed, falling back to Supabase:', trpcError);
     const { error } = await supabase
@@ -207,7 +207,7 @@ export async function markAllNotificationsRead() {
   if (!user) return;
 
   try {
-    await trpcVanillaClient.notifications.markAllRead.mutate();
+    await (trpcVanillaClient.notifications as any).markAllRead.mutate();
   } catch (trpcError) {
     console.warn('[notificationService] tRPC markAllNotificationsRead failed, falling back to Supabase:', trpcError);
     const { error } = await supabase
@@ -225,7 +225,7 @@ export async function clearNotification(notificationId: string) {
   if (!user) return;
 
   try {
-    await trpcVanillaClient.notifications.clear.mutate({ notificationId });
+    await (trpcVanillaClient.notifications as any).clear.mutate({ notificationId });
   } catch (trpcError) {
     console.warn('[notificationService] tRPC clearNotification failed, falling back to Supabase:', trpcError);
     const { error } = await supabase
