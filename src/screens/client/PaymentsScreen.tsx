@@ -54,6 +54,7 @@ import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 import NetInfo from '@react-native-community/netinfo';
 import { useClientPaymentsQuery } from '../../hooks/useClientQueries';
+import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { getBillingMonthKey, getCalendarMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
@@ -401,6 +402,7 @@ export default function PaymentsScreen() {
   const [selectedMonthGroup, setSelectedMonthGroup] = useState<MonthlyGroup | null>(null);
   const [isMonthDetailModalOpen, setIsMonthDetailModalOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
   const { data: queryPayments, isLoading: queryLoading, refetch, isRefetching } = useClientPaymentsQuery();
 
@@ -757,16 +759,36 @@ export default function PaymentsScreen() {
             Track custom monthly due cycles, evaluate financial wellness trends, and plan installments.
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={toggleTheme}
-          style={[styles.backButtonFrame, { backgroundColor: t.tabInactiveBg }]}
-        >
-          {isDarkMode ? (
-            <Sun size={18} color="#fbbf24" />
-          ) : (
-            <Moon size={18} color="#475569" />
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setIsGuideModalOpen(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(238, 77, 45, 0.3)',
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 20,
+              gap: 4,
+            }}
+          >
+            <Info size={14} color="#ee4d2d" />
+            <Text style={{ color: '#ee4d2d', fontSize: 12, fontWeight: '700' }}>Guide</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={toggleTheme}
+            style={[styles.backButtonFrame, { backgroundColor: t.tabInactiveBg }]}
+          >
+            {isDarkMode ? (
+              <Sun size={18} color="#fbbf24" />
+            ) : (
+              <Moon size={18} color="#475569" />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Offline Mode Glassmorphic Banner */}
@@ -814,9 +836,28 @@ export default function PaymentsScreen() {
                     <CalendarIcon size={16} color={t.accent} />
                   </View>
                   <View>
-                    <Text style={[styles.countdownSubtitle, { color: t.textSecondary }]}>
-                      BILLING CYCLE OVERVIEW
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.countdownSubtitle, { color: t.textSecondary }]}>
+                        BILLING CYCLE OVERVIEW
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setIsGuideModalOpen(true)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: 'rgba(238, 77, 45, 0.1)',
+                          borderWidth: 1,
+                          borderColor: 'rgba(238, 77, 45, 0.3)',
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 10,
+                          gap: 3,
+                        }}
+                      >
+                        <Info size={10} color="#ee4d2d" />
+                        <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>Guide</Text>
+                      </TouchableOpacity>
+                    </View>
                     <Text style={[styles.countdownTitleText, { color: t.textPrimary }]}>
                       Due {parseUtcDate(nextPaymentCountdown.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                     </Text>
@@ -1675,6 +1716,10 @@ export default function PaymentsScreen() {
         </View>
       </Modal>
 
+      <SPayLaterGuideModal
+        visible={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

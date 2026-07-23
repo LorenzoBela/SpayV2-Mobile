@@ -93,7 +93,12 @@ export async function getLinkedProfileForCurrentUser() {
           user: {
             id: imp.id,
             email: imp.email,
-            user_metadata: { full_name: imp.name },
+            user_metadata: {
+              full_name: imp.name,
+              name: imp.name,
+              avatar_url: imp.avatarUrl || null,
+              picture: imp.avatarUrl || null,
+            },
           } as any,
           profile: profile || {
             id: imp.id,

@@ -45,6 +45,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+import { useImpersonation } from '../../context/ImpersonationContext';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
 import {
@@ -65,6 +66,7 @@ export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { userRole, setActiveRole } = useContext(RoleContext);
+  const { isImpersonating } = useImpersonation();
   const systemColorScheme = useColorScheme();
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -768,7 +770,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Switch Workspace (admin only) */}
-        {userRole === 'ADMIN' && (
+        {userRole === 'ADMIN' && !isImpersonating && (
           <TouchableOpacity
             onPress={() => setActiveRole(null)}
             style={[styles.switchWorkspaceBtn, { borderColor: t.accent }]}

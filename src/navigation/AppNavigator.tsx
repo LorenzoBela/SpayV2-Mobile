@@ -58,6 +58,7 @@ import NootAiScreen from '../screens/client/NootAiScreen';
 import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen'; // refresh cache
 import WishlistScreen from '../screens/client/WishlistScreen';
 import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen'; // refresh cache
+import AdminSalaryScreen from '@/screens/admin/AdminSalaryScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
@@ -165,7 +166,7 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
   let activeIndex = visibleRoutes.findIndex((r: any) => {
     const activeRouteName = state.routes[state.index].name;
     const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones', 'Wishlist',
-                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones'].includes(activeRouteName);
+                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones', 'AdminSalary'].includes(activeRouteName);
     if (isSubScreen) {
       return r.name === 'More' || r.name === 'AdminMore';
     }
@@ -574,6 +575,15 @@ const AdminNavigator = () => {
           unmountOnBlur: true,
         } as any}
       />
+      <AdminTab.Screen
+        name="AdminSalary"
+        component={AdminSalaryScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
     </AdminTab.Navigator>
   );
 };
@@ -887,7 +897,10 @@ export default function AppNavigator() {
                             )}
                           </Stack.Screen>
                         ) : activeRole === 'admin' ? (
-                          <Stack.Screen name="Admin" component={AdminNavigator} />
+                          <>
+                            <Stack.Screen name="Admin" component={AdminNavigator} />
+                            <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
+                          </>
                         ) : (
                           <>
                             <Stack.Screen name="Main" component={MainNavigator} />

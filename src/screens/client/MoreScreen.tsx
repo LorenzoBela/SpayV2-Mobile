@@ -55,7 +55,7 @@ export default function MoreScreen() {
     if (isImpersonating && impersonatedUser) {
       setUserName(impersonatedUser.name || impersonatedUser.email?.split('@')[0] || 'Client User');
       setUserEmail(impersonatedUser.email || '');
-      setUserPhoto(null);
+      setUserPhoto(impersonatedUser.avatarUrl || null);
       return;
     }
 
@@ -314,7 +314,7 @@ export default function MoreScreen() {
           </TouchableOpacity>
 
           {/* Switch workspace if admin */}
-          {userRole === 'ADMIN' && (
+          {userRole === 'ADMIN' && !isImpersonating && (
             <>
               <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />
               <TouchableOpacity

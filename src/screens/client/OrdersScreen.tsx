@@ -50,6 +50,7 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import { parseUtcDate } from '../../utils/date';
 import NetInfo from '@react-native-community/netinfo';
 import { useClientOrdersQuery } from '../../hooks/useClientQueries';
+import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
 
@@ -96,6 +97,7 @@ export default function OrdersScreen() {
     onTimeRate: 100,
   });
   const [isOffline, setIsOffline] = useState(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
   const { data: queryOrders, isLoading: queryLoading, refetch, isRefetching } = useClientOrdersQuery();
 
@@ -244,16 +246,36 @@ export default function OrdersScreen() {
             Review your installment orders, track amortization schedules, and submit payments.
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={toggleTheme}
-          style={[styles.backButtonFrame, { backgroundColor: t.tabInactiveBg }]}
-        >
-          {isDarkMode ? (
-            <Sun size={18} color="#fbbf24" />
-          ) : (
-            <Moon size={18} color="#475569" />
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setIsGuideModalOpen(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(238, 77, 45, 0.3)',
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 20,
+              gap: 4,
+            }}
+          >
+            <Info size={14} color="#ee4d2d" />
+            <Text style={{ color: '#ee4d2d', fontSize: 12, fontWeight: '700' }}>Guide</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={toggleTheme}
+            style={[styles.backButtonFrame, { backgroundColor: t.tabInactiveBg }]}
+          >
+            {isDarkMode ? (
+              <Sun size={18} color="#fbbf24" />
+            ) : (
+              <Moon size={18} color="#475569" />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Offline Mode Glassmorphic Banner */}
@@ -1051,6 +1073,10 @@ export default function OrdersScreen() {
           </SwipeDismissModal>
         </View>
       </Modal>
+      <SPayLaterGuideModal
+        visible={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

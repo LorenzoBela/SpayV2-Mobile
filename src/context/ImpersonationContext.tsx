@@ -8,6 +8,7 @@ export interface ImpersonatedUser {
   email: string;
   mobile_number?: string;
   avatar_url?: string;
+  avatarUrl?: string;
   role?: string;
 }
 

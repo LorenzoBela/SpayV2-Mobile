@@ -3,7 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": ["../web/src/*"]
+      "@/*": ["./src/*", "../web/src/*"]
     }
   }
 }

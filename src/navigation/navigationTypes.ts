@@ -10,6 +10,7 @@ export type RootStackParamList = {
   Calendar: undefined;
   Settings: undefined;
   Wishlist: undefined;
+  AdminSalary: undefined;
 };
 
 export type AuthStackParamList = {
@@ -42,6 +43,7 @@ export type AdminTabParamList = {
   AdminSettings: undefined;
   AdminNotifications: undefined;
   AdminMilestones: undefined;
+  AdminSalary: undefined;
 };
 
 export const RoleContext = React.createContext<{

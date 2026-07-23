@@ -30,6 +30,7 @@ import {
   Users,
   Trophy,
   UserCheck,
+  Banknote,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -137,6 +138,12 @@ export default function AdminMoreScreen() {
       icon: Trophy,
       desc: 'System-wide milestones',
       action: () => navigation.navigate('AdminMilestones'),
+    },
+    {
+      name: 'Salary & Cashflow',
+      icon: Banknote,
+      desc: 'Payday countdown & compensation',
+      action: () => navigation.navigate('AdminSalary'),
     },
     {
       name: 'Impersonate Client',

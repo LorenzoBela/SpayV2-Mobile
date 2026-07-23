@@ -37,6 +37,7 @@ import {
   CreditCard,
   ShoppingBag,
   Users,
+  Info,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -53,6 +54,7 @@ import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
+import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
 
 
@@ -698,6 +700,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -1210,9 +1213,28 @@ export default function DashboardScreen() {
                 <Calendar size={18} color="#ee4d2d" />
               </View>
               <View>
-                <Text style={[styles.cardTitle, { color: t.textPrimary }]}>
-                  {nextMonthlyPayment ? `${nextMonthlyPayment.monthName} Billing Cycle` : 'Billing Cycle Overview'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.cardTitle, { color: t.textPrimary }]}>
+                    {nextMonthlyPayment ? `${nextMonthlyPayment.monthName} Billing Cycle` : 'Billing Cycle Overview'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setIsGuideModalOpen(true)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: 'rgba(238, 77, 45, 0.1)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(238, 77, 45, 0.3)',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 10,
+                      gap: 3,
+                    }}
+                  >
+                    <Info size={10} color="#ee4d2d" />
+                    <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>Guide</Text>
+                  </TouchableOpacity>
+                </View>
                 <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>
                   {nextMonthlyPayment ? (
                     <>Due {formatRelativeDate(nextMonthlyPayment.dueDate)} • {formatCurrency(nextMonthlyPayment.totalAmount)}</>
@@ -1685,6 +1707,10 @@ export default function DashboardScreen() {
         visible={showExitModal}
         onDismiss={() => setShowExitModal(false)}
         onConfirm={handleExit}
+      />
+      <SPayLaterGuideModal
+        visible={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
       />
     </SafeAreaView>
   );

@@ -47,6 +47,7 @@ const DEFAULT_SLIDES: SlideItem[] = [
 interface PremiumLoaderProps {
   title?: string;
   subtitle?: string;
+  text?: string;
   progress?: number; // Deterministic value between 0 and 1
   error?: string | null;
   onRetry?: () => void;
@@ -55,14 +56,16 @@ interface PremiumLoaderProps {
 }
 
 export default function PremiumLoader({
-  title = 'Initializing Workspace',
+  title: titleProp = 'Initializing Workspace',
   subtitle = 'Loading account configurations...',
+  text,
   progress,
   error,
   onRetry,
   timeoutMs = 12000, // 12 seconds default timeout
   useSystemFonts = false,
 }: PremiumLoaderProps) {
+  const title = text || titleProp;
   const [trackWidth, setTrackWidth] = useState(0);
   const themeContext = useContext(ThemeContext);
   const isDarkMode = themeContext ? themeContext.isDarkMode : true;

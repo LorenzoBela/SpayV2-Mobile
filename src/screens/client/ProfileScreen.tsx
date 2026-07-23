@@ -20,6 +20,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+import { useImpersonation } from '../../context/ImpersonationContext';
 import { ProfileSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 
@@ -39,6 +40,7 @@ interface UserProfile {
 export default function ProfileScreen() {
   const { setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { isImpersonating } = useImpersonation();
   const [profile, setProfile] = useState<UserProfile>({
     name: 'Client User',
     email: 'client@spay.com',
@@ -272,7 +274,7 @@ export default function ProfileScreen() {
           </View>
 
           {/* Actions */}
-          {profile.role === 'ADMIN' && (
+          {profile.role === 'ADMIN' && !isImpersonating && (
             <TouchableOpacity
               style={[styles.switchWorkspaceBtn, !isDarkMode && { backgroundColor: 'rgba(238,77,45,0.04)' }]}
               onPress={() => setActiveRole(null)}
