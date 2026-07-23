@@ -24,6 +24,8 @@ import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
+import { trpc } from '../utils/trpc';
+import { runIdlePrefetch } from '../utils/idlePrefetch';
 
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForUser } from '../utils/authProfile';
@@ -372,15 +374,56 @@ const MainNavigator = () => {
   const { isDarkMode } = React.useContext(ThemeContext);
   const { unreadCount } = useNotifications();
 
+  const trpcUtils = trpc.useUtils();
+
+  useEffect(() => {
+    // Warm client orders and payments in the background ONCE after initial animations complete
+    runIdlePrefetch('client_core_data', () => {
+      trpcUtils.orders.list.prefetch();
+      trpcUtils.payments.listClient.prefetch();
+    });
+  }, []);
+
   return (
     <Tab.Navigator
       detachInactiveScreens={true}
       tabBar={(props) => <CustomTabBar {...props} icons={TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardGestureScreen} />
-      <Tab.Screen name="Orders" component={OrdersGestureScreen} />
-      <Tab.Screen name="Payments" component={PaymentsGestureScreen} />
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardGestureScreen}
+        listeners={{
+          tabPress: () => {
+            runIdlePrefetch('tab_dashboard', () => {
+              trpcUtils.orders.list.prefetch();
+              trpcUtils.payments.listClient.prefetch();
+            });
+          },
+        }}
+      />
+      <Tab.Screen
+        name="Orders"
+        component={OrdersGestureScreen}
+        listeners={{
+          tabPress: () => {
+            runIdlePrefetch('tab_orders', () => {
+              trpcUtils.orders.list.prefetch();
+            });
+          },
+        }}
+      />
+      <Tab.Screen
+        name="Payments"
+        component={PaymentsGestureScreen}
+        listeners={{
+          tabPress: () => {
+            runIdlePrefetch('tab_payments', () => {
+              trpcUtils.payments.listClient.prefetch();
+            });
+          },
+        }}
+      />
       <Tab.Screen
         name="Notifications"
         component={NotificationsGestureScreen}

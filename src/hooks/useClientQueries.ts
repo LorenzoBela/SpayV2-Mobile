@@ -82,12 +82,10 @@ export interface ClientPaymentItem {
 }
 
 export function useClientOrdersQuery() {
-  // Query orders.list router
   return trpc.orders.list.useQuery();
 }
 
 export function useClientPaymentsQuery() {
-  // Query payments.listClient and transform to ClientPaymentItem[] to maintain compatibility
   return trpc.payments.listClient.useQuery(undefined, {
     select: (data: any): ClientPaymentItem[] => {
       return (data?.payments || []).map((p: any) => ({
@@ -121,4 +119,63 @@ export function useClientPaymentsQuery() {
       }));
     },
   });
+}
+
+/**
+ * Optimistic Payment Reschedule Mutation Hook (0ms UI feedback)
+ */
+export function useOptimisticRescheduleMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.payments.requestReschedule.useMutation({
+    onMutate: async (newReschedule: { paymentId: string; requestedDueDate: string; reason?: string }) => {
+      await utils.payments.listClient.cancel();
+      const previousPayments = utils.payments.listClient.getData();
+
+      utils.payments.listClient.setData(undefined, (old: any) => {
+        if (!old?.payments) return old;
+        return {
+          ...old,
+          payments: old.payments.map((p: any) => {
+            if (p.id === newReschedule.paymentId) {
+              return {
+                ...p,
+                rescheduleHistory: [
+                  ...(p.rescheduleHistory || []),
+                  {
+                    id: `temp_${Date.now()}`,
+                    oldDueDate: p.dueDate,
+                    newDueDate: newReschedule.requestedDueDate,
+                    reason: newReschedule.reason || null,
+                    adminApproved: false,
+                    createdAt: new Date().toISOString(),
+                  },
+                ],
+              };
+            }
+            return p;
+          }),
+        };
+      });
+
+      return { previousPayments };
+    },
+    onError: (_err: unknown, _newReschedule: unknown, context: { previousPayments?: any } | undefined) => {
+      if (context?.previousPayments) {
+        utils.payments.listClient.setData(undefined, context.previousPayments);
+      }
+    },
+    onSettled: () => {
+      utils.payments.listClient.invalidate();
+    },
+  });
+}
+
+export function prefetchClientQueries(trpcUtils: ReturnType<typeof trpc.useUtils>) {
+  try {
+    trpcUtils.orders.list.prefetch();
+    trpcUtils.payments.listClient.prefetch();
+  } catch (e) {
+    console.warn('[Prefetch] Background prefetch deferred:', e);
+  }
 }
