@@ -82,6 +82,8 @@ const SalaryFlipCard = React.memo(function SalaryFlipCard({ value, label, isSecs
   const format = (val: number) => String(val).padStart(2, '0');
   const newValue = format(value);
 
+  const { isDarkMode } = useContext(ThemeContext);
+
   const [current, setCurrent] = useState(newValue);
   const [previous, setPrevious] = useState(newValue);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -146,14 +148,30 @@ const SalaryFlipCard = React.memo(function SalaryFlipCard({ value, label, isSecs
     };
   }, []);
 
-  const activeFlip = isAnimating && previous !== current;
+  const showFlip = previous !== current;
+  const activeFlip = showFlip && isAnimating;
   const topStaticValue = isAnimating && !topRevealed ? previous : current;
   const bottomStaticValue = isAnimating ? previous : current;
 
-  const cardBgTop = isSecs ? '#281a17' : '#1e293b';
-  const cardBgBottom = isSecs ? '#1e1614' : '#0f172a';
-  const textColor = isSecs ? '#ff6b4a' : '#ffffff';
-  const labelColor = isSecs ? '#ff6b4a' : '#64748b';
+  // Theme-derived card layout variables
+  const cardBgTop = isSecs
+    ? (isDarkMode ? '#281a17' : '#fee2e2')
+    : (isDarkMode ? '#1e293b' : '#e2e8f0');
+  const cardBgBottom = isSecs
+    ? (isDarkMode ? '#1e1614' : '#fecaca')
+    : (isDarkMode ? '#161c2a' : '#cbd5e1');
+  const textColorTop = isSecs
+    ? '#ff6b4a'
+    : (isDarkMode ? '#f8fafc' : '#0f172a');
+  const textColorBottom = isSecs
+    ? '#ee4d2d'
+    : (isDarkMode ? '#cbd5e1' : '#334155');
+  const cardBorderColor = isSecs
+    ? (isDarkMode ? 'rgba(255, 107, 74, 0.4)' : 'rgba(238, 77, 45, 0.4)')
+    : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)');
+  const labelColor = isSecs
+    ? '#ff6b4a'
+    : (isDarkMode ? '#64748b' : '#475569');
 
   const rotateTop = topFlipProgress.interpolate({
     inputRange: [0, 1],
@@ -177,63 +195,77 @@ const SalaryFlipCard = React.memo(function SalaryFlipCard({ value, label, isSecs
 
   return (
     <View style={styles.salaryFlipCol}>
-      <View style={styles.salaryFlipOuter}>
-        {/* Top Static Half */}
-        <View style={[styles.salaryFlipHalfTop, { backgroundColor: cardBgTop }]}>
-          <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{topStaticValue}</Text>
+      <View style={styles.salaryFlipOuterWrap}>
+        <View style={[styles.salaryFlipCardOuter, { backgroundColor: cardBgTop, borderColor: cardBorderColor }]}>
+          {/* 1. Top Static */}
+          <View style={[styles.salaryTopHalfContainer, { backgroundColor: cardBgTop }]}>
+            <Text style={[styles.salaryTopText, { color: textColorTop }]}>{topStaticValue}</Text>
+          </View>
+
+          {/* 2. Bottom Static */}
+          <View style={[styles.salaryBottomHalfContainer, { backgroundColor: cardBgBottom }]}>
+            <Text style={[styles.salaryBottomText, { color: textColorBottom }]}>{bottomStaticValue}</Text>
+          </View>
+
+          {/* 3. Animated Top Flap (old value flipping away) */}
+          {activeFlip && (
+            <RNAnimated.View
+              style={[
+                {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 30,
+                  opacity: opacityTop,
+                  transform: [
+                    { perspective: 400 },
+                    { translateY: 15 },
+                    { rotateX: rotateTop },
+                    { translateY: -15 },
+                  ],
+                  zIndex: 3,
+                  backfaceVisibility: 'hidden',
+                } as any
+              ]}
+            >
+              <View style={[styles.salaryTopHalfContainer, { backgroundColor: cardBgTop }]}>
+                <Text style={[styles.salaryTopText, { color: textColorTop }]}>{previous}</Text>
+              </View>
+            </RNAnimated.View>
+          )}
+
+          {/* 4. Animated Bottom Flap (new value flipping into place) */}
+          {activeFlip && (
+            <RNAnimated.View
+              style={[
+                {
+                  position: 'absolute',
+                  top: 30,
+                  left: 0,
+                  right: 0,
+                  height: 30,
+                  opacity: opacityBottom,
+                  transform: [
+                    { perspective: 400 },
+                    { translateY: -15 },
+                    { rotateX: rotateBottom },
+                    { translateY: 15 },
+                  ],
+                  zIndex: 2,
+                  backfaceVisibility: 'hidden',
+                } as any
+              ]}
+            >
+              <View style={[styles.salaryBottomHalfContainer, { backgroundColor: cardBgBottom }]}>
+                <Text style={[styles.salaryBottomText, { color: textColorBottom }]}>{current}</Text>
+              </View>
+            </RNAnimated.View>
+          )}
+
+          {/* Horizontal Split Line */}
+          <View style={styles.salaryFlipCardDivider} />
         </View>
-
-        {/* Bottom Static Half */}
-        <View style={[styles.salaryFlipHalfBottom, { backgroundColor: cardBgBottom }]}>
-          <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{bottomStaticValue}</Text>
-        </View>
-
-        {/* Center Divider Line */}
-        <View style={styles.salaryFlipDividerLine} />
-
-        {/* Animated Top Flap */}
-        {activeFlip && (
-          <RNAnimated.View
-            style={[
-              styles.salaryFlipFlapTop,
-              {
-                opacity: opacityTop,
-                transform: [
-                  { perspective: 400 },
-                  { translateY: 16 },
-                  { rotateX: rotateTop },
-                  { translateY: -16 },
-                ],
-              },
-            ]}
-          >
-            <View style={[styles.salaryFlipHalfTop, { backgroundColor: cardBgTop }]}>
-              <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{previous}</Text>
-            </View>
-          </RNAnimated.View>
-        )}
-
-        {/* Animated Bottom Flap */}
-        {activeFlip && (
-          <RNAnimated.View
-            style={[
-              styles.salaryFlipFlapBottom,
-              {
-                opacity: opacityBottom,
-                transform: [
-                  { perspective: 400 },
-                  { translateY: -16 },
-                  { rotateX: rotateBottom },
-                  { translateY: 16 },
-                ],
-              },
-            ]}
-          >
-            <View style={[styles.salaryFlipHalfBottom, { backgroundColor: cardBgBottom }]}>
-              <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{current}</Text>
-            </View>
-          </RNAnimated.View>
-        )}
       </View>
       <Text style={[styles.flipLabel, { color: labelColor }]}>{label}</Text>
     </View>
@@ -1664,71 +1696,59 @@ const styles = StyleSheet.create({
   },
   salaryFlipCol: {
     alignItems: 'center',
+    gap: 4,
   },
-  salaryFlipOuter: {
-    width: 58,
-    height: 64,
+  salaryFlipOuterWrap: {},
+  salaryFlipCardOuter: {
+    width: 52,
+    height: 60,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
+    overflow: 'hidden',
     position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-  salaryFlipHalfTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 32,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
+  salaryTopHalfContainer: {
+    height: 30,
     overflow: 'hidden',
-  },
-  salaryFlipHalfBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 32,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
     justifyContent: 'flex-start',
-    alignItems: 'center',
-    overflow: 'hidden',
   },
-  salaryFlipDigitText: {
-    fontSize: 26,
+  salaryTopText: {
+    color: '#f8fafc',
+    fontSize: 28,
     fontWeight: 'bold',
     fontVariant: ['tabular-nums'],
-    height: 32,
-    lineHeight: 32,
     textAlign: 'center',
+    height: 60,
+    lineHeight: 60,
   },
-  salaryFlipDividerLine: {
+  salaryBottomHalfContainer: {
+    height: 30,
+    overflow: 'hidden',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    justifyContent: 'flex-end',
+  },
+  salaryBottomText: {
+    color: '#cbd5e1',
+    fontSize: 28,
+    fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    height: 60,
+    lineHeight: 60,
+    marginTop: -30,
+  },
+  salaryFlipCardDivider: {
     position: 'absolute',
+    top: 30,
     left: 0,
     right: 0,
-    top: 31,
     height: 1.5,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     zIndex: 10,
-  },
-  salaryFlipFlapTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 32,
-    zIndex: 3,
-    backfaceVisibility: 'hidden',
-  },
-  salaryFlipFlapBottom: {
-    position: 'absolute',
-    top: 32,
-    left: 0,
-    right: 0,
-    height: 32,
-    zIndex: 2,
-    backfaceVisibility: 'hidden',
   },
   flipLabel: {
     color: '#64748b',
