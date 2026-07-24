@@ -831,13 +831,13 @@ export default function PaymentsScreen() {
           {nextPaymentCountdown && (
             <View style={[styles.countdownCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={[styles.countdownCardHeader, { borderColor: t.divider, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-                <View style={styles.countdownTitleRow}>
+                <View style={[styles.countdownTitleRow, { flex: 1, paddingRight: 8 }]}>
                   <View style={[styles.calendarIconBg, { backgroundColor: 'rgba(238, 77, 45, 0.1)' }]}>
                     <CalendarIcon size={16} color={t.accent} />
                   </View>
-                  <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.countdownSubtitle, { color: t.textSecondary }]}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={[styles.countdownSubtitle, { color: t.textSecondary, flexShrink: 1 }]} numberOfLines={1}>
                         BILLING CYCLE OVERVIEW
                       </Text>
                       <TouchableOpacity
@@ -858,7 +858,7 @@ export default function PaymentsScreen() {
                         <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>Guide</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={[styles.countdownTitleText, { color: t.textPrimary }]}>
+                    <Text style={[styles.countdownTitleText, { color: t.textPrimary }]} numberOfLines={1}>
                       Due {parseUtcDate(nextPaymentCountdown.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })}
                     </Text>
                   </View>

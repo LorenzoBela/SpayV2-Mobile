@@ -46,7 +46,9 @@ import {
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
+  Info,
 } from 'lucide-react-native';
+import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
@@ -205,6 +207,7 @@ export default function AdminOrdersScreen() {
   const [editSharedParticipants, setEditSharedParticipants] = useState<string[]>([]);
 
   // Layout and Pagination states
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 6;
@@ -631,6 +634,24 @@ export default function AdminOrdersScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+        <TouchableOpacity
+          onPress={() => setIsGuideModalOpen(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.08)',
+            borderWidth: 1,
+            borderColor: 'rgba(238, 77, 45, 0.3)',
+            paddingHorizontal: 10,
+            paddingVertical: 9,
+            borderRadius: 12,
+            gap: 4,
+          }}
+        >
+          <Info size={14} color="#ee4d2d" />
+          <Text style={{ color: '#ee4d2d', fontSize: 12, fontWeight: '700' }}>Guide</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.assignBtn, { backgroundColor: t.accent, marginTop: 0 }]}
           onPress={() => {
@@ -2306,6 +2327,11 @@ export default function AdminOrdersScreen() {
           </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
+
+      <SPayLaterGuideModal
+        visible={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

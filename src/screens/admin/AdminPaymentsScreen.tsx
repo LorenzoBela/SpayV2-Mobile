@@ -36,6 +36,7 @@ import {
   CreditCard,
   User,
   Users,
+  Info,
   X,
   Check,
   CheckCircle,
@@ -66,6 +67,7 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DateParts } from '../../utils/date';
+import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminPayments, callAdminApi } from '../../services/adminService';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -872,6 +874,7 @@ export default function AdminPaymentsScreen() {
     });
   }, [rawPayments]);
 
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
   const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
     monthName: '',
     totalDue: 0,
@@ -1766,9 +1769,28 @@ export default function AdminPaymentsScreen() {
               <View style={[styles.scheduleTitleRow, { flex: 1 }]}>
                 <Calendar size={18} color={t.accent} />
                 <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={[styles.scheduleTitle, { color: t.textPrimary }]} numberOfLines={1}>
-                    {nextBillingSchedule.monthName ? `${nextBillingSchedule.monthName} Billing Cycle` : 'Billing Cycle Overview'}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={[styles.scheduleTitle, { color: t.textPrimary, flexShrink: 1 }]} numberOfLines={1}>
+                      {nextBillingSchedule.monthName ? `${nextBillingSchedule.monthName} Billing Cycle` : 'Billing Cycle Overview'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setIsGuideModalOpen(true)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(238, 77, 45, 0.1)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(238, 77, 45, 0.3)',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 10,
+                        gap: 3,
+                      }}
+                    >
+                      <Info size={10} color="#ee4d2d" />
+                      <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>Guide</Text>
+                    </TouchableOpacity>
+                  </View>
                   <Text style={styles.scheduleSubtitleText} numberOfLines={1}>
                     {nextBillingSchedule.monthName ? '' : 'No Billing Target'}
                     {nextBillingSchedule.earliestDueDate && `Earliest due on ${formatRelativeDate(nextBillingSchedule.earliestDueDate)}`}
@@ -4764,6 +4786,11 @@ export default function AdminPaymentsScreen() {
           </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
+
+      <SPayLaterGuideModal
+        visible={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }

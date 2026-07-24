@@ -312,15 +312,6 @@ export function calculateLiveNextPayday(
   const start = new Date(employmentStartDateStr);
   const isValidStart = !isNaN(start.getTime());
 
-  // If employment starts in the FUTURE relative to today:
-  if (isValidStart && now < start) {
-    const cutoff = getPayrollCutoffSchedule(employmentStartDateStr, 0, frequency);
-    if (cutoff.firstPaydayDate) {
-      return cutoff.firstPaydayDate;
-    }
-  }
-
-  // If employment start date is provided, check if the first payday cut-off target is in the future
   if (isValidStart) {
     const cutoff = getPayrollCutoffSchedule(employmentStartDateStr, 0, frequency);
     if (cutoff.firstPaydayDate && cutoff.firstPaydayDate >= todayStr) {

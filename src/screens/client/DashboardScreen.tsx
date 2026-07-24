@@ -1208,13 +1208,13 @@ export default function DashboardScreen() {
         {/* 1. Next Billing Cycle overview */}
         <View style={[styles.dashboardCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
+            <View style={[styles.cardHeaderLeft, { flex: 1, paddingRight: 8 }]}>
               <View style={styles.iconFrameOrange}>
                 <Calendar size={18} color="#ee4d2d" />
               </View>
-              <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.cardTitle, { color: t.textPrimary }]}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={[styles.cardTitle, { color: t.textPrimary, flexShrink: 1 }]} numberOfLines={1}>
                     {nextMonthlyPayment ? `${nextMonthlyPayment.monthName} Billing Cycle` : 'Billing Cycle Overview'}
                   </Text>
                   <TouchableOpacity
@@ -1235,7 +1235,7 @@ export default function DashboardScreen() {
                     <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>Guide</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>
+                <Text style={[styles.cardSubtitle, { color: t.textSecondary }]} numberOfLines={1}>
                   {nextMonthlyPayment ? (
                     <>Due {formatRelativeDate(nextMonthlyPayment.dueDate)} • {formatCurrency(nextMonthlyPayment.totalAmount)}</>
                   ) : (

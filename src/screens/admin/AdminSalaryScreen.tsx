@@ -10,18 +10,13 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
-  Alert,
-  Platform,
+  Animated as RNAnimated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Animated, {
   useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withSequence,
-  withTiming,
-  Easing,
 } from 'react-native-reanimated';
 import {
   ChevronLeft,
@@ -34,9 +29,7 @@ import {
   CheckCircle2,
   PlusCircle,
   ShieldCheck,
-  TrendingUp,
   ChevronRight,
-  ArrowUpRight,
   RefreshCw,
   AlertCircle,
   X,
@@ -44,9 +37,12 @@ import {
   Sparkles,
   Calculator,
   Receipt,
-  Check,
-  DollarSign,
   HelpCircle,
+  Zap,
+  Percent,
+  SlidersHorizontal,
+  PiggyBank,
+  CalendarClock,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -67,7 +63,182 @@ interface CountdownTime {
   hours: number;
   minutes: number;
   seconds: number;
+  isToday?: boolean;
+  isOverdue?: boolean;
 }
+
+const FLIP_PHASE_MS = 300;
+const FLIP_TOTAL_MS = FLIP_PHASE_MS * 2;
+const flipEaseIn = Easing.bezier(0.42, 0, 1, 1);
+const flipEaseOut = Easing.bezier(0, 0, 0.58, 1);
+
+interface SalaryFlipCardProps {
+  value: number;
+  label: string;
+  isSecs?: boolean;
+}
+
+const SalaryFlipCard = React.memo(function SalaryFlipCard({ value, label, isSecs }: SalaryFlipCardProps) {
+  const format = (val: number) => String(val).padStart(2, '0');
+  const newValue = format(value);
+
+  const [current, setCurrent] = useState(newValue);
+  const [previous, setPrevious] = useState(newValue);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [topRevealed, setTopRevealed] = useState(false);
+
+  const topFlipProgress = React.useRef(new RNAnimated.Value(1)).current;
+  const bottomFlipProgress = React.useRef(new RNAnimated.Value(1)).current;
+  const lastValueRef = React.useRef(newValue);
+  const animTimerRef = React.useRef<any>(null);
+  const revealTimerRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (newValue !== lastValueRef.current) {
+      setPrevious(lastValueRef.current);
+      setCurrent(newValue);
+      setIsAnimating(true);
+      setTopRevealed(false);
+      topFlipProgress.stopAnimation();
+      bottomFlipProgress.stopAnimation();
+      topFlipProgress.setValue(0);
+      bottomFlipProgress.setValue(0);
+
+      RNAnimated.parallel([
+        RNAnimated.timing(topFlipProgress, {
+          toValue: 1,
+          duration: FLIP_PHASE_MS,
+          easing: flipEaseIn,
+          useNativeDriver: true,
+        }),
+        RNAnimated.sequence([
+          RNAnimated.delay(FLIP_PHASE_MS),
+          RNAnimated.timing(bottomFlipProgress, {
+            toValue: 1,
+            duration: FLIP_PHASE_MS,
+            easing: flipEaseOut,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = setTimeout(() => {
+        setTopRevealed(true);
+      }, FLIP_PHASE_MS);
+
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+      animTimerRef.current = setTimeout(() => {
+        setIsAnimating(false);
+        setTopRevealed(false);
+      }, FLIP_TOTAL_MS);
+
+      lastValueRef.current = newValue;
+    }
+  }, [newValue]);
+
+  useEffect(() => {
+    return () => {
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+      topFlipProgress.stopAnimation();
+      bottomFlipProgress.stopAnimation();
+    };
+  }, []);
+
+  const activeFlip = isAnimating && previous !== current;
+  const topStaticValue = isAnimating && !topRevealed ? previous : current;
+  const bottomStaticValue = isAnimating ? previous : current;
+
+  const cardBgTop = isSecs ? '#281a17' : '#1e293b';
+  const cardBgBottom = isSecs ? '#1e1614' : '#0f172a';
+  const textColor = isSecs ? '#ff6b4a' : '#ffffff';
+  const labelColor = isSecs ? '#ff6b4a' : '#64748b';
+
+  const rotateTop = topFlipProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '-90deg'],
+  });
+
+  const rotateBottom = bottomFlipProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['90deg', '0deg'],
+  });
+
+  const opacityTop = topFlipProgress.interpolate({
+    inputRange: [0, 0.98, 1],
+    outputRange: [1, 1, 0],
+  });
+
+  const opacityBottom = bottomFlipProgress.interpolate({
+    inputRange: [0, 0.02, 1],
+    outputRange: [0, 1, 1],
+  });
+
+  return (
+    <View style={styles.salaryFlipCol}>
+      <View style={styles.salaryFlipOuter}>
+        {/* Top Static Half */}
+        <View style={[styles.salaryFlipHalfTop, { backgroundColor: cardBgTop }]}>
+          <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{topStaticValue}</Text>
+        </View>
+
+        {/* Bottom Static Half */}
+        <View style={[styles.salaryFlipHalfBottom, { backgroundColor: cardBgBottom }]}>
+          <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{bottomStaticValue}</Text>
+        </View>
+
+        {/* Center Divider Line */}
+        <View style={styles.salaryFlipDividerLine} />
+
+        {/* Animated Top Flap */}
+        {activeFlip && (
+          <RNAnimated.View
+            style={[
+              styles.salaryFlipFlapTop,
+              {
+                opacity: opacityTop,
+                transform: [
+                  { perspective: 400 },
+                  { translateY: 16 },
+                  { rotateX: rotateTop },
+                  { translateY: -16 },
+                ],
+              },
+            ]}
+          >
+            <View style={[styles.salaryFlipHalfTop, { backgroundColor: cardBgTop }]}>
+              <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{previous}</Text>
+            </View>
+          </RNAnimated.View>
+        )}
+
+        {/* Animated Bottom Flap */}
+        {activeFlip && (
+          <RNAnimated.View
+            style={[
+              styles.salaryFlipFlapBottom,
+              {
+                opacity: opacityBottom,
+                transform: [
+                  { perspective: 400 },
+                  { translateY: -16 },
+                  { rotateX: rotateBottom },
+                  { translateY: 16 },
+                ],
+              },
+            ]}
+          >
+            <View style={[styles.salaryFlipHalfBottom, { backgroundColor: cardBgBottom }]}>
+              <Text style={[styles.salaryFlipDigitText, { color: textColor }]}>{current}</Text>
+            </View>
+          </RNAnimated.View>
+        )}
+      </View>
+      <Text style={[styles.flipLabel, { color: labelColor }]}>{label}</Text>
+    </View>
+  );
+});
 
 export default function AdminSalaryScreen() {
   const navigation = useNavigation<any>();
@@ -90,17 +261,31 @@ export default function AdminSalaryScreen() {
   const [employerInput, setEmployerInput] = useState('');
   const [baseSalaryInput, setBaseSalaryInput] = useState('');
   const [startDateInput, setStartDateInput] = useState('');
+  const [endDateInput, setEndDateInput] = useState('');
   const [promotionNoteInput, setPromotionNoteInput] = useState('');
   const [submittingJob, setSubmittingJob] = useState(false);
+
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [settingsJobTitle, setSettingsJobTitle] = useState('');
+  const [settingsEmployer, setSettingsEmployer] = useState('');
+  const [settingsBaseSalary, setSettingsBaseSalary] = useState('');
+  const [settingsStartDate, setSettingsStartDate] = useState('');
+  const [settingsFrequency, setSettingsFrequency] = useState('SEMI_MONTHLY_10_25');
+  const [settingsCustomPayday, setSettingsCustomPayday] = useState('');
+  const [submittingSettings, setSubmittingSettings] = useState(false);
 
   const [payslipModalVisible, setPayslipModalVisible] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<SalaryPaycheckRecord | null>(null);
 
   // Countdown State
-  const [countdown, setCountdown] = useState<CountdownTime>({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-
-  // Reanimated flip values
-  const flipScale = useSharedValue(1);
+  const [countdown, setCountdown] = useState<CountdownTime>({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    isToday: false,
+    isOverdue: false,
+  });
 
   const loadData = useCallback(async () => {
     try {
@@ -127,37 +312,37 @@ export default function AdminSalaryScreen() {
   useEffect(() => {
     if (!salaryData?.nextPaydayIso) return;
 
-    const targetTime = new Date(salaryData.nextPaydayIso).getTime();
+    const targetDateStr = salaryData.nextPaydayIso.split('T')[0];
+    const targetDateObj = new Date(`${targetDateStr}T00:00:00`);
+    const target = targetDateObj.getTime();
 
     const updateTimer = () => {
       const now = new Date().getTime();
-      const diff = Math.max(0, targetTime - now);
+      const diff = target - now;
+
+      if (diff <= 0) {
+        const currentDate = new Date();
+        const isSameDay = targetDateObj.toDateString() === currentDate.toDateString();
+
+        if (isSameDay) {
+          setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, isToday: true, isOverdue: false });
+        } else {
+          setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, isToday: false, isOverdue: true });
+        }
+        return;
+      }
 
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
       const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setCountdown(prev => {
-        if (prev.seconds !== seconds) {
-          // Trigger flip animation pulse
-          flipScale.value = withSequence(
-            withTiming(1.04, { duration: 150, easing: Easing.out(Easing.quad) }),
-            withTiming(1.0, { duration: 150, easing: Easing.in(Easing.quad) })
-          );
-        }
-        return { days, hours, minutes, seconds };
-      });
+      setCountdown({ days, hours, minutes, seconds, isToday: false, isOverdue: false });
     };
 
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [salaryData?.nextPaydayIso]);
-
-  const animatedHeroStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: flipScale.value }],
-  }));
 
   // Confirm Paycheck handler
   const handleOpenConfirmModal = (check: SalaryPaycheckRecord) => {
@@ -197,6 +382,7 @@ export default function AdminSalaryScreen() {
       setEmployerInput(salaryData.employer || '');
       setBaseSalaryInput(salaryData.baseSalary ? salaryData.baseSalary.toString() : '');
       setStartDateInput(salaryData.employmentStartDate || '');
+      setEndDateInput('');
       setPromotionNoteInput('');
     }
     setJobModalVisible(true);
@@ -215,7 +401,8 @@ export default function AdminSalaryScreen() {
         employer: employerInput.trim() || 'S-Pay Operations',
         baseSalary: baseSalaryNum,
         startDate: startDateInput.trim(),
-        promotionNote: promotionNoteInput.trim() || undefined
+        endDate: endDateInput.trim() || null,
+        promotionNote: promotionNoteInput.trim() || undefined,
       });
       setSalaryData(updated);
       setJobModalVisible(false);
@@ -224,6 +411,45 @@ export default function AdminSalaryScreen() {
       PremiumAlert.alert('Error', err.message || 'Failed to save job position');
     } finally {
       setSubmittingJob(false);
+    }
+  };
+
+  // Settings Modal handler
+  const handleOpenSettingsModal = () => {
+    if (salaryData) {
+      setSettingsJobTitle(salaryData.jobTitle || '');
+      setSettingsEmployer(salaryData.employer || '');
+      setSettingsBaseSalary(salaryData.baseSalary ? salaryData.baseSalary.toString() : '');
+      setSettingsStartDate(salaryData.employmentStartDate || '');
+      setSettingsFrequency(salaryData.frequency || 'SEMI_MONTHLY_10_25');
+      setSettingsCustomPayday(salaryData.customPayday || '');
+    }
+    setSettingsModalVisible(true);
+  };
+
+  const handleSaveSettingsSubmit = async () => {
+    if (!settingsJobTitle.trim() || !settingsBaseSalary.trim() || !settingsStartDate.trim()) {
+      PremiumAlert.alert('Validation Error', 'Please fill in Job Title, Base Monthly Salary, and Employment Start Date.');
+      return;
+    }
+    setSubmittingSettings(true);
+    try {
+      const baseSalaryNum = parseFloat(settingsBaseSalary) || 0;
+      const updated = await updateSalarySettings({
+        jobTitle: settingsJobTitle.trim(),
+        employer: settingsEmployer.trim() || 'S-Pay Operations',
+        baseSalary: baseSalaryNum,
+        employmentStartDate: settingsStartDate.trim(),
+        frequency: settingsFrequency,
+        customPayday: settingsFrequency === 'CUSTOM' ? settingsCustomPayday.trim() : null,
+      });
+      setSalaryData(updated);
+      setSettingsModalVisible(false);
+      PremiumAlert.alert('Settings Saved', 'Salary profile and pay cycle frequency updated successfully.');
+    } catch (err: any) {
+      PremiumAlert.alert('Error', err.message || 'Failed to update salary settings');
+    } finally {
+      setSubmittingSettings(false);
     }
   };
 
@@ -266,6 +492,11 @@ export default function AdminSalaryScreen() {
   const bonus = salaryData?.bonus13thBreakdown;
   const cutoff = salaryData?.cutoffSchedule;
 
+  const baseGross = salaryData?.baseSalary || 0;
+  const annualTarget = baseGross * 12;
+  const totalEarned = salaryData?.totalEarnedLifetime || 0;
+  const progressPercent = annualTarget > 0 ? Math.min(100, Math.round((totalEarned / annualTarget) * 100)) : 0;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={theme.headerBg} />
@@ -283,13 +514,22 @@ export default function AdminSalaryScreen() {
           <Text style={styles.headerSubtitle}>COMPENSATION & CASHFLOW</Text>
           <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Salary Payday Hub</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.refreshIconBtn, { backgroundColor: theme.accentLight }]}
-          onPress={onRefresh}
-          activeOpacity={0.7}
-        >
-          <RefreshCw size={18} color={theme.accent} />
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            style={[styles.refreshIconBtn, { backgroundColor: theme.accentLight, marginRight: 6 }]}
+            onPress={handleOpenSettingsModal}
+            activeOpacity={0.7}
+          >
+            <SlidersHorizontal size={18} color={theme.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.refreshIconBtn, { backgroundColor: theme.accentLight }]}
+            onPress={onRefresh}
+            activeOpacity={0.7}
+          >
+            <RefreshCw size={18} color={theme.accent} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -309,17 +549,18 @@ export default function AdminSalaryScreen() {
           style={[
             styles.heroCard,
             { backgroundColor: isDarkMode ? '#1a2234' : '#1e293b', borderColor: isDarkMode ? '#2e3d5a' : '#334155' },
-            animatedHeroStyle,
           ]}
         >
           <View style={styles.heroHeaderRow}>
             <View style={styles.heroBadge}>
               <Sparkles size={12} color="#fbbf24" />
-              <Text style={styles.heroBadgeText}>SEMI-MONTHLY TARGET (10TH & 25TH)</Text>
+              <Text style={styles.heroBadgeText}>
+                {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? 'SEMI-MONTHLY TARGET (15TH & 30TH)' : 'SEMI-MONTHLY TARGET (10TH & 25TH)'}
+              </Text>
             </View>
             <Text style={styles.heroTargetLabel}>
               {salaryData?.nextPaydayIso
-                ? new Date(salaryData.nextPaydayIso).toLocaleDateString('en-US', {
+                ? new Date(`${salaryData.nextPaydayIso.split('T')[0]}T00:00:00`).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric',
@@ -335,40 +576,46 @@ export default function AdminSalaryScreen() {
 
           {/* Flip Digit Containers */}
           <View style={styles.flipGrid}>
-            <View style={styles.flipBox}>
-              <View style={styles.flipCardInner}>
-                <Text style={styles.flipDigit}>{String(countdown.days).padStart(2, '0')}</Text>
-              </View>
-              <Text style={styles.flipLabel}>DAYS</Text>
-            </View>
-
+            <SalaryFlipCard value={countdown.days} label="DAYS" />
             <Text style={styles.flipColon}>:</Text>
-
-            <View style={styles.flipBox}>
-              <View style={styles.flipCardInner}>
-                <Text style={styles.flipDigit}>{String(countdown.hours).padStart(2, '0')}</Text>
-              </View>
-              <Text style={styles.flipLabel}>HOURS</Text>
-            </View>
-
+            <SalaryFlipCard value={countdown.hours} label="HOURS" />
             <Text style={styles.flipColon}>:</Text>
-
-            <View style={styles.flipBox}>
-              <View style={styles.flipCardInner}>
-                <Text style={styles.flipDigit}>{String(countdown.minutes).padStart(2, '0')}</Text>
-              </View>
-              <Text style={styles.flipLabel}>MINS</Text>
-            </View>
-
+            <SalaryFlipCard value={countdown.minutes} label="MINS" />
             <Text style={styles.flipColon}>:</Text>
+            <SalaryFlipCard value={countdown.seconds} label="SECS" isSecs />
+          </View>
 
-            <View style={styles.flipBox}>
-              <View style={[styles.flipCardInner, styles.flipCardInnerActive]}>
-                <Text style={[styles.flipDigit, { color: '#ff6b4a' }]}>
-                  {String(countdown.seconds).padStart(2, '0')}
-                </Text>
-              </View>
-              <Text style={[styles.flipLabel, { color: '#ff6b4a' }]}>SECS</Text>
+          {/* Status Message */}
+          <View style={styles.heroStatusContainer}>
+            <Clock size={13} color="#ee4d2d" />
+            <Text style={styles.heroStatusText}>
+              {countdown.isToday
+                ? 'Payday Today — Cash is in'
+                : countdown.isOverdue
+                ? 'Payday Date Arrived'
+                : `Target: ${
+                    salaryData?.nextPaydayIso
+                      ? new Date(`${salaryData.nextPaydayIso.split('T')[0]}T00:00:00`).toLocaleDateString('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })
+                      : 'Next Payday'
+                  }`}
+            </Text>
+          </View>
+
+          {/* Progress Bar towards Annual Gross Target */}
+          <View style={styles.heroTargetProgressBox}>
+            <View style={styles.heroTargetHeaderRow}>
+              <Text style={styles.heroTargetTitle}>
+                Annual Target ({formatCurrency(annualTarget)})
+              </Text>
+              <Text style={styles.heroTargetPercent}>{progressPercent}%</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
             </View>
           </View>
 
@@ -376,7 +623,7 @@ export default function AdminSalaryScreen() {
             <View style={styles.heroFooterItem}>
               <Clock size={14} color="#94a3b8" />
               <Text style={styles.heroFooterText}>
-                Cycle: {salaryData?.frequency === 'SEMI_MONTHLY_10_25' ? '10th & 25th of Month' : '15th & 30th of Month'}
+                Cycle: {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '15th & 30th of Month' : '10th & 25th of Month'}
               </Text>
             </View>
             <View style={styles.heroFooterItem}>
@@ -393,7 +640,7 @@ export default function AdminSalaryScreen() {
           {/* Card 1: Total Net Received */}
           <View style={[styles.pillCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
             <View style={[styles.pillIconBox, { backgroundColor: theme.emeraldLight }]}>
-              <Banknote size={18} color={theme.emerald} />
+              <PiggyBank size={18} color={theme.emerald} />
             </View>
             <Text style={[styles.pillLabel, { color: theme.textSecondary }]}>Total Net Received</Text>
             <Text style={[styles.pillValue, { color: theme.emerald }]}>
@@ -487,9 +734,13 @@ export default function AdminSalaryScreen() {
               <View style={[styles.sectionIconBox, { backgroundColor: theme.blueLight }]}>
                 <Briefcase size={20} color={theme.blue} />
               </View>
-              <View>
-                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Position & Promotion History</Text>
-                <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>Career growth & compensation timeline</Text>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                  Position & Promotion History
+                </Text>
+                <Text style={[styles.sectionSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  Career growth & compensation timeline
+                </Text>
               </View>
             </View>
             <TouchableOpacity
@@ -506,7 +757,7 @@ export default function AdminSalaryScreen() {
           {salaryData?.jobHistory && salaryData.jobHistory.length > 0 ? (
             <View style={styles.timelineList}>
               {salaryData.jobHistory.map((item: JobHistoryRecord, idx: number) => {
-                const isPresent = !item.endDate;
+                const isPresent = !item.endDate || item.endDate === 'Present' || String(item.endDate).toLowerCase() === 'present';
                 return (
                   <View key={item.id || idx} style={styles.timelineItem}>
                     <View style={styles.timelineLeftColumn}>
@@ -527,7 +778,7 @@ export default function AdminSalaryScreen() {
                         </Text>
                         <View style={[styles.timelineBadge, { backgroundColor: isPresent ? theme.accentLight : 'rgba(148, 163, 184, 0.15)' }]}>
                           <Text style={[styles.timelineBadgeText, { color: isPresent ? theme.accent : theme.textMuted }]}>
-                            {isPresent ? 'PRESENT ROLE' : 'PAST POSITION'}
+                            {isPresent ? 'ACTIVE POSITION' : 'PAST POSITION'}
                           </Text>
                         </View>
                       </View>
@@ -550,7 +801,7 @@ export default function AdminSalaryScreen() {
                         <View style={[styles.promotionNoteBox, { backgroundColor: theme.blueLight }]}>
                           <Award size={12} color={theme.blue} />
                           <Text style={[styles.promotionNoteText, { color: theme.blue }]}>
-                            {item.promotionNote}
+                            "{item.promotionNote}"
                           </Text>
                         </View>
                       ) : null}
@@ -571,10 +822,19 @@ export default function AdminSalaryScreen() {
               <View style={[styles.sectionIconBox, { backgroundColor: theme.purpleLight }]}>
                 <Calculator size={20} color={theme.purple} />
               </View>
-              <View>
-                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>BIR TRAIN Law & Statutory</Text>
-                <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>Itemized official monthly deductions</Text>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                  BIR TRAIN Law & Statutory
+                </Text>
+                <Text style={[styles.sectionSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  Sweldo.ph BIR TRAIN Formula
+                </Text>
               </View>
+            </View>
+            <View style={[styles.taxRateBadge, { backgroundColor: theme.purpleLight }]}>
+              <Text style={[styles.taxRateBadgeText, { color: theme.purple }]}>
+                Eff. {tax?.effectiveTaxRate || 0}%
+              </Text>
             </View>
           </View>
 
@@ -615,7 +875,7 @@ export default function AdminSalaryScreen() {
 
             <View style={[styles.tableRow, styles.totalRow, { borderTopColor: theme.cardBorder }]}>
               <View>
-                <Text style={[styles.totalLabel, { color: theme.textPrimary }]}>Monthly Net Take-Home</Text>
+                <Text style={[styles.totalLabel, { color: theme.textPrimary }]}>Net Take-Home (Monthly)</Text>
                 <Text style={[styles.totalSub, { color: theme.textMuted }]}>
                   Effective Tax Rate: {tax?.effectiveTaxRate || 0}%
                 </Text>
@@ -627,13 +887,17 @@ export default function AdminSalaryScreen() {
 
             <View style={styles.paycheckPairRow}>
               <View style={[styles.paycheckPairBox, { backgroundColor: theme.emeraldLight }]}>
-                <Text style={[styles.paycheckPairLabel, { color: theme.emerald }]}>10th Paycheck</Text>
+                <Text style={[styles.paycheckPairLabel, { color: theme.emerald }]}>
+                  {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '15th Paycheck' : '10th Paycheck'}
+                </Text>
                 <Text style={[styles.paycheckPairVal, { color: theme.emerald }]}>
                   {formatCurrency(tax?.paycheck10th || 0)}
                 </Text>
               </View>
               <View style={[styles.paycheckPairBox, { backgroundColor: theme.emeraldLight }]}>
-                <Text style={[styles.paycheckPairLabel, { color: theme.emerald }]}>25th Paycheck</Text>
+                <Text style={[styles.paycheckPairLabel, { color: theme.emerald }]}>
+                  {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '30th Paycheck' : '25th Paycheck'}
+                </Text>
                 <Text style={[styles.paycheckPairVal, { color: theme.emerald }]}>
                   {formatCurrency(tax?.paycheck25th || 0)}
                 </Text>
@@ -649,36 +913,70 @@ export default function AdminSalaryScreen() {
               <View style={[styles.sectionIconBox, { backgroundColor: theme.amberLight }]}>
                 <Award size={20} color={theme.amber} />
               </View>
-              <View>
-                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>DOLE P.D. 851 13th Month Bonus</Text>
-                <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>Mandatory pro-rated year-end bonus</Text>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                  DOLE P.D. 851 13th Month Bonus
+                </Text>
+                <Text style={[styles.sectionSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  Mandatory pro-rated year-end bonus
+                </Text>
               </View>
             </View>
-            {bonus?.isFullyTaxExempt && (
-              <View style={[styles.taxExemptBadge, { backgroundColor: theme.emeraldLight }]}>
-                <ShieldCheck size={12} color={theme.emerald} />
-                <Text style={[styles.taxExemptBadgeText, { color: theme.emerald }]}>100% Tax Exempt</Text>
-              </View>
-            )}
+            <View style={[styles.taxExemptBadge, { backgroundColor: theme.amberLight }]}>
+              <Percent size={12} color={theme.amber} />
+              <Text style={[styles.taxExemptBadgeText, { color: theme.amber }]}>
+                {bonus?.proratedPercentage || 0}% Rate
+              </Text>
+            </View>
           </View>
 
           <View style={styles.bonusGrid}>
             <View style={[styles.bonusGridBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' }]}>
-              <Text style={[styles.bonusGridLabel, { color: theme.textMuted }]}>Months Worked</Text>
-              <Text style={[styles.bonusGridVal, { color: theme.textPrimary }]}>{bonus?.monthsWorked || 0} mos</Text>
-              <Text style={[styles.bonusGridSub, { color: theme.textSecondary }]}>{bonus?.proratedPercentage || 0}% of Year</Text>
+              <Text style={[styles.bonusGridLabel, { color: theme.textMuted }]}>Tenure Window</Text>
+              <Text style={[styles.bonusGridVal, { color: theme.textPrimary }]}>
+                {bonus?.monthsWorked || 0} Mos ({bonus?.daysWorked || 0} Days)
+              </Text>
+              <Text style={[styles.bonusGridSub, { color: theme.textSecondary }]}>
+                Earned: {formatCurrency(bonus?.totalEarnedInYear || 0)}
+              </Text>
             </View>
             <View style={[styles.bonusGridBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' }]}>
               <Text style={[styles.bonusGridLabel, { color: theme.textMuted }]}>Gross 13th Month</Text>
-              <Text style={[styles.bonusGridVal, { color: theme.emerald }]}>{formatCurrency(bonus?.gross13thMonthPay || 0)}</Text>
-              <Text style={[styles.bonusGridSub, { color: theme.textSecondary }]}>Cap Limit: ₱90,000</Text>
+              <Text style={[styles.bonusGridVal, { color: theme.emerald }]}>
+                {formatCurrency(bonus?.gross13thMonthPay || 0)}
+              </Text>
+              <Text style={[styles.bonusGridSub, { color: theme.textSecondary }]}>Tax Cap: ₱90,000</Text>
             </View>
           </View>
 
-          <View style={[styles.bonusNoteBox, { backgroundColor: isDarkMode ? 'rgba(245, 158, 11, 0.08)' : '#fffbeb', borderColor: '#fcd34d' }]}>
-            <HelpCircle size={16} color={theme.amber} />
-            <Text style={[styles.bonusNoteText, { color: isDarkMode ? '#fef08a' : '#92400e' }]}>
-              Under BIR rules, 13th month pay up to ₱90,000 is tax-exempt. Taxable excess over limit: {formatCurrency(bonus?.taxable13thMonthAmount || 0)}.
+          {/* Tax Exemption Banner */}
+          <View style={[styles.bonusNoteBox, { backgroundColor: bonus?.isFullyTaxExempt ? theme.emeraldLight : theme.amberLight, borderColor: bonus?.isFullyTaxExempt ? theme.emerald : theme.amber }]}>
+            {bonus?.isFullyTaxExempt ? (
+              <ShieldCheck size={16} color={theme.emerald} />
+            ) : (
+              <AlertCircle size={16} color={theme.amber} />
+            )}
+            <Text style={[styles.bonusNoteText, { color: bonus?.isFullyTaxExempt ? theme.emerald : theme.amber }]}>
+              {bonus?.isFullyTaxExempt
+                ? '100% Tax Exempt (Below ₱90,000 Cap)'
+                : `₱${(bonus?.taxable13thMonthAmount || 0).toLocaleString()} Taxable over ₱90k (Est. Tax: -${formatCurrency(bonus?.estimated13thMonthTax || 0)})`}
+            </Text>
+          </View>
+
+          {/* Final Net 13th Month Bonus */}
+          <View style={[styles.net13thMonthBox, { backgroundColor: theme.accentLight }]}>
+            <View>
+              <Text style={[styles.net13thMonthLabel, { color: theme.accent }]}>Net 13th Month Bonus Payout</Text>
+              <Text style={[styles.net13thMonthVal, { color: theme.accent }]}>
+                {formatCurrency(bonus?.net13thMonthPay || 0)}
+              </Text>
+            </View>
+            <Award size={22} color={theme.accent} />
+          </View>
+
+          <View style={styles.doleDeadlineBanner}>
+            <Text style={[styles.doleDeadlineText, { color: theme.textMuted }]}>
+              DOLE Mandatory Payout Deadline: On or before Dec 24.
             </Text>
           </View>
         </View>
@@ -688,12 +986,21 @@ export default function AdminSalaryScreen() {
           <View style={styles.sectionHeaderRow}>
             <View style={styles.titleWithIcon}>
               <View style={[styles.sectionIconBox, { backgroundColor: theme.blueLight }]}>
-                <Clock size={20} color={theme.blue} />
+                <CalendarClock size={20} color={theme.blue} />
               </View>
-              <View>
-                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Payroll Cut-Off Schedule</Text>
-                <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>First payday & cut-off alignment</Text>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                  Payroll Cut-Off Schedule
+                </Text>
+                <Text style={[styles.sectionSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  First payday & cut-off alignment
+                </Text>
               </View>
+            </View>
+            <View style={[styles.scheduleBadge, { backgroundColor: theme.accentLight }]}>
+              <Text style={[styles.scheduleBadgeText, { color: theme.accent }]}>
+                {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '15th & 30th Payroll' : '10th & 25th Payroll'}
+              </Text>
             </View>
           </View>
 
@@ -713,9 +1020,20 @@ export default function AdminSalaryScreen() {
             <View style={styles.cutoffRow}>
               <Text style={[styles.cutoffLabel, { color: theme.textSecondary }]}>First Paycheck Status</Text>
               <Text style={[styles.cutoffVal, { color: cutoff?.isFirstPaydayProrated ? theme.amber : theme.emerald }]}>
-                {cutoff?.isFirstPaydayProrated ? 'Prorated' : 'Full Semi-Monthly'}
+                {cutoff?.isFirstPaydayProrated ? 'Pro-Rated (Started Mid-Cutoff)' : 'Full Semi-Monthly Cut-Off'}
               </Text>
             </View>
+            <View style={[styles.cutoffRow, styles.cutoffHighlightRow, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+              <Text style={[styles.cutoffLabel, { color: theme.textPrimary, fontWeight: 'bold' }]}>Est. First Net Paycheck</Text>
+              <Text style={[styles.cutoffVal, { color: theme.emerald, fontSize: 14 }]}>
+                {formatCurrency(cutoff?.proratedFirstPaycheck || 0)}
+              </Text>
+            </View>
+            {cutoff?.isFirstPaydayProrated && (
+              <Text style={[styles.cutoffSubDetail, { color: theme.textMuted }]}>
+                Standard Semi-Monthly: {formatCurrency(cutoff?.standardSemiMonthlyPaycheck || 0)}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -726,9 +1044,13 @@ export default function AdminSalaryScreen() {
               <View style={[styles.sectionIconBox, { backgroundColor: theme.emeraldLight }]}>
                 <Receipt size={20} color={theme.emerald} />
               </View>
-              <View>
-                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Confirmed Payday Ledger</Text>
-                <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>Historical payslips & digital receipts</Text>
+              <View style={{ flex: 1, marginRight: 6 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                  Confirmed Payday Ledger
+                </Text>
+                <Text style={[styles.sectionSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                  Historical payslips & digital receipts
+                </Text>
               </View>
             </View>
           </View>
@@ -745,6 +1067,11 @@ export default function AdminSalaryScreen() {
                   <View style={styles.ledgerLeft}>
                     <Text style={[styles.ledgerPeriod, { color: theme.textPrimary }]}>{check.periodLabel}</Text>
                     <Text style={[styles.ledgerDate, { color: theme.textMuted }]}>Payday: {check.paydayDate}</Text>
+                    <View style={styles.ledgerDetailsSubRow}>
+                      <Text style={[styles.ledgerSubText, { color: theme.textMuted }]}>
+                        Base: {formatCurrency(check.expectedNet)} • Tax: {formatCurrency(check.taxDeducted || (tax?.withholdingTax ? tax.withholdingTax / 2 : 0))}
+                      </Text>
+                    </View>
                   </View>
                   <View style={styles.ledgerRight}>
                     <Text style={[styles.ledgerAmount, { color: theme.emerald }]}>
@@ -869,7 +1196,7 @@ export default function AdminSalaryScreen() {
         <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
           <View style={[styles.modalCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
             <View style={styles.modalHeaderRow}>
-              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Log Job Position / Salary Raise</Text>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Log Job Position / Role</Text>
               <TouchableOpacity onPress={() => setJobModalVisible(false)}>
                 <X size={20} color={theme.textSecondary} />
               </TouchableOpacity>
@@ -913,7 +1240,7 @@ export default function AdminSalaryScreen() {
                 onChangeText={setBaseSalaryInput}
               />
 
-              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Employment Start Date * (YYYY-MM-DD)</Text>
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Start Date * (YYYY-MM-DD)</Text>
               <TextInput
                 style={[
                   styles.textInput,
@@ -923,6 +1250,18 @@ export default function AdminSalaryScreen() {
                 placeholderTextColor={theme.textMuted}
                 value={startDateInput}
                 onChangeText={setStartDateInput}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>End Date (YYYY-MM-DD or leave blank for Present)</Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: theme.textPrimary, borderColor: theme.cardBorder },
+                ]}
+                placeholder="Leave empty for Present"
+                placeholderTextColor={theme.textMuted}
+                value={endDateInput}
+                onChangeText={setEndDateInput}
               />
 
               <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Promotion Note / Reason</Text>
@@ -961,7 +1300,145 @@ export default function AdminSalaryScreen() {
         </View>
       </Modal>
 
-      {/* MODAL 3: DIGITAL PAYSLIP MODAL */}
+      {/* MODAL 3: SALARY PROFILE & PAY CYCLE SETTINGS MODAL */}
+      <Modal
+        visible={settingsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSettingsModalVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.modalOverlay }]}>
+          <View style={[styles.modalCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Salary Profile & Cycle Settings</Text>
+              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
+                <X size={20} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Job Title / Position *</Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: theme.textPrimary, borderColor: theme.cardBorder },
+                ]}
+                placeholder="e.g. Software Engineer"
+                placeholderTextColor={theme.textMuted}
+                value={settingsJobTitle}
+                onChangeText={setSettingsJobTitle}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Employer / Company</Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: theme.textPrimary, borderColor: theme.cardBorder },
+                ]}
+                placeholder="e.g. S-Pay Operations"
+                placeholderTextColor={theme.textMuted}
+                value={settingsEmployer}
+                onChangeText={setSettingsEmployer}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Base Monthly Salary (₱) *</Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: theme.textPrimary, borderColor: theme.cardBorder },
+                ]}
+                placeholder="e.g. 50000"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="numeric"
+                value={settingsBaseSalary}
+                onChangeText={setSettingsBaseSalary}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Employment Start Date * (YYYY-MM-DD)</Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: theme.textPrimary, borderColor: theme.cardBorder },
+                ]}
+                placeholder="2026-01-01"
+                placeholderTextColor={theme.textMuted}
+                value={settingsStartDate}
+                onChangeText={setSettingsStartDate}
+              />
+
+              <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Pay Cycle Frequency</Text>
+              <View style={styles.frequencyPickerCol}>
+                {[
+                  { label: 'Semi-Monthly (10th & 25th)', value: 'SEMI_MONTHLY_10_25' },
+                  { label: 'Semi-Monthly (15th & 30th)', value: 'SEMI_MONTHLY_15_30' },
+                  { label: 'Monthly (End of Month)', value: 'MONTHLY_END' },
+                  { label: 'Bi-Weekly (Every 2 Weeks)', value: 'BI_WEEKLY' },
+                  { label: 'Custom Payday Override', value: 'CUSTOM' },
+                ].map((opt) => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.frequencyOptionBtn,
+                      {
+                        backgroundColor: settingsFrequency === opt.value ? theme.accentLight : isDarkMode ? '#1e293b' : '#f8fafc',
+                        borderColor: settingsFrequency === opt.value ? theme.accent : theme.cardBorder,
+                      },
+                    ]}
+                    onPress={() => setSettingsFrequency(opt.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.frequencyOptionText,
+                        { color: settingsFrequency === opt.value ? theme.accent : theme.textPrimary },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {settingsFrequency === 'CUSTOM' && (
+                <>
+                  <Text style={[styles.inputLabel, { color: theme.textPrimary }]}>Custom Target Payday (YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={[
+                      styles.textInput,
+                      { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: theme.textPrimary, borderColor: theme.cardBorder },
+                    ]}
+                    placeholder="2026-08-01"
+                    placeholderTextColor={theme.textMuted}
+                    value={settingsCustomPayday}
+                    onChangeText={setSettingsCustomPayday}
+                  />
+                </>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalFooterRow}>
+              <TouchableOpacity
+                style={[styles.modalCancelBtn, { borderColor: theme.cardBorder }]}
+                onPress={() => setSettingsModalVisible(false)}
+              >
+                <Text style={[styles.modalCancelBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: theme.accent }]}
+                onPress={handleSaveSettingsSubmit}
+                disabled={submittingSettings}
+              >
+                {submittingSettings ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.modalSubmitBtnText}>Save Settings</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 4: DIGITAL PAYSLIP MODAL */}
       <Modal
         visible={payslipModalVisible}
         transparent
@@ -973,9 +1450,14 @@ export default function AdminSalaryScreen() {
             <View style={styles.modalHeaderRow}>
               <View style={styles.payslipHeaderTitleRow}>
                 <Receipt size={22} color={theme.accent} />
-                <Text style={[styles.modalTitle, { color: theme.textPrimary, marginLeft: 8 }]}>
-                  Official Digital Payslip
-                </Text>
+                <View style={{ marginLeft: 8 }}>
+                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+                    Official Digital Payslip
+                  </Text>
+                  <Text style={[styles.payslipRefId, { color: theme.textMuted }]}>
+                    Ref ID: {selectedPayslip?.id || 'N/A'}
+                  </Text>
+                </View>
               </View>
               <TouchableOpacity onPress={() => setPayslipModalVisible(false)}>
                 <X size={20} color={theme.textSecondary} />
@@ -985,7 +1467,10 @@ export default function AdminSalaryScreen() {
             {selectedPayslip && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 <View style={[styles.payslipStampBox, { backgroundColor: theme.accentLight }]}>
-                  <Text style={styles.payslipStampCompany}>S-PAY OPERATIONS</Text>
+                  <Text style={styles.payslipStampCompany}>{salaryData?.employer?.toUpperCase() || 'S-PAY OPERATIONS'}</Text>
+                  <Text style={[styles.payslipStampPosition, { color: theme.accent }]}>
+                    {salaryData?.jobTitle || 'Position Unspecified'}
+                  </Text>
                   <Text style={[styles.payslipStampPeriod, { color: theme.textPrimary }]}>
                     {selectedPayslip.periodLabel}
                   </Text>
@@ -1001,35 +1486,35 @@ export default function AdminSalaryScreen() {
                 <View style={styles.payslipLineRow}>
                   <Text style={[styles.payslipLineLabel, { color: theme.textSecondary }]}>Expected Semi-Monthly Gross</Text>
                   <Text style={[styles.payslipLineVal, { color: theme.textPrimary }]}>
-                    {formatCurrency(selectedPayslip.expectedGross)}
+                    {formatCurrency(selectedPayslip.expectedGross || (tax?.grossMonthly ? tax.grossMonthly / 2 : 0))}
                   </Text>
                 </View>
 
                 <View style={styles.payslipLineRow}>
                   <Text style={[styles.payslipLineLabel, { color: theme.textSecondary }]}>SSS Employee Share</Text>
                   <Text style={[styles.payslipLineVal, { color: theme.textPrimary }]}>
-                    -{formatCurrency(selectedPayslip.sssDeducted)}
+                    -{formatCurrency(selectedPayslip.sssDeducted || (tax?.sss ? tax.sss / 2 : 0))}
                   </Text>
                 </View>
 
                 <View style={styles.payslipLineRow}>
                   <Text style={[styles.payslipLineLabel, { color: theme.textSecondary }]}>PhilHealth Share</Text>
                   <Text style={[styles.payslipLineVal, { color: theme.textPrimary }]}>
-                    -{formatCurrency(selectedPayslip.philhealthDeducted)}
+                    -{formatCurrency(selectedPayslip.philhealthDeducted || (tax?.philhealth ? tax.philhealth / 2 : 0))}
                   </Text>
                 </View>
 
                 <View style={styles.payslipLineRow}>
                   <Text style={[styles.payslipLineLabel, { color: theme.textSecondary }]}>Pag-IBIG HDMF Share</Text>
                   <Text style={[styles.payslipLineVal, { color: theme.textPrimary }]}>
-                    -{formatCurrency(selectedPayslip.pagibigDeducted)}
+                    -{formatCurrency(selectedPayslip.pagibigDeducted || (tax?.pagibig ? tax.pagibig / 2 : 0))}
                   </Text>
                 </View>
 
                 <View style={styles.payslipLineRow}>
                   <Text style={[styles.payslipLineLabel, { color: theme.textSecondary }]}>BIR Withholding Tax</Text>
                   <Text style={[styles.payslipLineVal, { color: theme.amber }]}>
-                    -{formatCurrency(selectedPayslip.taxDeducted)}
+                    -{formatCurrency(selectedPayslip.taxDeducted || (tax?.withholdingTax ? tax.withholdingTax / 2 : 0))}
                   </Text>
                 </View>
 
@@ -1109,6 +1594,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 1,
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   refreshIconBtn: {
     width: 36,
     height: 36,
@@ -1119,6 +1608,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingTop: 12,
+    paddingBottom: 120,
   },
 
   /* Hero Card & Flip Digits */
@@ -1170,30 +1660,75 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  flipBox: {
+  salaryFlipCol: {
     alignItems: 'center',
   },
-  flipCardInner: {
-    width: 60,
+  salaryFlipOuter: {
+    width: 58,
     height: 64,
-    backgroundColor: '#0f172a',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#334155',
-    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+  },
+  salaryFlipHalfTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 32,
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    overflow: 'hidden',
   },
-  flipCardInnerActive: {
-    borderColor: '#ff6b4a',
-    backgroundColor: '#1e1b18',
+  salaryFlipHalfBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 32,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
-  flipDigit: {
-    color: '#ffffff',
-    fontSize: 24,
+  salaryFlipDigitText: {
+    fontSize: 26,
     fontWeight: 'bold',
     fontVariant: ['tabular-nums'],
+    height: 32,
+    lineHeight: 32,
+    textAlign: 'center',
+  },
+  salaryFlipDividerLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 31,
+    height: 1.5,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    zIndex: 10,
+  },
+  salaryFlipFlapTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 32,
+    zIndex: 3,
+    backfaceVisibility: 'hidden',
+  },
+  salaryFlipFlapBottom: {
+    position: 'absolute',
+    top: 32,
+    left: 0,
+    right: 0,
+    height: 32,
+    zIndex: 2,
+    backfaceVisibility: 'hidden',
   },
   flipLabel: {
     color: '#64748b',
@@ -1207,6 +1742,53 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     marginTop: -16,
+  },
+  heroStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 14,
+  },
+  heroStatusText: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  heroTargetProgressBox: {
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 14,
+  },
+  heroTargetHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  heroTargetTitle: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  heroTargetPercent: {
+    color: '#ff6b4a',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: '#1e293b',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#ee4d2d',
+    borderRadius: 3,
   },
   heroFooter: {
     flexDirection: 'row',
@@ -1391,6 +1973,8 @@ const styles = StyleSheet.create({
   timelineJobTitle: {
     fontSize: 13,
     fontWeight: 'bold',
+    flex: 1,
+    marginRight: 6,
   },
   timelineBadge: {
     paddingHorizontal: 6,
@@ -1441,6 +2025,15 @@ const styles = StyleSheet.create({
   },
 
   /* Tax Breakdown Table */
+  taxRateBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  taxRateBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   grossHeaderBox: {
     borderRadius: 12,
     padding: 12,
@@ -1549,7 +2142,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   bonusGridVal: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 'bold',
     marginTop: 2,
   },
@@ -1564,13 +2157,51 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     borderWidth: 1,
+    marginBottom: 10,
   },
   bonusNoteText: {
     fontSize: 11,
     flex: 1,
+    fontWeight: '600',
+  },
+  net13thMonthBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  net13thMonthLabel: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  net13thMonthVal: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  doleDeadlineBanner: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  doleDeadlineText: {
+    fontSize: 10,
+    fontStyle: 'italic',
   },
 
   /* Cutoff info */
+  scheduleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  scheduleBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   cutoffInfoContainer: {
     gap: 8,
   },
@@ -1579,12 +2210,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  cutoffHighlightRow: {
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 4,
+  },
   cutoffLabel: {
     fontSize: 12,
   },
   cutoffVal: {
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  cutoffSubDetail: {
+    fontSize: 10,
+    textAlign: 'right',
+    marginTop: -2,
   },
 
   /* Confirmed Ledger */
@@ -1608,6 +2249,12 @@ const styles = StyleSheet.create({
   ledgerDate: {
     fontSize: 11,
     marginTop: 1,
+  },
+  ledgerDetailsSubRow: {
+    marginTop: 2,
+  },
+  ledgerSubText: {
+    fontSize: 10,
   },
   ledgerRight: {
     alignItems: 'flex-end',
@@ -1710,6 +2357,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 13,
   },
+  frequencyPickerCol: {
+    gap: 6,
+    marginTop: 4,
+  },
+  frequencyOptionBtn: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  frequencyOptionText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   netConfirmBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1761,6 +2421,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  payslipRefId: {
+    fontSize: 10,
+    marginTop: 1,
+  },
   payslipStampBox: {
     padding: 14,
     borderRadius: 14,
@@ -1772,6 +2436,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: 'bold',
     letterSpacing: 2,
+  },
+  payslipStampPosition: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
   payslipStampPeriod: {
     fontSize: 15,

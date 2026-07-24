@@ -10,7 +10,17 @@ import {
   SafeAreaView,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Calendar,
+  X,
+  Star,
+  Calculator,
+  Minus,
+  Plus,
+  CheckCircle2,
+  List,
+  ChevronRight,
+} from 'lucide-react-native';
 import { ThemeContext } from '../navigation/navigationTypes';
 import { calculateSPayLaterDueDate } from '../utils/spay';
 
@@ -148,7 +158,7 @@ export default function SPayLaterGuideModal({
             {/* a) Header */}
             <View style={[styles.header, { borderBottomColor: t.headerBorder }]}>
               <View style={styles.headerTitleRow}>
-                <Ionicons name="calendar-outline" size={22} color={t.accent} style={{ marginRight: 8 }} />
+                <Calendar size={22} color={t.accent} style={{ marginRight: 8 }} />
                 <Text style={[styles.headerTitle, { color: t.textPrimary }]}>
                   SPayLater Cut-off & Payment Guide
                 </Text>
@@ -158,7 +168,7 @@ export default function SPayLaterGuideModal({
                 onPress={onClose}
                 accessibilityLabel="Close modal"
               >
-                <Ionicons name="close" size={20} color={t.textPrimary} />
+                <X size={20} color={t.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -169,7 +179,7 @@ export default function SPayLaterGuideModal({
               {/* d) Easy Rule Card */}
               <View style={[styles.ruleCard, { backgroundColor: t.ruleBg, borderColor: t.ruleBorder }]}>
                 <View style={styles.ruleHeaderRow}>
-                  <Ionicons name="star" size={18} color="#f59e0b" style={{ marginRight: 6 }} />
+                  <Star size={18} color="#f59e0b" style={{ marginRight: 6 }} />
                   <Text style={[styles.ruleTitle, { color: t.ruleText }]}>⭐ Easy Rule</Text>
                 </View>
                 <Text style={[styles.ruleBody, { color: t.ruleText }]}>
@@ -180,7 +190,7 @@ export default function SPayLaterGuideModal({
               {/* b) Interactive Calculator Card */}
               <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <View style={styles.cardHeader}>
-                  <Ionicons name="calculator-outline" size={20} color={t.accent} style={{ marginRight: 6 }} />
+                  <Calculator size={20} color={t.accent} style={{ marginRight: 6 }} />
                   <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Payment Due Calculator</Text>
                 </View>
 
@@ -191,11 +201,11 @@ export default function SPayLaterGuideModal({
                     style={[styles.adjustBtn, { backgroundColor: t.buttonBg }]}
                     onPress={() => adjustDays(-1)}
                   >
-                    <Ionicons name="remove" size={18} color={t.textPrimary} />
+                    <Minus size={18} color={t.textPrimary} />
                   </TouchableOpacity>
 
                   <View style={[styles.dateDisplayBox, { borderColor: t.cardBorder, backgroundColor: t.contentBg }]}>
-                    <Ionicons name="calendar-sharp" size={16} color={t.accent} style={{ marginRight: 6 }} />
+                    <Calendar size={16} color={t.accent} style={{ marginRight: 6 }} />
                     <Text style={[styles.dateDisplayText, { color: t.textPrimary }]}>
                       {formattedOrderDate}
                     </Text>
@@ -205,7 +215,7 @@ export default function SPayLaterGuideModal({
                     style={[styles.adjustBtn, { backgroundColor: t.buttonBg }]}
                     onPress={() => adjustDays(1)}
                   >
-                    <Ionicons name="add" size={18} color={t.textPrimary} />
+                    <Plus size={18} color={t.textPrimary} />
                   </TouchableOpacity>
                 </View>
 
@@ -269,7 +279,7 @@ export default function SPayLaterGuideModal({
 
                   <View style={styles.dueHighlightRow}>
                     <View style={styles.dueLeft}>
-                      <Ionicons name="checkmark-circle" size={22} color={t.accent} style={{ marginRight: 6 }} />
+                      <CheckCircle2 size={22} color={t.accent} style={{ marginRight: 6 }} />
                       <Text style={[styles.dueTitle, { color: t.textPrimary }]}>Payment Due Date:</Text>
                     </View>
                     <View style={[styles.dueBadge, { backgroundColor: t.accent }]}>
@@ -288,7 +298,7 @@ export default function SPayLaterGuideModal({
               {/* c) Full 12-Month Schedule Table */}
               <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                 <View style={styles.cardHeader}>
-                  <Ionicons name="list-outline" size={20} color={t.accent} style={{ marginRight: 6 }} />
+                  <List size={20} color={t.accent} style={{ marginRight: 6 }} />
                   <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Full 12-Month Schedule</Text>
                 </View>
 
@@ -314,7 +324,7 @@ export default function SPayLaterGuideModal({
                       >
                         <View style={styles.tableCellLeft}>
                           {isActive && (
-                            <Ionicons name="chevron-forward" size={14} color={t.accent} style={{ marginRight: 4 }} />
+                            <ChevronRight size={14} color={t.accent} style={{ marginRight: 4 }} />
                           )}
                           <Text
                             style={[

@@ -42,6 +42,7 @@ import {
   Clock,
   Calendar,
   AlertCircle,
+  Info,
   Flame,
   ArrowRight,
   UserPlus,
@@ -72,6 +73,7 @@ import { useNavigation } from '@react-navigation/native';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { parseUtcDate, getBillingMonthKey, getCalendarMonthKey, getUtc8DateParts, createUtc8Date, getNextCalendarMonthStart } from '../../utils/date';
+import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import PremiumLoader from '../../components/PremiumLoader';
@@ -311,10 +313,13 @@ export default function AdminDashboardScreen() {
     overduePaymentsCount: 0,
     completionRate: 0,
     collectionEfficiency: 0,
+    totalOrderValue: 0,
+    totalOrdersCount: 0,
   };
 
   const unpaidBillingSchedules = dashboardData?.unpaidBillingSchedules || [];
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
   const nextBillingSchedule = unpaidBillingSchedules[selectedScheduleIndex] || {
     monthName: '',
     totalDue: 0,
@@ -909,9 +914,28 @@ export default function AdminDashboardScreen() {
             <View style={[styles.scheduleTitleRow, { flex: 1 }]}>
               <Calendar size={18} color={t.accent} />
               <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={[styles.scheduleTitle, { color: t.textPrimary }]} numberOfLines={1}>
-                  {nextBillingSchedule.monthName ? `${nextBillingSchedule.monthName} Billing Cycle` : 'Billing Cycle Overview'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={[styles.scheduleTitle, { color: t.textPrimary, flexShrink: 1 }]} numberOfLines={1}>
+                    {nextBillingSchedule.monthName ? `${nextBillingSchedule.monthName} Billing Cycle` : 'Billing Cycle Overview'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setIsGuideModalOpen(true)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: 'rgba(238, 77, 45, 0.1)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(238, 77, 45, 0.3)',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 10,
+                      gap: 3,
+                    }}
+                  >
+                    <Info size={10} color="#ee4d2d" />
+                    <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '700' }}>Guide</Text>
+                  </TouchableOpacity>
+                </View>
                 <Text style={styles.scheduleSubtitleText} numberOfLines={1}>
                   {nextBillingSchedule.monthName ? '' : 'No Billing Target'}
                   {nextBillingSchedule.earliestDueDate && `Earliest due on ${formatRelativeDate(nextBillingSchedule.earliestDueDate)}`}
@@ -1118,23 +1142,19 @@ export default function AdminDashboardScreen() {
             </View>
           </View>
 
-          {/* Card 3: Default Arrears */}
+          {/* Card 3: Total Transaction Volume */}
           <View style={[styles.statCard, { width: '48%', backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.statCardHeader}>
-              <Text style={styles.statCardLabel}>DEFAULTS ARREARS</Text>
-              <View style={[styles.statIconWrapper, { backgroundColor: 'rgba(239, 68, 68, 0.06)' }]}>
-                <AlertTriangle size={14} color="#ef4444" />
+              <Text style={styles.statCardLabel}>TOTAL TRANSACTION VOL.</Text>
+              <View style={[styles.statIconWrapper, { backgroundColor: 'rgba(139, 92, 246, 0.06)' }]}>
+                <TrendingUp size={14} color="#8b5cf6" />
               </View>
             </View>
             <View style={styles.statCardBody}>
-              <Text style={[styles.statCardVal, { color: '#ef4444' }]} numberOfLines={1}>{formatCurrency(stats.platformDefaults)}</Text>
+              <Text style={[styles.statCardVal, { color: '#8b5cf6' }]} numberOfLines={1}>{formatCurrency(stats.totalOrderValue || 0)}</Text>
               <Text style={styles.statCardDesc} numberOfLines={1}>
-                {stats.overduePaymentsCount} overdue installments
+                {stats.totalOrdersCount || 0} Total Transactions
               </Text>
-              <View style={styles.alertIndicatorRow}>
-                <View style={styles.redPingDot} />
-                <Text style={styles.alertIndicatorText}>HIGH EXPOSURE ALERT</Text>
-              </View>
             </View>
           </View>
 
@@ -2750,6 +2770,11 @@ export default function AdminDashboardScreen() {
         visible={showExitModal}
         onDismiss={() => setShowExitModal(false)}
         onConfirm={handleExit}
+      />
+
+      <SPayLaterGuideModal
+        visible={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
       />
     </SafeAreaView>
   );

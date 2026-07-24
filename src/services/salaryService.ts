@@ -80,58 +80,64 @@ const getAuthHeaders = async () => {
   };
 };
 
-/**
- * Fetch salary data with AsyncStorage local cache for instant loading
- */
-export async function getSalaryData(forceRefresh: boolean = false): Promise<SalaryDataPayload> {
-  try {
-    let cachedData: any = null;
+function normalizeSalaryPayload(data: any): SalaryDataPayload {
+  if (!data) return getFallbackSalaryPayload();
+  const profile = data.profile || {};
+  const jobHist = data.jobHistory || [];
+  const activeJob = jobHist.find((j: any) => !j.endDate || j.endDate === 'Present' || String(j.endDate).toLowerCase() === 'present') || jobHist[0];
 
-    if (!forceRefresh) {
-      const rawCache = await AsyncStorage.getItem(SALARY_CACHE_KEY);
-      if (rawCache) {
-        try {
-          cachedData = JSON.parse(rawCache);
-        } catch (parseErr) {
-          console.warn('[salaryService] Failed to parse cached salary data:', parseErr);
-        }
-      }
-    }
-
-    const apiUrl = getApiUrl();
-    const headers = await getAuthHeaders();
-
-    const response = await fetch(`${apiUrl}/api/admin/salary`, {
-      method: 'GET',
-      headers,
-    });
-
-    if (!response.ok) {
-      if (cachedData) {
-        return cachedData;
-      }
-      const errText = await response.text();
-      throw new Error(`Failed to fetch salary data (${response.status}): ${errText}`);
-    }
-
-    const result = await response.json();
-    const freshData = result.data ?? result;
-
-    if (freshData) {
-      await AsyncStorage.setItem(SALARY_CACHE_KEY, JSON.stringify(freshData));
-      return freshData;
-    }
-  } catch (error: any) {
-    console.error('[salaryService] Error in getSalaryData:', error);
-    const rawCache = await AsyncStorage.getItem(SALARY_CACHE_KEY);
-    if (rawCache) {
-      return JSON.parse(rawCache);
-    }
-  }
-
-  // Fallback constructed default if no remote & no cache
+  const jobTitle = profile.jobTitle || data.jobTitle || activeJob?.jobTitle || 'Software Engineer';
+  const employer = profile.employer || data.employer || activeJob?.employer || 'S-Pay Operations';
+  const baseSalary = typeof profile.baseSalary === 'number' && profile.baseSalary > 0 
+    ? profile.baseSalary 
+    : (data.baseSalary || activeJob?.baseSalary || 25000);
+  const frequency = profile.frequency || data.frequency || 'SEMI_MONTHLY_10_25';
   const currentYear = new Date().getFullYear();
-  const defaultGross = 50000;
+  const employmentStartDate = profile.employmentStartDate || data.employmentStartDate || activeJob?.startDate || `${currentYear}-01-01`;
+  const employmentEndDate = profile.employmentEndDate || data.employmentEndDate || `${currentYear}-12-31`;
+  
+  const nextPaydayIso = profile.nextPayday || data.nextPaydayIso || data.nextPayday || calculateLiveNextPayday(employmentStartDate, frequency);
+
+  const taxBreakdown = data.taxBreakdown || calculatePhilippineTaxAndDeductions(baseSalary);
+  const bonus13thBreakdown = data.bonus13thBreakdown || calculate13thMonthPay(baseSalary, employmentStartDate, employmentEndDate, currentYear);
+  const cutoffSchedule = data.cutoffSchedule || getPayrollCutoffSchedule(employmentStartDate, baseSalary, frequency);
+
+  const paycheckHistory = data.paycheckHistory || data.earnings?.history || [];
+  const confirmedPaychecks = data.confirmedPaychecks || paycheckHistory.filter((p: any) => p.status === 'CONFIRMED');
+  const pendingPaychecks = data.pendingPaychecks || data.earnings?.pending || paycheckHistory.filter((p: any) => p.status === 'PENDING');
+
+  const totalEarnedLifetime = data.totalEarnedLifetime ?? data.earnings?.totalEarnedLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.actualReceived || 0), 0);
+  const totalTaxPaidLifetime = data.totalTaxPaidLifetime ?? data.earnings?.totalTaxPaidLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.taxDeducted || 0), 0);
+  const totalStatutoryPaidLifetime = data.totalStatutoryPaidLifetime ?? data.earnings?.totalStatutoryPaidLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.sssDeducted || 0) + (p.philhealthDeducted || 0) + (p.pagibigDeducted || 0), 0);
+
+  return {
+    jobTitle,
+    employer,
+    baseSalary,
+    frequency,
+    customPayday: profile.customPayday || data.customPayday || null,
+    employmentStartDate,
+    employmentEndDate,
+    nextPaydayIso,
+    taxBreakdown,
+    bonus13thBreakdown,
+    cutoffSchedule,
+    paycheckHistory,
+    jobHistory: jobHist,
+    totalEarnedLifetime,
+    totalTaxPaidLifetime,
+    totalStatutoryPaidLifetime,
+    pendingPaychecks,
+    confirmedPaychecks,
+    emailEnabled: data.emailEnabled ?? true,
+    pushEnabled: data.pushEnabled ?? true,
+    autoCronEnabled: data.autoCronEnabled ?? true,
+  };
+}
+
+function getFallbackSalaryPayload(): SalaryDataPayload {
+  const currentYear = new Date().getFullYear();
+  const defaultGross = 25000;
   const defaultStartDate = `${currentYear}-01-01`;
   const defaultEndDate = `${currentYear}-12-31`;
 
@@ -174,6 +180,59 @@ export async function getSalaryData(forceRefresh: boolean = false): Promise<Sala
     pushEnabled: true,
     autoCronEnabled: true,
   };
+}
+
+/**
+ * Fetch salary data with AsyncStorage local cache for instant loading
+ */
+export async function getSalaryData(forceRefresh: boolean = false): Promise<SalaryDataPayload> {
+  try {
+    let cachedData: any = null;
+
+    if (!forceRefresh) {
+      const rawCache = await AsyncStorage.getItem(SALARY_CACHE_KEY);
+      if (rawCache) {
+        try {
+          cachedData = JSON.parse(rawCache);
+        } catch (parseErr) {
+          console.warn('[salaryService] Failed to parse cached salary data:', parseErr);
+        }
+      }
+    }
+
+    const apiUrl = getApiUrl();
+    const headers = await getAuthHeaders();
+
+    const response = await fetch(`${apiUrl}/api/admin/salary`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      if (cachedData) {
+        return normalizeSalaryPayload(cachedData);
+      }
+      const errText = await response.text();
+      throw new Error(`Failed to fetch salary data (${response.status}): ${errText}`);
+    }
+
+    const result = await response.json();
+    const freshData = result.data ?? result;
+
+    if (freshData) {
+      const normalized = normalizeSalaryPayload(freshData);
+      await AsyncStorage.setItem(SALARY_CACHE_KEY, JSON.stringify(normalized));
+      return normalized;
+    }
+  } catch (error: any) {
+    console.error('[salaryService] Error in getSalaryData:', error);
+    const rawCache = await AsyncStorage.getItem(SALARY_CACHE_KEY);
+    if (rawCache) {
+      return normalizeSalaryPayload(JSON.parse(rawCache));
+    }
+  }
+
+  return getFallbackSalaryPayload();
 }
 
 /**
