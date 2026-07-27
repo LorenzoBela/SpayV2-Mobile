@@ -93,7 +93,7 @@ export default function BudgetScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, 24);
+  const bottomInset = Math.max(insets.bottom + 12, 20);
   const layout = useResponsiveLayout();
 
   // Data states
@@ -463,6 +463,7 @@ export default function BudgetScreen() {
       const currentVal = parseFloat(goalCurrent) || 0;
 
       const { error } = await supabase.from('user_budget_goals').insert({
+        id: (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36)),
         user_id: profileId,
         goal_type: goalName,
         target_amount: targetVal,

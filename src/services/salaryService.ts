@@ -102,7 +102,12 @@ function normalizeSalaryPayload(data: any): SalaryDataPayload {
   const bonus13thBreakdown = data.bonus13thBreakdown || calculate13thMonthPay(baseSalary, employmentStartDate, employmentEndDate, currentYear);
   const cutoffSchedule = data.cutoffSchedule || getPayrollCutoffSchedule(employmentStartDate, baseSalary, frequency);
 
-  const paycheckHistory = data.paycheckHistory || data.earnings?.history || [];
+  const rawPaycheckHistory = data.paycheckHistory || data.earnings?.history || [];
+  const firstPaydayKey = cutoffSchedule.firstPaydayDate;
+  const paycheckHistory = firstPaydayKey
+    ? rawPaycheckHistory.filter((p: any) => !(p.status === 'PENDING' && p.paydayDate < firstPaydayKey))
+    : rawPaycheckHistory;
+
   const confirmedPaychecks = data.confirmedPaychecks || paycheckHistory.filter((p: any) => p.status === 'CONFIRMED');
   const pendingPaychecks = data.pendingPaychecks || data.earnings?.pending || paycheckHistory.filter((p: any) => p.status === 'PENDING');
 

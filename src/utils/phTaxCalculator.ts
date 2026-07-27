@@ -4,6 +4,13 @@
  * Includes DOLE Presidential Decree No. 851 13th Month Pay & Pro-Rated Calculator
  */
 
+export function formatDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export interface PhTaxBreakdown {
   grossMonthly: number;
   sss: number;
@@ -279,7 +286,7 @@ export function getPayrollCutoffSchedule(
   const proratedRatio = Math.min(1, Math.max(0, actualDaysWorked / daysInCutoff));
   const proratedFirstPaycheck = Math.round((standardSemiMonthlyPaycheck * proratedRatio) * 100) / 100;
 
-  const firstPaydayDate = firstPaydayObj.toISOString().split('T')[0];
+  const firstPaydayDate = formatDateStr(firstPaydayObj);
   const firstPaydayLabel = `${firstPaydayObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
 
   return {
@@ -307,7 +314,7 @@ export function calculateLiveNextPayday(
   }
 
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = formatDateStr(now);
 
   const start = new Date(employmentStartDateStr);
   const isValidStart = !isNaN(start.getTime());
@@ -326,21 +333,21 @@ export function calculateLiveNextPayday(
 
   if (frequency === 'SEMI_MONTHLY_15_30') {
     if (day < 15) {
-      return new Date(year, month, 15).toISOString().split('T')[0];
+      return formatDateStr(new Date(year, month, 15));
     } else if (day < 30) {
       const lastDay = new Date(year, month + 1, 0).getDate();
-      return new Date(year, month, Math.min(30, lastDay)).toISOString().split('T')[0];
+      return formatDateStr(new Date(year, month, Math.min(30, lastDay)));
     } else {
-      return new Date(year, month + 1, 15).toISOString().split('T')[0];
+      return formatDateStr(new Date(year, month + 1, 15));
     }
   } else {
     // SEMI_MONTHLY_10_25
     if (day < 10) {
-      return new Date(year, month, 10).toISOString().split('T')[0];
+      return formatDateStr(new Date(year, month, 10));
     } else if (day < 25) {
-      return new Date(year, month, 25).toISOString().split('T')[0];
+      return formatDateStr(new Date(year, month, 25));
     } else {
-      return new Date(year, month + 1, 10).toISOString().split('T')[0];
+      return formatDateStr(new Date(year, month + 1, 10));
     }
   }
 }

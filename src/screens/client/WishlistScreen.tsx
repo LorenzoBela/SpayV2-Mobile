@@ -116,6 +116,8 @@ export default function WishlistScreen() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<WishlistGoal | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<WishlistGoal | null>(null);
+  const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   // Theme styling colors
   const t = {
@@ -280,6 +282,10 @@ export default function WishlistScreen() {
                   setSelectedGoal(goal);
                   setIsDetailsOpen(true);
                 }}
+                onEditGoal={(goal) => {
+                  setEditingGoal(goal);
+                  setIsEditFormOpen(true);
+                }}
               />
             ))}
           </View>
@@ -294,11 +300,26 @@ export default function WishlistScreen() {
         onSuccess={fetchWishlists}
       />
 
+      {/* Edit Goal Form Modal */}
+      <EditGoalModal
+        isOpen={isEditFormOpen}
+        onClose={() => {
+          setIsEditFormOpen(false);
+          setEditingGoal(null);
+        }}
+        wishlist={editingGoal}
+        onSuccess={fetchWishlists}
+      />
+
       {/* Goal Details Modal */}
       <GoalDetailsModal
         isOpen={isDetailsOpen}
         onClose={() => setIsDetailsOpen(false)}
         wishlist={selectedGoal}
+        onEditGoal={(goal) => {
+          setEditingGoal(goal);
+          setIsEditFormOpen(true);
+        }}
       />
     </SafeAreaView>
   );
@@ -311,10 +332,12 @@ function WishlistGamifiedCard({
   wishlist,
   onRefresh,
   onSelectDetails,
+  onEditGoal,
 }: {
   wishlist: WishlistGoal;
   onRefresh: () => void;
   onSelectDetails: (g: WishlistGoal) => void;
+  onEditGoal?: (g: WishlistGoal) => void;
 }) {
   const { isDarkMode } = useContext(ThemeContext);
 
@@ -597,6 +620,14 @@ function WishlistGamifiedCard({
           </Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 4 }}>
+          {onEditGoal && (
+            <TouchableOpacity
+              onPress={() => onEditGoal(wishlist)}
+              style={cardStyles.iconBtn}
+            >
+              <Edit2 size={16} color="#3b82f6" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={() => setIsSettingsOpen(!isSettingsOpen)}
             style={cardStyles.iconBtn}
@@ -874,6 +905,7 @@ function CreateGoalModal({
       }
 
       const { error } = await supabase.from('user_budget_goals').insert({
+        id: (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36)),
         user_id: profileId,
         goal_type: goalType.trim(),
         target_amount: Number(targetAmount),
@@ -1044,7 +1076,7 @@ function CreateGoalModal({
               </View>
             </ScrollView>
 
-            <View style={[modalStyles.footer, { borderTopColor: t.cardBorder }]}>
+            <View style={[modalStyles.footer, { borderTopColor: t.cardBorder, paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
               <TouchableOpacity onPress={onClose} style={modalStyles.cancelBtn}>
                 <Text style={{ color: t.textSecondary, fontWeight: '600' }}>Cancel</Text>
               </TouchableOpacity>
@@ -1069,16 +1101,285 @@ function CreateGoalModal({
 }
 
 // ==========================================
+// EDIT GOAL MODAL
+// ==========================================
+function EditGoalModal({
+  isOpen,
+  onClose,
+  wishlist,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  wishlist: WishlistGoal | null;
+  onSuccess: () => void;
+}) {
+  const { isDarkMode } = useContext(ThemeContext);
+
+  const [goalType, setGoalType] = useState('');
+  const [targetAmount, setTargetAmount] = useState('');
+  const [targetDate, setTargetDate] = useState('');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceInterval, setRecurrenceInterval] = useState('monthly');
+  const [recurringAmount, setRecurringAmount] = useState('');
+  const [theme, setTheme] = useState(THEMES[0].id);
+  const [color, setColor] = useState(COLORS[0]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (wishlist) {
+      setGoalType(wishlist.goalType || '');
+      setTargetAmount(wishlist.targetAmount ? String(wishlist.targetAmount) : '');
+      setTargetDate(wishlist.targetDate ? wishlist.targetDate.split('T')[0] : '');
+      setIsRecurring(Boolean(wishlist.isRecurring));
+      setRecurrenceInterval(wishlist.recurrenceInterval || 'monthly');
+      setRecurringAmount(wishlist.recurringAmount ? String(wishlist.recurringAmount) : '');
+      setTheme(wishlist.theme || THEMES[0].id);
+      setColor(wishlist.color || COLORS[0]);
+    }
+  }, [wishlist]);
+
+  const t = {
+    modalBg: isDarkMode ? '#151923' : '#ffffff',
+    cardBorder: isDarkMode ? '#1f293d' : '#e2e8f0',
+    textPrimary: isDarkMode ? '#ffffff' : '#0f172a',
+    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+    inputBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    inputBorder: isDarkMode ? '#223049' : '#cbd5e1',
+    accent: '#ee4d2d',
+  };
+
+  const handleSubmit = async () => {
+    if (!wishlist) return;
+    if (!goalType.trim() || !targetAmount || Number(targetAmount) <= 0) {
+      PremiumAlert.alert('Validation Error', 'Please enter a valid goal name and target amount');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      let nextReminderDate = wishlist.nextReminderDate;
+      if (isRecurring && recurrenceInterval) {
+        const now = new Date();
+        const next = new Date(now);
+        if (recurrenceInterval === 'daily') next.setDate(next.getDate() + 1);
+        else if (recurrenceInterval === 'weekly') next.setDate(next.getDate() + 7);
+        else if (recurrenceInterval === 'monthly') next.setMonth(next.getMonth() + 1);
+        else if (recurrenceInterval === 'payday_15') {
+          next.setDate(15);
+          if (next <= now) next.setMonth(next.getMonth() + 1);
+        } else if (recurrenceInterval === 'payday_30') {
+          next.setDate(30);
+          if (next <= now) next.setMonth(next.getMonth() + 1);
+        }
+        nextReminderDate = next.toISOString();
+      }
+
+      const newTarget = Number(targetAmount);
+      const newStatus = wishlist.currentAmount >= newTarget ? 'completed' : 'active';
+
+      const { error } = await supabase
+        .from('user_budget_goals')
+        .update({
+          goal_type: goalType.trim(),
+          target_amount: newTarget,
+          target_date: targetDate ? new Date(targetDate).toISOString() : null,
+          status: newStatus,
+          is_recurring: isRecurring,
+          recurrence_interval: isRecurring ? recurrenceInterval : null,
+          recurring_amount: isRecurring && recurringAmount ? Number(recurringAmount) : null,
+          next_reminder_date: isRecurring ? nextReminderDate : null,
+          color,
+          theme,
+        })
+        .eq('id', wishlist.id);
+
+      if (error) throw error;
+
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      PremiumAlert.alert('Error', err.message || 'Failed to update wishlist goal');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const insets = useSafeAreaInsets();
+  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : (StatusBar.currentHeight || 24)) + 12;
+
+  return (
+    <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
+      <SwipeDismissModal onDismiss={onClose}>
+        <View style={[modalStyles.backdropOverlay, { paddingTop: topOffset }]}>
+          <View style={[modalStyles.container, { backgroundColor: t.modalBg, paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
+            {/* Sleek Top Drag Handle */}
+            <View style={modalStyles.dragHandleWrapper}>
+              <View style={[modalStyles.dragHandleBar, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)' }]} />
+            </View>
+
+            <View style={[modalStyles.header, { borderBottomColor: t.cardBorder }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Edit2 size={20} color={t.accent} />
+                <Text style={[modalStyles.title, { color: t.textPrimary }]}>Edit Wishlist Goal</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={modalStyles.closeIconButton}>
+                <X size={18} color={t.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={modalStyles.body} showsVerticalScrollIndicator={false}>
+              {/* Goal Name & Target Amount */}
+              <Text style={[modalStyles.label, { color: t.textSecondary }]}>Goal Name *</Text>
+              <TextInput
+                style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                placeholder="e.g. iPhone 16 Pro"
+                placeholderTextColor={t.textSecondary}
+                value={goalType}
+                onChangeText={setGoalType}
+              />
+
+              <Text style={[modalStyles.label, { color: t.textSecondary }]}>Target Amount (₱) *</Text>
+              <TextInput
+                style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                placeholder="60000"
+                placeholderTextColor={t.textSecondary}
+                keyboardType="numeric"
+                value={targetAmount}
+                onChangeText={setTargetAmount}
+              />
+
+              <Text style={[modalStyles.label, { color: t.textSecondary }]}>Target Date (YYYY-MM-DD Optional)</Text>
+              <TextInput
+                style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                placeholder="2026-12-31"
+                placeholderTextColor={t.textSecondary}
+                value={targetDate}
+                onChangeText={setTargetDate}
+              />
+
+              {/* Auto Reminders */}
+              <TouchableOpacity
+                onPress={() => setIsRecurring(!isRecurring)}
+                style={[modalStyles.toggleRow, { borderColor: t.cardBorder }]}
+                activeOpacity={0.8}
+              >
+                <RefreshCcw size={16} color={t.accent} />
+                <Text style={[modalStyles.toggleText, { color: t.textPrimary }]}>Set Auto-Reminders</Text>
+                <View style={[modalStyles.checkbox, isRecurring && { backgroundColor: t.accent, borderColor: t.accent }]}>
+                  {isRecurring && <Check size={12} color="#fff" />}
+                </View>
+              </TouchableOpacity>
+
+              {isRecurring && (
+                <View style={{ gap: 10, marginTop: 10 }}>
+                  <Text style={[modalStyles.label, { color: t.textSecondary }]}>Reminder Interval</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {INTERVALS.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => setRecurrenceInterval(item.id)}
+                        style={[
+                          modalStyles.chip,
+                          {
+                            borderColor: recurrenceInterval === item.id ? t.accent : t.cardBorder,
+                            backgroundColor: recurrenceInterval === item.id ? t.accent + '15' : 'transparent',
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: recurrenceInterval === item.id ? t.accent : t.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <Text style={[modalStyles.label, { color: t.textSecondary }]}>Planned Deposit Amount (₱)</Text>
+                  <TextInput
+                    style={[modalStyles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.textPrimary }]}
+                    placeholder="Optional amount"
+                    placeholderTextColor={t.textSecondary}
+                    keyboardType="numeric"
+                    value={recurringAmount}
+                    onChangeText={setRecurringAmount}
+                  />
+                </View>
+              )}
+
+              {/* Theme & Accent Color */}
+              <Text style={[modalStyles.label, { color: t.textSecondary, marginTop: 16 }]}>Visual Theme</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {THEMES.map((th) => (
+                  <TouchableOpacity
+                    key={th.id}
+                    onPress={() => setTheme(th.id)}
+                    style={[
+                      modalStyles.chip,
+                      {
+                        borderColor: theme === th.id ? t.accent : t.cardBorder,
+                        backgroundColor: theme === th.id ? t.accent + '15' : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: theme === th.id ? t.accent : t.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                      {th.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={[modalStyles.label, { color: t.textSecondary, marginTop: 16 }]}>Accent Color</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {COLORS.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    onPress={() => setColor(c)}
+                    style={[
+                      modalStyles.colorDot,
+                      { backgroundColor: c },
+                      color === c && modalStyles.colorDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+
+            <View style={[modalStyles.footer, { borderTopColor: t.cardBorder, paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
+              <TouchableOpacity onPress={onClose} style={modalStyles.cancelBtn}>
+                <Text style={{ color: t.textSecondary, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                disabled={isSubmitting}
+                style={[modalStyles.submitBtn, { backgroundColor: t.accent }]}
+                activeOpacity={0.85}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </SwipeDismissModal>
+    </Modal>
+  );
+}
+
+// ==========================================
 // GOAL DETAILS MODAL (FULL STATS & PROJECTIONS)
 // ==========================================
 function GoalDetailsModal({
   isOpen,
   onClose,
   wishlist,
+  onEditGoal,
 }: {
   isOpen: boolean;
   onClose: () => void;
   wishlist: WishlistGoal | null;
+  onEditGoal?: (g: WishlistGoal) => void;
 }) {
   const { isDarkMode } = useContext(ThemeContext);
   const insets = useSafeAreaInsets();
@@ -1155,7 +1456,7 @@ function GoalDetailsModal({
     <Modal visible={isOpen} animationType="slide" transparent onRequestClose={onClose}>
       <SwipeDismissModal onDismiss={onClose}>
         <View style={[modalStyles.backdropOverlay, { paddingTop: topOffset }]}>
-          <View style={[detailsStyles.container, { backgroundColor: t.modalBg }]}>
+          <View style={[detailsStyles.container, { backgroundColor: t.modalBg, paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
             {/* Sleek Top Drag Handle */}
             <View style={modalStyles.dragHandleWrapper}>
               <View style={[modalStyles.dragHandleBar, { backgroundColor: 'rgba(255,255,255,0.4)' }]} />
@@ -1164,16 +1465,29 @@ function GoalDetailsModal({
             {/* Color Header Banner */}
             <View style={[detailsStyles.banner, { backgroundColor: wishlist.color }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={detailsStyles.bannerEyebrow}>GOAL OVERVIEW</Text>
                 <Text style={detailsStyles.bannerTitle}>{wishlist.goalType}</Text>
                 <Text style={detailsStyles.bannerAmounts}>
                   {formatCurrency(wishlist.currentAmount)} / {formatCurrency(wishlist.targetAmount)}
                 </Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={detailsStyles.closeBtn}>
-                <X size={20} color="#fff" />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                {onEditGoal && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      onClose();
+                      onEditGoal(wishlist);
+                    }}
+                    style={detailsStyles.closeBtn}
+                  >
+                    <Edit2 size={18} color="#fff" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={onClose} style={detailsStyles.closeBtn}>
+                  <X size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Progress bar */}
@@ -1188,7 +1502,7 @@ function GoalDetailsModal({
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={detailsStyles.body}>
+          <ScrollView contentContainerStyle={[detailsStyles.body, { paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
             {/* 4 Grid Stats */}
             <View style={detailsStyles.grid4}>
               <View style={[detailsStyles.statBox, { backgroundColor: t.statBg, borderColor: t.cardBorder }]}>
