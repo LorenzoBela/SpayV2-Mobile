@@ -62,6 +62,7 @@ const trpcClient = trpc.createClient({
       headers: getTrpcHeaders,
       fetch: fetchWithTimeout,
       transformer: superjson as any,
+      maxURLLength: 2083,
     }),
   ],
 });

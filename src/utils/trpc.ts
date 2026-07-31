@@ -64,6 +64,7 @@ export const trpcVanillaClient = createTRPCClient<AppRouter>({
       headers: getTrpcHeaders,
       fetch: fetchWithTimeout,
       transformer: superjson as any,
+      maxURLLength: 2083,
     }),
   ],
 })

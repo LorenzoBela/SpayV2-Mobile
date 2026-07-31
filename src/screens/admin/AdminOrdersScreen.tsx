@@ -81,6 +81,124 @@ function formatDate(value: string) {
   });
 }
 
+interface OrderListItemProps {
+  order: any;
+  viewMode: 'list' | 'grid';
+  t: any;
+  onPress: (order: any) => void;
+}
+
+const OrderListItem = React.memo(function OrderListItem({
+  order,
+  viewMode,
+  t,
+  onPress,
+}: OrderListItemProps) {
+  if (viewMode === 'grid') {
+    return (
+      <TouchableOpacity
+        style={[
+          styles.orderGridCard, 
+          { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+          order.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+        ]}
+        onPress={() => onPress(order)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.orderGridAvatarCircle}>
+          <ShoppingBag size={20} color="#fff" />
+        </View>
+        <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>
+          {order.item_name}
+        </Text>
+        {order.is_shared && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginVertical: 2 }}>
+            <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
+            <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED GROUP</Text>
+          </View>
+        )}
+        <View style={[styles.clientRow, { justifyContent: 'center' }]}>
+          <User size={10} color={t.textSecondary} />
+          <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
+        </View>
+
+        <View style={[styles.statusBadge, { marginTop: 4, backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+          <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d', fontSize: 8 }]}>
+            {order.status}
+          </Text>
+        </View>
+        
+        <View style={[styles.clientGridDivider, { backgroundColor: t.border, marginVertical: 8 }]} />
+
+        <View style={styles.clientGridDetails}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailCardLabel}>Value</Text>
+            <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(order.amount)}</Text>
+          </View>
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+            <Text style={styles.detailCardLabel}>Progress</Text>
+            <Text style={[styles.detailCardVal, { color: '#10b981', fontSize: 11 }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.orderCard, 
+        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+        order.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+      ]}
+      onPress={() => onPress(order)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.orderCardHeader}>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            <Text style={[styles.orderItemName, { color: t.textPrimary }]}>
+              {order.item_name}
+            </Text>
+            {order.is_shared && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 }}>
+                <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
+                <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED GROUP</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.clientRow}>
+            <User size={12} color={t.textSecondary} />
+            <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
+          </View>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
+          <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
+            {order.status}
+          </Text>
+        </View>
+      </View>
+
+      <View style={[styles.orderCardDivider, { backgroundColor: t.border }]} />
+
+      <View style={styles.orderCardBottom}>
+        <View>
+          <Text style={styles.bottomLabel}>Principal Value</Text>
+          <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
+        </View>
+        <View>
+          <Text style={styles.bottomLabel}>Amortization Terms</Text>
+          <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{order.installment_months} Months</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.bottomLabel}>Settle Progress</Text>
+          <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function AdminOrdersScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
@@ -599,6 +717,20 @@ export default function AdminOrdersScreen() {
     accentLight: 'rgba(238, 77, 45, 0.08)',
   };
 
+  const handleOrderPress = useCallback((order: any) => {
+    setSelectedOrder(order);
+    setIsDetailsOpen(true);
+  }, []);
+
+  const renderOrderItem = useCallback(({ item }: { item: any }) => (
+    <OrderListItem
+      order={item}
+      viewMode={viewMode}
+      t={t}
+      onPress={handleOrderPress}
+    />
+  ), [viewMode, t, handleOrderPress]);
+
   if (loading && !ordersData) {
     return (
       <PremiumLoader
@@ -805,122 +937,12 @@ export default function AdminOrdersScreen() {
               data={paginatedOrders}
               estimatedItemSize={viewMode === 'grid' ? 180 : 120}
               scrollEnabled={false}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={true}
               ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-              renderItem={({ item }: { item: any }) => {
-                const order = item;
-                if (viewMode === 'grid') {
-                  return (
-                    <TouchableOpacity
-                      key={order.id}
-                      style={[
-                        styles.orderGridCard, 
-                        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                        order.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
-                      ]}
-                      onPress={() => {
-                        setSelectedOrder(order);
-                        setIsDetailsOpen(true);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <View style={styles.orderGridAvatarCircle}>
-                        <ShoppingBag size={20} color="#fff" />
-                      </View>
-                      <Text style={[styles.orderGridItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                        {order.item_name}
-                      </Text>
-                      {order.is_shared && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginVertical: 2 }}>
-                          <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
-                          <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED GROUP</Text>
-                        </View>
-                      )}
-                      <View style={[styles.clientRow, { justifyContent: 'center' }]}>
-                        <User size={10} color={t.textSecondary} />
-                        <Text style={[styles.clientText, { textAlign: 'center' }]} numberOfLines={1}>{order.clientName}</Text>
-                      </View>
-
-                      <View style={[styles.statusBadge, { marginTop: 4, backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                        <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d', fontSize: 8 }]}>
-                          {order.status}
-                        </Text>
-                      </View>
-                      
-                      <View style={[styles.clientGridDivider, { backgroundColor: t.border, marginVertical: 8 }]} />
-
-                      <View style={styles.clientGridDetails}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.detailCardLabel}>Value</Text>
-                          <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(order.amount)}</Text>
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text style={styles.detailCardLabel}>Progress</Text>
-                          <Text style={[styles.detailCardVal, { color: '#10b981', fontSize: 11 }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }
-
-                // List Mode View
-                return (
-                  <TouchableOpacity
-                    key={order.id}
-                    style={[
-                      styles.orderCard, 
-                      { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                      order.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
-                    ]}
-                    onPress={() => {
-                      setSelectedOrder(order);
-                      setIsDetailsOpen(true);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.orderCardHeader}>
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                          <Text style={[styles.orderItemName, { color: t.textPrimary }]}>
-                            {order.item_name}
-                          </Text>
-                          {order.is_shared && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 }}>
-                              <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
-                              <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED GROUP</Text>
-                            </View>
-                          )}
-                        </View>
-                        <View style={styles.clientRow}>
-                          <User size={12} color={t.textSecondary} />
-                          <Text style={styles.clientText} numberOfLines={1}>{order.clientName}</Text>
-                        </View>
-                      </View>
-                      <View style={[styles.statusBadge, { backgroundColor: order.is_paid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(238, 77, 45, 0.12)' }]}>
-                        <Text style={[styles.statusBadgeText, { color: order.is_paid ? '#10b981' : '#ee4d2d' }]}>
-                          {order.status}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={[styles.orderCardDivider, { backgroundColor: t.border }]} />
-
-                    <View style={styles.orderCardBottom}>
-                      <View>
-                        <Text style={styles.bottomLabel}>Principal Value</Text>
-                        <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{formatCurrency(order.amount)}</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.bottomLabel}>Amortization Terms</Text>
-                        <Text style={[styles.bottomValue, { color: t.textPrimary }]}>{order.installment_months} Months</Text>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.bottomLabel}>Settle Progress</Text>
-                        <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              }}
+              renderItem={renderOrderItem}
             />
           ) : (
             <Text style={styles.emptyText}>No orders match filters.</Text>

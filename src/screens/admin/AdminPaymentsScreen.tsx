@@ -299,6 +299,76 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
   );
 });
 
+interface PaymentListItemProps {
+  payment: any;
+  selected: boolean;
+  bulkMode: boolean;
+  t: any;
+  onPress: (payment: any) => void;
+  onSelectToggle?: (id: string) => void;
+}
+
+const PaymentListItem = React.memo(function PaymentListItem({
+  payment,
+  selected,
+  bulkMode,
+  t,
+  onPress,
+  onSelectToggle,
+}: PaymentListItemProps) {
+  const hasProof = payment.proof_of_payment !== null && payment.proof_of_payment !== '';
+  return (
+    <TouchableOpacity
+      style={[
+        styles.paymentCard,
+        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+        selected && { borderColor: t.accent, borderWidth: 1.5 },
+        payment.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+      ]}
+      onPress={() => onPress(payment)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.paymentCardLeft}>
+        {bulkMode && (
+          <TouchableOpacity style={styles.checkboxWrapper} onPress={() => onSelectToggle && onSelectToggle(payment.id)}>
+            {selected ? <CheckSquare size={20} color={t.accent} /> : <Square size={20} color={t.textSecondary} />}
+          </TouchableOpacity>
+        )}
+        <View style={styles.paymentMainInfo}>
+          <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
+            {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+          </Text>
+          <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
+          <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
+        </View>
+      </View>
+
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
+        <Text style={[styles.amountValText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
+        <View style={styles.badgeRow}>
+          {hasProof && !payment.is_paid && (
+            <View style={styles.proofBadge}>
+              <FileImage size={10} color="#eab308" />
+              <Text style={styles.proofBadgeText}>Proof</Text>
+            </View>
+          )}
+          <View style={[
+            styles.statusBadge,
+            payment.is_paid ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' } : (payment.isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' } : { backgroundColor: t.border })
+          ]}>
+            <Text style={[
+              styles.statusBadgeText,
+              payment.is_paid ? { color: '#10b981' } : (payment.isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })
+            ]}>
+              {payment.is_paid ? 'Cleared' : (payment.isOverdue ? 'Overdue' : 'Pending')}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function AdminPaymentsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
@@ -368,6 +438,7 @@ export default function AdminPaymentsScreen() {
       return subTab === 'imports' ? 5000 : false;
     },
     enabled: true,
+    placeholderData: keepPreviousData,
   });
 
   const shopeeImports = useMemo(() => shopeeImportsData?.imports || [], [shopeeImportsData]);
@@ -1251,13 +1322,18 @@ export default function AdminPaymentsScreen() {
   }), [receiptClientFilter, receiptMonthFilter, receiptSearchQuery, receiptStatusFilter, receiptYearFilter, receiptsList]);
 
   // Action Handlers
-  const handleSelectToggle = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(prev => prev.filter(item => item !== id));
+  const handleSelectToggle = useCallback((id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  }, []);
+
+  const handlePaymentPress = useCallback((payment: any) => {
+    if (bulkMode) {
+      handleSelectToggle(payment.id);
     } else {
-      setSelectedIds(prev => [...prev, id]);
+      setSelectedPayment(payment);
+      setIsDetailsOpen(true);
     }
-  };
+  }, [bulkMode, handleSelectToggle]);
 
   const handleBulkClear = async () => {
     if (selectedIds.length === 0) return;
@@ -1738,6 +1814,17 @@ export default function AdminPaymentsScreen() {
     receipts: 'Receipts',
     imports: 'Shopee Imports',
   };
+
+  const renderPaymentItem = useCallback(({ item }: { item: any }) => (
+    <PaymentListItem
+      payment={item}
+      selected={selectedIds.includes(item.id)}
+      bulkMode={bulkMode}
+      t={t}
+      onPress={handlePaymentPress}
+      onSelectToggle={handleSelectToggle}
+    />
+  ), [selectedIds, bulkMode, t, handlePaymentPress, handleSelectToggle]);
 
   if (loading && !paymentsData) {
     return (
@@ -2221,69 +2308,11 @@ export default function AdminPaymentsScreen() {
                     data={paymentsList}
                     estimatedItemSize={100}
                     scrollEnabled={false}
-                    renderItem={({ item }: { item: any }) => {
-                      const payment = item;
-                      const selected = selectedIds.includes(payment.id);
-                      const hasProof = payment.proof_of_payment !== null && payment.proof_of_payment !== '';
-                      return (
-                        <TouchableOpacity
-                          key={payment.id}
-                          style={[
-                            styles.paymentCard,
-                            { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                            selected && { borderColor: t.accent, borderWidth: 1.5 },
-                            payment.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
-                          ]}
-                          onPress={() => {
-                            if (bulkMode) {
-                              handleSelectToggle(payment.id);
-                            } else {
-                              setSelectedPayment(payment);
-                              setIsDetailsOpen(true);
-                            }
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <View style={styles.paymentCardLeft}>
-                            {bulkMode && (
-                              <TouchableOpacity style={styles.checkboxWrapper} onPress={() => handleSelectToggle(payment.id)}>
-                                {selected ? <CheckSquare size={20} color={t.accent} /> : <Square size={20} color={t.textSecondary} />}
-                              </TouchableOpacity>
-                            )}
-                            <View style={styles.paymentMainInfo}>
-                              <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                                {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
-                              </Text>
-                              <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
-                              <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
-                            </View>
-                          </View>
-
-                          <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                            <Text style={[styles.amountValText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
-                            <View style={styles.badgeRow}>
-                              {hasProof && !payment.is_paid && (
-                                <View style={styles.proofBadge}>
-                                  <FileImage size={10} color="#eab308" />
-                                  <Text style={styles.proofBadgeText}>Proof</Text>
-                                </View>
-                              )}
-                              <View style={[
-                                styles.statusBadge,
-                                payment.is_paid ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' } : (payment.isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' } : { backgroundColor: t.border })
-                              ]}>
-                                <Text style={[
-                                  styles.statusBadgeText,
-                                  payment.is_paid ? { color: '#10b981' } : (payment.isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })
-                                ]}>
-                                  {payment.is_paid ? 'Cleared' : (payment.isOverdue ? 'Overdue' : 'Pending')}
-                                </Text>
-                              </View>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    }}
+                    initialNumToRender={10}
+                    maxToRenderPerBatch={10}
+                    windowSize={5}
+                    removeClippedSubviews={true}
+                    renderItem={renderPaymentItem}
                   />
                 ) : (
                   <Text style={styles.emptyText}>No payments match criteria.</Text>

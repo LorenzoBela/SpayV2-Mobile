@@ -129,6 +129,146 @@ function TrustTierBadge({ tier, score, isDarkMode }: { tier?: string; score?: nu
   );
 }
 
+const AnyFlashList = FlashList as any;
+
+interface ClientListItemProps {
+  client: any;
+  viewMode: 'list' | 'grid';
+  t: any;
+  isDarkMode: boolean;
+  onPress: (client: any) => void;
+  onImpersonate: (client: any) => void;
+}
+
+const ClientListItem = React.memo(function ClientListItem({
+  client,
+  viewMode,
+  t,
+  isDarkMode,
+  onPress,
+  onImpersonate,
+}: ClientListItemProps) {
+  if (viewMode === 'grid') {
+    return (
+      <TouchableOpacity
+        style={[styles.clientGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+        onPress={() => onPress(client)}
+        activeOpacity={0.8}
+      >
+        <Image
+          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+          style={styles.clientGridAvatar}
+          cachePolicy="memory-disk"
+          contentFit="cover"
+          transition={200}
+        />
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+          <Text style={[styles.clientGridName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+          <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
+        </View>
+        <Text style={[styles.clientGridEmail, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">{client.email}</Text>
+        
+        <View style={[styles.clientGridDivider, { backgroundColor: t.border }]} />
+
+        <View style={styles.clientGridDetails}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailCardLabel}>Outstanding</Text>
+            <Text style={[styles.detailCardVal, { color: t.accent, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(client.totalOutstanding)}</Text>
+          </View>
+          <View style={{ flex: 0.5, alignItems: 'flex-end' }}>
+            <Text style={styles.detailCardLabel}>Plans</Text>
+            <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]}>{client.activeOrders}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            marginTop: 8,
+            paddingVertical: 6,
+            borderRadius: 8,
+            backgroundColor: t.accentLight,
+          }}
+          onPress={(e) => {
+            e.stopPropagation();
+            onImpersonate(client);
+          }}
+        >
+          <UserCheck size={12} color={t.accent} />
+          <Text style={{ color: t.accent, fontSize: 11, fontWeight: 'bold' }}>Impersonate</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+      onPress={() => onPress(client)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.clientCardHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+          <Image
+            source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+            style={styles.clientListAvatar}
+            cachePolicy="memory-disk"
+            contentFit="cover"
+            transition={200}
+          />
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+              <Text style={[styles.clientName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
+              <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
+            </View>
+            <Text style={[styles.clientEmail, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">{client.email}</Text>
+          </View>
+        </View>
+        
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 10,
+            backgroundColor: t.accentLight,
+            marginRight: 6,
+          }}
+          onPress={(e) => {
+            e.stopPropagation();
+            onImpersonate(client);
+          }}
+        >
+          <UserCheck size={12} color={t.accent} />
+          <Text style={{ color: t.accent, fontSize: 11, fontWeight: 'bold' }}>Impersonate</Text>
+        </TouchableOpacity>
+
+        <ChevronRight size={18} color={t.textSecondary} />
+      </View>
+
+      <View style={[styles.clientCardDivider, { backgroundColor: t.border }]} />
+
+      <View style={styles.clientCardDetailsRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.detailCardLabel}>Outstanding</Text>
+          <Text style={[styles.detailCardVal, { color: t.accent }]}>{formatCurrency(client.totalOutstanding)}</Text>
+        </View>
+        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+          <Text style={styles.detailCardLabel}>Active Plans</Text>
+          <Text style={[styles.detailCardVal, { color: t.textPrimary }]}>{client.activeOrders}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export default function AdminClientsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const { startImpersonation } = useImpersonation();
@@ -476,7 +616,7 @@ export default function AdminClientsScreen() {
     );
   };
 
-  const openClientDetails = (client: any) => {
+  const openClientDetails = useCallback((client: any) => {
     setSelectedClient(client);
     setOrderFilter('all');
     setOrderPage(1);
@@ -490,7 +630,37 @@ export default function AdminClientsScreen() {
       setExpandedOrders({});
     }
     setIsDetailsOpen(true);
+  }, []);
+
+  const handleClientPress = useCallback((client: any) => {
+    openClientDetails(client);
+  }, [openClientDetails]);
+
+  const handleImpersonatePress = useCallback((client: any) => {
+    startImpersonation(client);
+  }, [startImpersonation]);
+
+  const t = {
+    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
+    cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
+    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
+    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
+    border: isDarkMode ? '#1e293b' : '#f1f5f9',
+    accent: '#ee4d2d',
+    accentLight: 'rgba(238, 77, 45, 0.08)',
   };
+
+  const renderClientItem = useCallback(({ item }: { item: any }) => (
+    <ClientListItem
+      client={item}
+      viewMode={viewMode}
+      t={t}
+      isDarkMode={isDarkMode}
+      onPress={handleClientPress}
+      onImpersonate={handleImpersonatePress}
+    />
+  ), [viewMode, t, isDarkMode, handleClientPress, handleImpersonatePress]);
 
   const getFilteredOrders = () => {
     if (!selectedClient || !selectedClient.orders) return [];
@@ -507,17 +677,6 @@ export default function AdminClientsScreen() {
   const filteredOrders = getFilteredOrders();
   const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
   const paginatedOrders = filteredOrders.slice((orderPage - 1) * ORDER_PAGE_SIZE, orderPage * ORDER_PAGE_SIZE);
-
-  const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
-    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
-    cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
-    textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
-    textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    border: isDarkMode ? '#1e293b' : '#f1f5f9',
-    accent: '#ee4d2d',
-    accentLight: 'rgba(238, 77, 45, 0.08)',
-  };
 
   if (loading && !clientsData) {
     return (
@@ -648,130 +807,19 @@ export default function AdminClientsScreen() {
 
         <View style={viewMode === 'grid' ? styles.clientGridContainer : styles.clientsListContainer}>
           {paginatedClients.length > 0 ? (
-            paginatedClients.map((client: any) => {
-              if (viewMode === 'grid') {
-                return (
-                  <TouchableOpacity
-                    key={client.id}
-                    style={[styles.clientGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-                    onPress={() => openClientDetails(client)}
-                    activeOpacity={0.8}
-                  >
-                    <Image
-                      source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
-                      style={styles.clientGridAvatar}
-                      cachePolicy="memory-disk"
-                      contentFit="cover"
-                      transition={200}
-                    />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-                      <Text style={[styles.clientGridName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
-                      <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
-                    </View>
-                    <Text style={[styles.clientGridEmail, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">{client.email}</Text>
-                    
-                    <View style={[styles.clientGridDivider, { backgroundColor: t.border }]} />
-
-                    <View style={styles.clientGridDetails}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.detailCardLabel}>Outstanding</Text>
-                        <Text style={[styles.detailCardVal, { color: t.accent, fontSize: 11 }]} numberOfLines={1}>{formatCurrency(client.totalOutstanding)}</Text>
-                      </View>
-                      <View style={{ flex: 0.5, alignItems: 'flex-end' }}>
-                        <Text style={styles.detailCardLabel}>Plans</Text>
-                        <Text style={[styles.detailCardVal, { color: t.textPrimary, fontSize: 11 }]}>{client.activeOrders}</Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        marginTop: 8,
-                        paddingVertical: 6,
-                        borderRadius: 8,
-                        backgroundColor: t.accentLight,
-                      }}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        startImpersonation(client);
-                      }}
-                    >
-                      <UserCheck size={12} color={t.accent} />
-                      <Text style={{ color: t.accent, fontSize: 11, fontWeight: 'bold' }}>Impersonate</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              }
-
-              // List View Mode
-              return (
-                <TouchableOpacity
-                  key={client.id}
-                  style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-                  onPress={() => openClientDetails(client)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.clientCardHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                      <Image
-                        source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
-                        style={styles.clientListAvatar}
-                        cachePolicy="memory-disk"
-                        contentFit="cover"
-                        transition={200}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <Text style={[styles.clientName, { color: t.textPrimary }]} numberOfLines={1}>{client.name}</Text>
-                          <TrustTierBadge tier={client.trustTier} score={client.trustScore} isDarkMode={isDarkMode} />
-                        </View>
-                        <Text style={[styles.clientEmail, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">{client.email}</Text>
-                      </View>
-                    </View>
-                    
-                    <TouchableOpacity
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4,
-                        paddingHorizontal: 10,
-                        paddingVertical: 5,
-                        borderRadius: 10,
-                        backgroundColor: t.accentLight,
-                        marginRight: 6,
-                      }}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        startImpersonation(client);
-                      }}
-                    >
-                      <UserCheck size={12} color={t.accent} />
-                      <Text style={{ color: t.accent, fontSize: 11, fontWeight: 'bold' }}>Impersonate</Text>
-                    </TouchableOpacity>
-
-                    <ChevronRight size={18} color={t.textSecondary} />
-                  </View>
-
-                  <View style={[styles.clientCardDivider, { backgroundColor: t.border }]} />
-
-                  <View style={styles.clientCardDetailsRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.detailCardLabel}>Outstanding</Text>
-                      <Text style={[styles.detailCardVal, { color: t.accent }]}>{formatCurrency(client.totalOutstanding)}</Text>
-                    </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={styles.detailCardLabel}>Active Plans</Text>
-                      <Text style={[styles.detailCardVal, { color: t.textPrimary }]}>{client.activeOrders}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+            <AnyFlashList
+              key={viewMode}
+              numColumns={viewMode === 'grid' ? 2 : 1}
+              data={paginatedClients}
+              estimatedItemSize={viewMode === 'grid' ? 180 : 120}
+              scrollEnabled={false}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={true}
+              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+              renderItem={renderClientItem}
+            />
           ) : (
             <Text style={styles.emptyText}>No clients match filters.</Text>
           )}
