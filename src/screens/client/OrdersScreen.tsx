@@ -561,7 +561,7 @@ export default function OrdersScreen() {
                             {Math.round(progress)}% Settled ({order.paidInstallments}/{order.installmentMonths} Mo)
                           </Text>
                           <Text style={[styles.orderAmountValue, { color: t.textPrimary }]}>
-                            {formatCurrency(order.amount)}
+                            {formatCurrency(order.amount)}{order.isShared ? ' (Your Split)' : ''}
                           </Text>
                         </View>
                       </View>
@@ -622,11 +622,16 @@ export default function OrdersScreen() {
 
                           {order.isShared && order.participants && (
                             <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: t.divider }}>
-                              <Text style={[styles.scheduleHeading, { color: t.textSecondary, marginBottom: 6 }]}>
-                                SHARING PARTICIPANTS
-                              </Text>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <Text style={[styles.scheduleHeading, { color: t.textSecondary }]}>
+                                  SHARING PARTICIPANTS
+                                </Text>
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>
+                                  {order.participants.filter((p: any) => p.isPaid).length}/{order.participants.length} Paid
+                                </Text>
+                              </View>
                               {order.participants.map((part: any) => (
-                                <View key={part.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
+                                <View key={part.id || part.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
                                     {part.name}
                                   </Text>
@@ -634,13 +639,20 @@ export default function OrdersScreen() {
                                     <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
                                       {formatCurrency(part.splitAmount)}
                                     </Text>
-                                    <Text style={{
-                                      fontSize: 9,
-                                      fontWeight: '800',
-                                      color: part.isPaid ? t.successText : '#eab308',
+                                    <View style={{
+                                      backgroundColor: part.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 2,
+                                      borderRadius: 4,
                                     }}>
-                                      {part.isPaid ? 'PAID' : 'UNPAID'}
-                                    </Text>
+                                      <Text style={{
+                                        fontSize: 9,
+                                        fontWeight: '800',
+                                        color: part.isPaid ? t.successText : '#ef4444',
+                                      }}>
+                                        {part.isPaid ? 'PAID' : 'UNPAID'}
+                                      </Text>
+                                    </View>
                                   </View>
                                 </View>
                               ))}
@@ -719,7 +731,7 @@ export default function OrdersScreen() {
                         <View style={styles.listRowRight}>
                           <View style={{ alignItems: 'flex-end', marginRight: 4 }}>
                             <Text style={[styles.orderListRowAmount, { color: t.textPrimary }]}>
-                              {formatCurrency(order.amount)}
+                              {formatCurrency(order.amount)}{order.isShared ? ' (Your Split)' : ''}
                             </Text>
                             <Text style={[styles.orderListRowProgressText, { color: t.textSecondary }]}>
                               {Math.round(progress)}% ({order.paidInstallments}/{order.installmentMonths})
@@ -829,11 +841,16 @@ export default function OrdersScreen() {
 
                           {order.isShared && order.participants && (
                             <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: t.divider }}>
-                              <Text style={[styles.scheduleHeading, { color: t.textSecondary, marginBottom: 6 }]}>
-                                SHARING PARTICIPANTS
-                              </Text>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <Text style={[styles.scheduleHeading, { color: t.textSecondary }]}>
+                                  SHARING PARTICIPANTS
+                                </Text>
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>
+                                  {order.participants.filter((p: any) => p.isPaid).length}/{order.participants.length} Paid
+                                </Text>
+                              </View>
                               {order.participants.map((part: any) => (
-                                <View key={part.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
+                                <View key={part.id || part.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
                                     {part.name}
                                   </Text>
@@ -841,13 +858,20 @@ export default function OrdersScreen() {
                                     <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
                                       {formatCurrency(part.splitAmount)}
                                     </Text>
-                                    <Text style={{
-                                      fontSize: 9,
-                                      fontWeight: '800',
-                                      color: part.isPaid ? t.successText : '#eab308',
+                                    <View style={{
+                                      backgroundColor: part.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 2,
+                                      borderRadius: 4,
                                     }}>
-                                      {part.isPaid ? 'PAID' : 'UNPAID'}
-                                    </Text>
+                                      <Text style={{
+                                        fontSize: 9,
+                                        fontWeight: '800',
+                                        color: part.isPaid ? t.successText : '#ef4444',
+                                      }}>
+                                        {part.isPaid ? 'PAID' : 'UNPAID'}
+                                      </Text>
+                                    </View>
                                   </View>
                                 </View>
                               ))}

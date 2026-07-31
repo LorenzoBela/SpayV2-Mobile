@@ -1212,6 +1212,63 @@ export default function PaymentsScreen() {
                             </View>
                           </View>
 
+                          {item.isShared && item.sharingProgress && item.sharingProgress.length > 0 && (
+                            <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: t.divider }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: t.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                  PARTICIPANT STATUS
+                                </Text>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: '#ee4d2d' }}>
+                                  {item.sharingProgress.filter((sp: any) => sp.isPaid).length}/{item.sharingProgress.length} Paid
+                                </Text>
+                              </View>
+                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                                {item.sharingProgress.map((sp: any, spIdx: number) => (
+                                  <View
+                                    key={spIdx}
+                                    style={{
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.6)' : 'rgba(241, 245, 249, 0.9)',
+                                      borderWidth: 1,
+                                      borderColor: t.divider,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 3,
+                                      borderRadius: 6,
+                                      gap: 4,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 10, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }}>
+                                      {sp.name}
+                                    </Text>
+                                    <Text style={{ fontSize: 10, color: t.textSecondary, fontFamily: 'Outfit-Bold' }}>
+                                      {formatCurrency(sp.amountDue ?? sp.splitAmount ?? 0)}
+                                    </Text>
+                                    <View
+                                      style={{
+                                        backgroundColor: sp.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                        paddingHorizontal: 5,
+                                        paddingVertical: 1.5,
+                                        borderRadius: 4,
+                                      }}
+                                    >
+                                      <Text
+                                        style={{
+                                          color: sp.isPaid ? '#10b981' : '#ef4444',
+                                          fontSize: 8,
+                                          fontWeight: '800',
+                                          fontFamily: 'Jakarta-Bold',
+                                        }}
+                                      >
+                                        {sp.isPaid ? 'Paid' : 'Unpaid'}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
+                          )}
+
                           <View style={[styles.cardDivider, { backgroundColor: t.divider }]} />
 
                           <View style={styles.cardFooter}>
@@ -1306,6 +1363,50 @@ export default function PaymentsScreen() {
                               )}
                             </View>
                           </View>
+
+                          {item.isShared && item.sharingProgress && item.sharingProgress.length > 0 && (
+                            <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: t.divider, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                              {item.sharingProgress.map((sp: any, spIdx: number) => (
+                                <View
+                                  key={spIdx}
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.6)' : 'rgba(241, 245, 249, 0.9)',
+                                    borderWidth: 1,
+                                    borderColor: t.divider,
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 2,
+                                    borderRadius: 4,
+                                    gap: 4,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 9, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }}>
+                                    {sp.name}
+                                  </Text>
+                                  <View
+                                    style={{
+                                      backgroundColor: sp.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                      paddingHorizontal: 4,
+                                      paddingVertical: 1,
+                                      borderRadius: 3,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        color: sp.isPaid ? '#10b981' : '#ef4444',
+                                        fontSize: 8,
+                                        fontWeight: '800',
+                                        fontFamily: 'Jakarta-Bold',
+                                      }}
+                                    >
+                                      {sp.isPaid ? 'Paid' : 'Unpaid'}
+                                    </Text>
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          )}
                         </View>
                       );
                     }

@@ -1356,9 +1356,6 @@ export default function DashboardScreen() {
                   key={p.id || idx}
                   style={[
                     {
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
                       paddingVertical: 10,
                       paddingHorizontal: 12,
                       marginBottom: 8,
@@ -1370,24 +1367,67 @@ export default function DashboardScreen() {
                     p.isShared && { borderLeftWidth: 3, borderLeftColor: '#ee4d2d' }
                   ]}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-SemiBold' }} numberOfLines={1}>
-                      {p.itemName}
-                    </Text>
-                    {p.isShared && (
-                      <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
-                        <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-SemiBold' }} numberOfLines={1}>
+                        {p.itemName}
+                      </Text>
+                      {p.isShared && (
+                        <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
+                          <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED (YOUR SPLIT)</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Text style={{ fontSize: 11, color: t.textSecondary, fontFamily: 'Jakarta-Medium' }}>
+                        Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: t.textPrimary, fontFamily: 'Outfit-Bold' }}>
+                        {formatCurrency(p.amount)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Render sharingProgress participant splits and Paid/Unpaid status badges */}
+                  {p.isShared && p.sharingProgress && p.sharingProgress.length > 0 && (
+                    <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: t.divider }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: t.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Participant Splits
+                        </Text>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>
+                          {p.sharingProgress.filter((sp: any) => sp.isPaid).length}/{p.sharingProgress.length} Paid
+                        </Text>
                       </View>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Text style={{ fontSize: 11, color: t.textSecondary, fontFamily: 'Jakarta-Medium' }}>
-                      Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
-                    </Text>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: t.textPrimary, fontFamily: 'Outfit-Bold' }}>
-                      {formatCurrency(p.amount)}
-                    </Text>
-                  </View>
+                      {p.sharingProgress.map((sp: any, spIdx: number) => (
+                        <View key={spIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }} numberOfLines={1}>
+                            {sp.name}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: t.textSecondary, fontFamily: 'Outfit-Bold' }}>
+                              {formatCurrency(sp.amountDue ?? sp.splitAmount ?? 0)}
+                            </Text>
+                            <View style={{
+                              backgroundColor: sp.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                            }}>
+                              <Text style={{
+                                color: sp.isPaid ? '#10b981' : '#ef4444',
+                                fontSize: 9,
+                                fontWeight: '800',
+                                fontFamily: 'Jakarta-Bold',
+                              }}>
+                                {sp.isPaid ? 'Paid' : 'Unpaid'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

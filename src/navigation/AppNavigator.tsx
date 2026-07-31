@@ -81,6 +81,7 @@ import {
 import { ClientVisibleTabName } from './clientTabs';
 import { NotificationProvider, useNotifications } from '../hooks/useNotifications';
 import { useResponsiveLayout } from '../utils/responsive';
+import useMobileInactivity from '../hooks/useMobileInactivity';
 
 // Map route names to Lucide icon components
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -98,6 +99,7 @@ const ADMIN_TAB_ICONS: Record<string, LucideIcon> = {
   AdminPayments: Receipt,
   AdminMore: Menu,
 };
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -606,6 +608,10 @@ export default function AppNavigator() {
   }, []);
 
   const [session, setSession] = useState<Session | null>(null);
+
+  // Enable application-wide mobile session inactivity tracking
+  useMobileInactivity(Boolean(session));
+
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(!cachedProfile);
   const [profileError, setProfileError] = useState<string | null>(null);
