@@ -488,7 +488,7 @@ export default function AdminSettingsScreen() {
               {
                 color: t.textPrimary,
                 borderColor: t.cardBorder,
-                backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+                backgroundColor: isDarkMode ? '#000000' : '#f8fafc',
               },
             ]}
           />
@@ -506,7 +506,7 @@ export default function AdminSettingsScreen() {
               {
                 color: t.textPrimary,
                 borderColor: t.cardBorder,
-                backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+                backgroundColor: isDarkMode ? '#000000' : '#f8fafc',
               },
             ]}
           />
@@ -536,8 +536,8 @@ export default function AdminSettingsScreen() {
   );
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',

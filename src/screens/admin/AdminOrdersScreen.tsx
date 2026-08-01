@@ -707,7 +707,7 @@ export default function AdminOrdersScreen() {
   };
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
@@ -1480,7 +1480,7 @@ export default function AdminOrdersScreen() {
                           )}
                         </View>
 
-                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.cardBorder }]}>
                           <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ASSIGNED CLIENT *</Text>
                           <TouchableOpacity
                             style={styles.inlineClientSelector}
@@ -1497,7 +1497,7 @@ export default function AdminOrdersScreen() {
                         </View>
 
                         {/* Shared Order Toggle for Bulk */}
-                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.cardBorder }]}>
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                             <View>
                               <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
@@ -1560,7 +1560,7 @@ export default function AdminOrdersScreen() {
                         </View>
 
                         <View style={styles.inputGrid}>
-                          <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                          <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.cardBorder }]}>
                             <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME *</Text>
                             <TextInput
                               style={[styles.premiumInput, { color: t.textPrimary }]}
@@ -1571,7 +1571,7 @@ export default function AdminOrdersScreen() {
                             />
                           </View>
 
-                          <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                          <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.cardBorder }]}>
                             <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PURCHASE AMOUNT (PHP) *</Text>
                             <View style={styles.amountInputRow}>
                               <Text style={styles.currencyPrefix}>PHP</Text>
@@ -1597,7 +1597,7 @@ export default function AdminOrdersScreen() {
                                 key={m}
                                 style={[
                                   styles.termCard,
-                                  { backgroundColor: selected ? t.accent : (isDarkMode ? '#0b0f19' : '#f8fafc'), borderColor: selected ? t.accent : t.cardBorder },
+                                  { backgroundColor: selected ? t.accent : (isDarkMode ? '#000000' : '#f8fafc'), borderColor: selected ? t.accent : t.cardBorder },
                                 ]}
                                 onPress={() => updateBulkOrderRow(order.id, 'months', m)}
                                 activeOpacity={0.86}
@@ -1628,7 +1628,7 @@ export default function AdminOrdersScreen() {
                           />
                         </View>
 
-                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.cardBorder }]}>
+                        <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.cardBorder }]}>
                           <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS / SPECIFICATIONS</Text>
                           <TextInput
                             style={[styles.premiumInput, { color: t.textPrimary, minHeight: 40, textAlignVertical: 'top' }]}
@@ -1668,7 +1668,7 @@ export default function AdminOrdersScreen() {
 
                       {/* KPI Grid */}
                       <View style={styles.kpiGrid}>
-                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
+                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.border }]}>
                           <Text style={styles.kpiLabel}>Current Outstanding</Text>
                           <Text style={[styles.kpiValue, { color: t.textSecondary }]} numberOfLines={1}>
                             {formatCurrency(metrics.currentOutstanding)}
@@ -1676,7 +1676,7 @@ export default function AdminOrdersScreen() {
                           <Text style={styles.kpiSub}>Current Pool</Text>
                         </View>
 
-                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
+                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.border }]}>
                           <Text style={[styles.kpiLabel, { color: t.accent }]}>New Exposure</Text>
                           <Text style={[styles.kpiValue, { color: t.textPrimary, fontWeight: 'bold' }]} numberOfLines={1}>
                             {formatCurrency(metrics.projectedOutstanding)}
@@ -1684,7 +1684,7 @@ export default function AdminOrdersScreen() {
                           <Text style={styles.kpiSub}>Projected</Text>
                         </View>
 
-                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc', borderColor: t.border }]}>
+                        <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.border }]}>
                           <Text style={styles.kpiLabel}>Available Credit</Text>
                           <Text style={[styles.kpiValue, { color: metrics.isOverLimit ? '#ef4444' : '#10b981', fontWeight: 'bold' }]} numberOfLines={1}>
                             {formatCurrency(metrics.availableAfter)}

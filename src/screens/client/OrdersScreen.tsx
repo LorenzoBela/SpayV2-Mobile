@@ -180,8 +180,8 @@ export default function OrdersScreen() {
   };
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',

@@ -7,13 +7,13 @@ import {
   TouchableOpacity,
   Switch,
   ActivityIndicator,
-  Alert,
   StatusBar,
   Modal,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Phone, Fingerprint, LogOut, LayoutDashboard, Sun, Moon } from 'lucide-react-native';
+import { Mail, Phone, Fingerprint, LogOut, LayoutDashboard, Sun, Moon, Edit3, KeyRound } from 'lucide-react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
@@ -23,7 +23,7 @@ import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useImpersonation } from '../../context/ImpersonationContext';
 import { ProfileSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-
+import ReAuthModal from '../../components/ReAuthModal';
 
 const BIOMETRIC_EMAIL_KEY = 'biometric_email';
 const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
@@ -47,6 +47,7 @@ export default function ProfileScreen() {
     role: 'CLIENT',
     mobile: '+63 912 345 6789',
   });
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
@@ -55,10 +56,25 @@ export default function ProfileScreen() {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
 
+  // Edit Profile modal state
+  const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editMobile, setEditMobile] = useState('');
+
+  // Password Update modal state
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Sensitive Action Re-Auth Modal state
+  const [reAuthModalVisible, setReAuthModalVisible] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'UPDATE_PROFILE' | 'UPDATE_PASSWORD' | null>(null);
+  const [savingUpdate, setSavingUpdate] = useState(false);
+
   // Dynamic theme colors
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
@@ -69,12 +85,14 @@ export default function ProfileScreen() {
     iconBtnBorder: isDarkMode ? 'rgba(148,163,184,0.1)' : '#e2e8f0',
     switchTrackFalse: isDarkMode ? '#334155' : '#cbd5e1',
     switchThumbFalse: isDarkMode ? '#64748b' : '#94a3b8',
+    inputBg: isDarkMode ? '#000000' : '#f8fafc',
   };
 
   const fetchProfileAndSettings = async () => {
     try {
-      const { user, profile: data } = await getLinkedProfileForCurrentUser();
+      const { user, profile: data, profileId: pId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
+      if (pId) setProfileId(pId);
 
       if (data) {
         setProfile({
@@ -103,6 +121,93 @@ export default function ProfileScreen() {
     fetchProfileAndSettings();
   }, []);
 
+  const openEditProfile = () => {
+    setEditName(profile.name);
+    setEditMobile(profile.mobile === 'Not Configured' ? '' : profile.mobile);
+    setEditProfileModalVisible(true);
+  };
+
+  const openPasswordModal = () => {
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordModalVisible(true);
+  };
+
+  // Trigger ReAuthModal before saving sensitive profile updates
+  const handleInitiateSaveProfile = () => {
+    if (!editName.trim()) {
+      PremiumAlert.alert('Validation Error', 'Display name cannot be empty.');
+      return;
+    }
+    setPendingAction('UPDATE_PROFILE');
+    setReAuthModalVisible(true);
+  };
+
+  // Trigger ReAuthModal before saving sensitive password updates
+  const handleInitiateSavePassword = () => {
+    if (!newPassword || newPassword.length < 6) {
+      PremiumAlert.alert('Validation Error', 'Password must be at least 6 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      PremiumAlert.alert('Validation Error', 'New passwords do not match.');
+      return;
+    }
+    setPendingAction('UPDATE_PASSWORD');
+    setReAuthModalVisible(true);
+  };
+
+  // Called on valid re-authentication token
+  const handleReAuthSuccess = async (_token?: string) => {
+    setReAuthModalVisible(false);
+    setSavingUpdate(true);
+
+    try {
+      if (pendingAction === 'UPDATE_PROFILE') {
+        if (profileId) {
+          await supabase
+            .from('profiles')
+            .update({
+              name: editName.trim(),
+              mobile_number: editMobile.trim() || null,
+            })
+            .eq('id', profileId);
+        }
+
+        await supabase.auth.updateUser({
+          data: {
+            full_name: editName.trim(),
+            phone_number: editMobile.trim() || null,
+          },
+        });
+
+        setProfile((prev) => ({
+          ...prev,
+          name: editName.trim(),
+          mobile: editMobile.trim() || 'Not Configured',
+        }));
+        setEditProfileModalVisible(false);
+        PremiumAlert.alert('Profile Updated', 'Your profile details have been saved successfully.');
+      } else if (pendingAction === 'UPDATE_PASSWORD') {
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (error) throw error;
+
+        setNewPassword('');
+        setConfirmPassword('');
+        setPasswordModalVisible(false);
+        PremiumAlert.alert('Password Updated', 'Your account password has been updated securely.');
+      }
+    } catch (err: any) {
+      PremiumAlert.alert('Update Failed', err?.message || 'Could not apply profile updates.');
+    } finally {
+      setSavingUpdate(false);
+      setPendingAction(null);
+    }
+  };
+
   const handleToggleBiometrics = async (value: boolean) => {
     if (!isBiometricSupported) {
       PremiumAlert.alert('Unsupported', 'Biometric hardware is not available or enrolled on this device.');
@@ -114,7 +219,6 @@ export default function ProfileScreen() {
       setConfirmPin('');
       setPinModalVisible(true);
     } else {
-      // Disable biometrics by deleting stored credentials
       try {
         await SecureStore.deleteItemAsync(BIOMETRIC_EMAIL_KEY);
         await SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY);
@@ -218,85 +322,97 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.content}>
-          {/* User info header card */}
-          <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <View style={styles.avatarLarge}>
-              <Text style={styles.avatarLargeText}>
-                {profile.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <Text style={[styles.profileName, { color: t.textPrimary }]}>{profile.name}</Text>
-            <Text style={[styles.profileRole, { color: t.textMuted }]}>{profile.role}</Text>
-          </View>
-
-          {/* Details list */}
-          <View style={[styles.section, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: t.textSecondary }]}>Account Details</Text>
-
-            <View style={styles.row}>
-              <Mail size={20} color={t.textMuted} />
-              <View style={styles.rowInfo}>
-                <Text style={[styles.rowLabel, { color: t.textMuted }]}>Email Address</Text>
-                <Text style={[styles.rowValue, { color: t.textPrimary }]}>{profile.email}</Text>
+          <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 24 }}>
+            {/* User info header card */}
+            <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.avatarLarge}>
+                <Text style={styles.avatarLargeText}>
+                  {profile.name.charAt(0).toUpperCase()}
+                </Text>
               </View>
+              <Text style={[styles.profileName, { color: t.textPrimary }]}>{profile.name}</Text>
+              <Text style={[styles.profileRole, { color: t.textMuted }]}>{profile.role}</Text>
             </View>
 
-            <View style={styles.row}>
-              <Phone size={20} color={t.textMuted} />
-              <View style={styles.rowInfo}>
-                <Text style={[styles.rowLabel, { color: t.textMuted }]}>Mobile Number</Text>
-                <Text style={[styles.rowValue, { color: t.textPrimary }]}>{profile.mobile}</Text>
+            {/* Details list */}
+            <View style={[styles.section, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, { color: t.textSecondary, marginBottom: 0 }]}>Account Details</Text>
+                <TouchableOpacity style={styles.editBtn} onPress={openEditProfile}>
+                  <Edit3 size={14} color="#ee4d2d" />
+                  <Text style={styles.editBtnText}>Edit Profile</Text>
+                </TouchableOpacity>
               </View>
-            </View>
-          </View>
 
-          {/* Security list */}
-          <View style={[styles.section, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <Text style={[styles.sectionTitle, { color: t.textSecondary }]}>Security Settings</Text>
-
-            <View style={styles.switchRow}>
-              <View style={styles.switchLabelCol}>
-                <Fingerprint size={20} color="#ee4d2d" />
-                <View style={styles.switchLabelInfo}>
-                  <Text style={[styles.switchTitle, { color: t.textPrimary }]}>Biometric Sign-In</Text>
-                  <Text style={[styles.switchSub, { color: t.textMuted }]}>Use FaceID / TouchID for logins</Text>
+              <View style={styles.row}>
+                <Mail size={20} color={t.textMuted} />
+                <View style={styles.rowInfo}>
+                  <Text style={[styles.rowLabel, { color: t.textMuted }]}>Email Address</Text>
+                  <Text style={[styles.rowValue, { color: t.textPrimary }]}>{profile.email}</Text>
                 </View>
               </View>
-              <Switch
-                value={biometricsEnabled}
-                onValueChange={handleToggleBiometrics}
-                disabled={savingBiometrics}
-                trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
-                thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
-              />
+
+              <View style={styles.row}>
+                <Phone size={20} color={t.textMuted} />
+                <View style={styles.rowInfo}>
+                  <Text style={[styles.rowLabel, { color: t.textMuted }]}>Mobile Number</Text>
+                  <Text style={[styles.rowValue, { color: t.textPrimary }]}>{profile.mobile}</Text>
+                </View>
+              </View>
             </View>
-          </View>
 
-          {/* Actions */}
-          {profile.role === 'ADMIN' && !isImpersonating && (
+            {/* Security list */}
+            <View style={[styles.section, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+              <Text style={[styles.sectionTitle, { color: t.textSecondary }]}>Security Settings</Text>
+
+              <View style={styles.switchRow}>
+                <View style={styles.switchLabelCol}>
+                  <Fingerprint size={20} color="#ee4d2d" />
+                  <View style={styles.switchLabelInfo}>
+                    <Text style={[styles.switchTitle, { color: t.textPrimary }]}>Biometric Sign-In</Text>
+                    <Text style={[styles.switchSub, { color: t.textMuted }]}>Use FaceID / TouchID for logins</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={biometricsEnabled}
+                  onValueChange={handleToggleBiometrics}
+                  disabled={savingBiometrics}
+                  trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
+                  thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.passwordBtn} onPress={openPasswordModal}>
+                <KeyRound size={18} color={t.textPrimary} />
+                <Text style={[styles.passwordBtnText, { color: t.textPrimary }]}>Update Password</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Actions */}
+            {profile.role === 'ADMIN' && !isImpersonating && (
+              <TouchableOpacity
+                style={[styles.switchWorkspaceBtn, !isDarkMode && { backgroundColor: 'rgba(238,77,45,0.04)' }]}
+                onPress={() => setActiveRole(null)}
+              >
+                <LayoutDashboard size={20} color="#ee4d2d" />
+                <Text style={styles.switchWorkspaceText}>Switch Workspace</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={[styles.switchWorkspaceBtn, !isDarkMode && { backgroundColor: 'rgba(238,77,45,0.04)' }]}
-              onPress={() => setActiveRole(null)}
+              style={[
+                styles.signOutBtn,
+                !isDarkMode && { borderColor: '#fca5a5' },
+                profile.role === 'ADMIN' && { marginTop: 0 }
+              ]}
+              onPress={handleSignOut}
             >
-              <LayoutDashboard size={20} color="#ee4d2d" />
-              <Text style={styles.switchWorkspaceText}>Switch Workspace</Text>
+              <LogOut size={20} color="#ef4444" />
+              <Text style={styles.signOutText}>Sign Out Account</Text>
             </TouchableOpacity>
-          )}
+          </ScrollView>
 
-          <TouchableOpacity
-            style={[
-              styles.signOutBtn,
-              !isDarkMode && { borderColor: '#fca5a5' },
-              profile.role === 'ADMIN' && { marginTop: 0 }
-            ]}
-            onPress={handleSignOut}
-          >
-            <LogOut size={20} color="#ef4444" />
-            <Text style={styles.signOutText}>Sign Out Account</Text>
-          </TouchableOpacity>
-        </View>
-
+          {/* Fallback PIN Modal */}
           <Modal
             visible={pinModalVisible}
             transparent
@@ -305,71 +421,206 @@ export default function ProfileScreen() {
           >
             <View style={styles.modalBackdrop}>
               <SwipeDismissModal onDismiss={closePinModal} disabled={savingBiometrics}>
-              <View style={[styles.pinModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Create Fallback PIN</Text>
+                <View style={[styles.pinModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                  <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Create Fallback PIN</Text>
+                  <Text style={[styles.modalBody, { color: t.textSecondary }]}>
+                    Set a 6-digit PIN for this device in case biometric unlock fails.
+                  </Text>
+                  <TextInput
+                    value={pin}
+                    onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6-digit PIN"
+                    placeholderTextColor={t.textMuted}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                    editable={!savingBiometrics}
+                    style={[
+                      styles.pinInput,
+                      {
+                        color: t.textPrimary,
+                        borderColor: t.cardBorder,
+                        backgroundColor: t.inputBg,
+                      },
+                    ]}
+                  />
+                  <TextInput
+                    value={confirmPin}
+                    onChangeText={(value) => setConfirmPin(value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Confirm PIN"
+                    placeholderTextColor={t.textMuted}
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={6}
+                    editable={!savingBiometrics}
+                    style={[
+                      styles.pinInput,
+                      {
+                        color: t.textPrimary,
+                        borderColor: t.cardBorder,
+                        backgroundColor: t.inputBg,
+                      },
+                    ]}
+                  />
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalCancelButton]}
+                      onPress={closePinModal}
+                      disabled={savingBiometrics}
+                    >
+                      <Text style={[styles.modalCancelText, { color: t.textSecondary }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalConfirmButton]}
+                      onPress={handleEnableBiometrics}
+                      disabled={savingBiometrics}
+                    >
+                      {savingBiometrics ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Text style={styles.modalConfirmText}>Enable</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </SwipeDismissModal>
+            </View>
+          </Modal>
+
+          {/* Edit Profile Modal */}
+          <Modal
+            visible={editProfileModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => !savingUpdate && setEditProfileModalVisible(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={[styles.editModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Edit Profile Details</Text>
                 <Text style={[styles.modalBody, { color: t.textSecondary }]}>
-                  Set a 6-digit PIN for this device in case biometric unlock fails.
+                  Update your display name and mobile number.
                 </Text>
+
                 <TextInput
-                  value={pin}
-                  onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="6-digit PIN"
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Full Name"
                   placeholderTextColor={t.textMuted}
-                  keyboardType="number-pad"
-                  secureTextEntry
-                  maxLength={6}
-                  editable={!savingBiometrics}
+                  editable={!savingUpdate}
                   style={[
-                    styles.pinInput,
-                    {
-                      color: t.textPrimary,
-                      borderColor: t.cardBorder,
-                      backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
-                    },
+                    styles.formInput,
+                    { color: t.textPrimary, borderColor: t.cardBorder, backgroundColor: t.inputBg },
                   ]}
                 />
+
                 <TextInput
-                  value={confirmPin}
-                  onChangeText={(value) => setConfirmPin(value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="Confirm PIN"
+                  value={editMobile}
+                  onChangeText={setEditMobile}
+                  placeholder="Mobile Number"
                   placeholderTextColor={t.textMuted}
-                  keyboardType="number-pad"
-                  secureTextEntry
-                  maxLength={6}
-                  editable={!savingBiometrics}
+                  keyboardType="phone-pad"
+                  editable={!savingUpdate}
                   style={[
-                    styles.pinInput,
-                    {
-                      color: t.textPrimary,
-                      borderColor: t.cardBorder,
-                      backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
-                    },
+                    styles.formInput,
+                    { color: t.textPrimary, borderColor: t.cardBorder, backgroundColor: t.inputBg },
                   ]}
                 />
+
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalButton, styles.modalCancelButton]}
-                    onPress={closePinModal}
-                    disabled={savingBiometrics}
+                    onPress={() => setEditProfileModalVisible(false)}
+                    disabled={savingUpdate}
                   >
                     <Text style={[styles.modalCancelText, { color: t.textSecondary }]}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalButton, styles.modalConfirmButton]}
-                    onPress={handleEnableBiometrics}
-                    disabled={savingBiometrics}
+                    onPress={handleInitiateSaveProfile}
+                    disabled={savingUpdate}
                   >
-                    {savingBiometrics ? (
+                    {savingUpdate ? (
                       <ActivityIndicator size="small" color="#ffffff" />
                     ) : (
-                      <Text style={styles.modalConfirmText}>Enable</Text>
+                      <Text style={styles.modalConfirmText}>Save</Text>
                     )}
                   </TouchableOpacity>
                 </View>
               </View>
-              </SwipeDismissModal>
             </View>
           </Modal>
+
+          {/* Update Password Modal */}
+          <Modal
+            visible={passwordModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => !savingUpdate && setPasswordModalVisible(false)}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={[styles.editModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Update Password</Text>
+                <Text style={[styles.modalBody, { color: t.textSecondary }]}>
+                  Enter a new password for your account.
+                </Text>
+
+                <TextInput
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="New Password"
+                  placeholderTextColor={t.textMuted}
+                  secureTextEntry
+                  editable={!savingUpdate}
+                  style={[
+                    styles.formInput,
+                    { color: t.textPrimary, borderColor: t.cardBorder, backgroundColor: t.inputBg },
+                  ]}
+                />
+
+                <TextInput
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Confirm New Password"
+                  placeholderTextColor={t.textMuted}
+                  secureTextEntry
+                  editable={!savingUpdate}
+                  style={[
+                    styles.formInput,
+                    { color: t.textPrimary, borderColor: t.cardBorder, backgroundColor: t.inputBg },
+                  ]}
+                />
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalCancelButton]}
+                    onPress={() => setPasswordModalVisible(false)}
+                    disabled={savingUpdate}
+                  >
+                    <Text style={[styles.modalCancelText, { color: t.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalConfirmButton]}
+                    onPress={handleInitiateSavePassword}
+                    disabled={savingUpdate}
+                  >
+                    {savingUpdate ? (
+                      <ActivityIndicator size="small" color="#ffffff" />
+                    ) : (
+                      <Text style={styles.modalConfirmText}>Update</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Re-Authentication Modal for Sensitive Operations */}
+          <ReAuthModal
+            visible={reAuthModalVisible}
+            onDismiss={() => setReAuthModalVisible(false)}
+            onSuccess={handleReAuthSuccess}
+            email={profile.email}
+          />
         </>
       )}
     </SafeAreaView>
@@ -429,17 +680,12 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-  loader: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   profileCard: {
     borderRadius: 20,
     borderWidth: 1.5,
     padding: 24,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   avatarLarge: {
     width: 80,
@@ -474,12 +720,41 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 16,
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editBtnText: {
+    color: '#ee4d2d',
+    fontSize: 12,
+    fontFamily: 'Jakarta-Bold',
+  },
+  passwordBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148, 163, 184, 0.15)',
+  },
+  passwordBtnText: {
+    fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
   },
   row: {
     flexDirection: 'row',
@@ -529,7 +804,7 @@ const styles = StyleSheet.create({
     borderColor: '#ef4444',
     borderRadius: 12,
     height: 50,
-    marginTop: 'auto',
+    marginTop: 12,
     marginBottom: 16,
   },
   signOutText: {
@@ -546,7 +821,6 @@ const styles = StyleSheet.create({
     borderColor: '#ee4d2d',
     borderRadius: 12,
     height: 50,
-    marginTop: 'auto',
     marginBottom: 12,
     backgroundColor: 'rgba(238, 77, 45, 0.05)',
   },
@@ -562,6 +836,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   pinModal: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 20,
+  },
+  editModal: {
     borderRadius: 16,
     borderWidth: 1.5,
     padding: 20,
@@ -584,6 +863,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 3,
+    marginBottom: 12,
+  },
+  formInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    fontFamily: 'Jakarta-Medium',
     marginBottom: 12,
   },
   modalActions: {

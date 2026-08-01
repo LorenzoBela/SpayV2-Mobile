@@ -1500,7 +1500,7 @@ export default function AdminPaymentsScreen() {
   };
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',

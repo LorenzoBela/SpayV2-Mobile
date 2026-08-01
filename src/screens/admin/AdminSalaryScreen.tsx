@@ -495,10 +495,10 @@ export default function AdminSalaryScreen() {
   };
 
   const theme = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',

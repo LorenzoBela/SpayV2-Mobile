@@ -121,7 +121,7 @@ export default function WishlistScreen() {
 
   // Theme styling colors
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
     cardBorder: isDarkMode ? '#1f293d' : '#e2e8f0',
     textPrimary: isDarkMode ? '#ffffff' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
@@ -364,7 +364,7 @@ function WishlistGamifiedCard({
     cardBorder: isDarkMode ? '#1f293d' : '#e2e8f0',
     textPrimary: isDarkMode ? '#ffffff' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    inputBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    inputBg: isDarkMode ? '#000000' : '#ffffff',
     inputBorder: isDarkMode ? '#223049' : '#cbd5e1',
     drawerBg: isDarkMode ? 'rgba(255,255,255,0.03)' : '#f8fafc',
   };
@@ -871,7 +871,7 @@ function CreateGoalModal({
     cardBorder: isDarkMode ? '#1f293d' : '#e2e8f0',
     textPrimary: isDarkMode ? '#ffffff' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    inputBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    inputBg: isDarkMode ? '#000000' : '#ffffff',
     inputBorder: isDarkMode ? '#223049' : '#cbd5e1',
     accent: '#ee4d2d',
   };
@@ -1144,7 +1144,7 @@ function EditGoalModal({
     cardBorder: isDarkMode ? '#1f293d' : '#e2e8f0',
     textPrimary: isDarkMode ? '#ffffff' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    inputBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    inputBg: isDarkMode ? '#000000' : '#ffffff',
     inputBorder: isDarkMode ? '#223049' : '#cbd5e1',
     accent: '#ee4d2d',
   };
@@ -1449,7 +1449,7 @@ function GoalDetailsModal({
     cardBorder: isDarkMode ? '#1f293d' : '#e2e8f0',
     textPrimary: isDarkMode ? '#ffffff' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
-    statBg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    statBg: isDarkMode ? '#000000' : '#f8fafc',
   };
 
   return (

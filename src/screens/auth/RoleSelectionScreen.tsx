@@ -168,7 +168,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
   }, [loading, fetchError]);
 
   const { isDarkMode } = useContext(ThemeContext);
-  const containerBg = isDarkMode ? '#0b0f19' : '#f8fafc';
+  const containerBg = isDarkMode ? '#000000' : '#f8fafc';
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorderColorAdmin = isDarkMode ? 'rgba(238, 77, 45, 0.24)' : 'rgba(238, 77, 45, 0.15)';
   const cardBorderColorClient = isDarkMode ? 'rgba(59, 130, 246, 0.24)' : 'rgba(59, 130, 246, 0.15)';
@@ -385,14 +385,14 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: '#0b0f19', // Solid S-Pay dark background
+    backgroundColor: '#000000', // Solid S-Pay dark background
   },
   safeArea: {
     flex: 1,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0b0f19',
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
   },

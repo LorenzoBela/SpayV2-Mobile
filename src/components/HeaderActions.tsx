@@ -81,7 +81,7 @@ export default function HeaderActions({
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     iconBtnBg: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
     iconBtnBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0',
-    badgeBorder: isDarkMode ? '#0b0f19' : '#ffffff',
+    badgeBorder: isDarkMode ? '#000000' : '#ffffff',
   };
 
   const notificationRoute = role === 'admin' ? 'AdminNotifications' : 'Notifications';

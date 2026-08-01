@@ -99,7 +99,7 @@ export default function ClientTabGestureSurface({
   const nextTab = getAdjacentTab(routeName, 'next', tabSequence);
   
   const maxPagePull = Math.min(Math.max(width * MAX_PAGE_PULL_RATIO, 38), 54);
-  const surfaceBackgroundColor = isDarkMode ? '#0b0f19' : '#f1f5f9';
+  const surfaceBackgroundColor = isDarkMode ? '#000000' : '#f1f5f9';
   const edgeHintBackgroundColor = isDarkMode ? 'rgba(18, 25, 39, 0.96)' : 'rgba(255, 255, 255, 0.96)';
   const edgeHintBorderColor = isDarkMode ? 'rgba(238, 77, 45, 0.38)' : 'rgba(238, 77, 45, 0.24)';
   const edgeHintTextColor = isDarkMode ? '#f8fafc' : '#1f2937';

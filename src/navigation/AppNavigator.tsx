@@ -34,6 +34,9 @@ import ImpersonationBanner from '../components/ImpersonationBanner';
 import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
 import AppLockGate from '../components/AppLockGate';
+import BiometricLockOverlay from '../components/BiometricLockOverlay';
+import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '../screens/auth/OnboardingScreen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RoleSelectionScreen from '../screens/auth/RoleSelectionScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
@@ -608,6 +611,17 @@ export default function AppNavigator() {
   }, []);
 
   const [session, setSession] = useState<Session | null>(null);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY)
+      .then((val) => {
+        setHasCompletedOnboarding(val === 'true');
+      })
+      .catch(() => {
+        setHasCompletedOnboarding(true);
+      });
+  }, []);
 
   // Enable application-wide mobile session inactivity tracking
   useMobileInactivity(Boolean(session));
@@ -672,7 +686,7 @@ export default function AppNavigator() {
       dark: isDarkMode,
       colors: {
         ...baseTheme.colors,
-        background: isDarkMode ? '#0b0f19' : '#f1f5f9',
+        background: isDarkMode ? '#000000' : '#f1f5f9',
       },
     };
   }, [isDarkMode]);
@@ -742,6 +756,8 @@ export default function AppNavigator() {
       setUserRole(role);
       if (role === 'CLIENT') {
         setActiveRole('client');
+      } else {
+        setActiveRole(null);
       }
 
       // Update MMKV cache on change (stale-while-revalidate)
@@ -770,6 +786,9 @@ export default function AppNavigator() {
   useEffect(() => {
     let active = true;
     if (session?.user) {
+      if (!storage.getString('cached_user_profile')) {
+        setProfileLoading(true);
+      }
       fetchProfileRole(session.user, active);
     } else {
       setUserRole(null);
@@ -847,7 +866,7 @@ export default function AppNavigator() {
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
-  const isActuallyLoading = loading || (session && profileLoading) || profileError;
+  const isActuallyLoading = loading || (Boolean(session) && (userRole === null || profileLoading)) || Boolean(profileError);
 
   useEffect(() => {
     if (!isActuallyLoading) {
@@ -870,15 +889,23 @@ export default function AppNavigator() {
     }
   };
 
+  if (hasCompletedOnboarding === false) {
+    return (
+      <OnboardingScreen
+        onComplete={() => setHasCompletedOnboarding(true)}
+      />
+    );
+  }
+
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
         <NotificationProvider userId={effectiveUserId || undefined}>
           <TabBarProvider>
-            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }}>
+            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }}>
               <StatusBar
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-                backgroundColor={isDarkMode ? '#0b0f19' : '#ffffff'}
+                backgroundColor={isDarkMode ? '#000000' : '#ffffff'}
                 translucent={false}
                 animated
               />
@@ -886,7 +913,7 @@ export default function AppNavigator() {
               <ImpersonationBanner />
 
               {!isActuallyLoading && (
-                <AppLockGate sessionExists={!!session}>
+                <BiometricLockOverlay sessionExists={!!session}>
                   <NavigationContainer ref={navigationRef} theme={navigationTheme}>
                     <Stack.Navigator screenOptions={{ headerShown: false }}>
                       {session ? (
@@ -917,7 +944,7 @@ export default function AppNavigator() {
                       )}
                     </Stack.Navigator>
                   </NavigationContainer>
-                </AppLockGate>
+                </BiometricLockOverlay>
               )}
 
               {showOverlay && (

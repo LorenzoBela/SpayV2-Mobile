@@ -138,8 +138,8 @@ export default function BudgetScreen() {
 
   // Dynamic Theme Colors
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
@@ -151,7 +151,7 @@ export default function BudgetScreen() {
     iconBtnBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
     modalBg: isDarkMode ? '#161c2a' : '#ffffff',
     modalBorder: isDarkMode ? '#223049' : '#e2e8f0',
-    inputBg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    inputBg: isDarkMode ? '#000000' : '#f1f5f9',
     inputBorder: isDarkMode ? '#223049' : '#e2e8f0',
     divider: isDarkMode ? '#1e293b' : '#f1f5f9',
   };

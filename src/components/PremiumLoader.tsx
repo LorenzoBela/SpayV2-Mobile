@@ -233,7 +233,7 @@ export default function PremiumLoader({
   const showErrorOrTimeout = error || isTimeout;
   const displayErrorMsg = error || 'Connecting taking longer than expected. Please check network.';
 
-  const containerBg = isDarkMode ? '#0b0f19' : '#f8fafc';
+  const containerBg = isDarkMode ? '#000000' : '#f8fafc';
   const cardBg = isDarkMode ? '#161c2a' : '#ffffff';
   const cardBorder = isDarkMode ? '#2d3748' : '#e2e8f0';
   const titleColor = isDarkMode ? '#f8fafc' : '#0f172a';
@@ -345,7 +345,7 @@ export default function PremiumLoader({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0f19', // Solid S-Pay dark background
+    backgroundColor: '#000000', // Solid S-Pay dark background
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,

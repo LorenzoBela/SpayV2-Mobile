@@ -208,7 +208,7 @@ export default function CalendarScreen() {
   const [profileName, setProfileName] = useState('Client');
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
@@ -216,7 +216,7 @@ export default function CalendarScreen() {
     accent: '#ee4d2d',
     divider: isDarkMode ? '#222d42' : '#e2e8f0',
     modalOverlay: isDarkMode ? 'rgba(11, 15, 25, 0.85)' : 'rgba(15, 23, 42, 0.65)',
-    inputBg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    inputBg: isDarkMode ? '#000000' : '#f8fafc',
     inputBorder: isDarkMode ? '#222d42' : '#cbd5e1',
   };
 

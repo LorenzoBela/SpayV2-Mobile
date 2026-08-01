@@ -661,7 +661,7 @@ const LastAccountAvatar = ({ name, photo }: LastAccountAvatarProps) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0f19',
+    backgroundColor: '#000000',
     justifyContent: 'center',
     padding: 24,
   },
@@ -917,7 +917,7 @@ const styles = StyleSheet.create({
   },
   pinInput: {
     color: '#f8fafc',
-    backgroundColor: '#0b0f19',
+    backgroundColor: '#000000',
     borderColor: '#2d3748',
     borderWidth: 1.5,
     borderRadius: 12,

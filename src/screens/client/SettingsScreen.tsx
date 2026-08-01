@@ -39,7 +39,11 @@ import {
   LayoutDashboard,
   RefreshCw,
   Download,
+  FileSpreadsheet,
+  FileJson,
 } from 'lucide-react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
@@ -106,6 +110,53 @@ export default function SettingsScreen() {
   const [installingApk, setInstallingApk] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateRuntimeInfo>(() => getAppUpdateRuntimeInfo());
   const [isApkDownloaded, setIsApkDownloaded] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<'csv' | 'json' | null>(null);
+
+  const handleExportMobileData = async (format: 'csv' | 'json') => {
+    setExportingFormat(format);
+    try {
+      const getApiUrl = () => process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || 'https://nootspaytracker.vercel.app';
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const fileName = `spay-data-export-${dateStr}.${format}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      if (!token) {
+        PremiumAlert.alert('Authentication Error', 'Session not found. Please log in again.');
+        return;
+      }
+
+      const downloadRes = await FileSystem.downloadAsync(
+        `${getApiUrl()}/api/user/export?format=${format}`,
+        fileUri,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (downloadRes.status !== 200) {
+        throw new Error(`Export failed with status ${downloadRes.status}`);
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(downloadRes.uri, {
+          mimeType: format === 'csv' ? 'text/csv' : 'application/json',
+          dialogTitle: `Export Account Data (${format.toUpperCase()})`,
+        });
+      } else {
+        PremiumAlert.alert('Export Complete', `File saved to ${downloadRes.uri}`);
+      }
+    } catch (err: any) {
+      console.error('Failed mobile data export:', err);
+      PremiumAlert.alert('Export Error', err.message || 'Failed to export account data.');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   const checkDownloadedApkState = async () => {
     try {
@@ -412,8 +463,8 @@ export default function SettingsScreen() {
   // ── Theme tokens ──
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
@@ -769,6 +820,51 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
+        {/* Export Account Data */}
+        <View style={[styles.exportCardPanel, { backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', borderColor: t.cardBorder }]}>
+          <View style={styles.tabHeaderRow}>
+            <Download size={18} color={t.accent} />
+            <Text style={[styles.tabHeaderTitle, { color: t.textPrimary }]}>Export Account Data</Text>
+          </View>
+          <Text style={[styles.securityIntroText, { color: t.textSecondary, marginTop: 4 }]}>
+            Download a self-service copy of your personal profile, orders, payments, budget categories, and reschedule requests.
+          </Text>
+
+          <View style={styles.exportBtnRow}>
+            <TouchableOpacity
+              onPress={() => handleExportMobileData('csv')}
+              disabled={exportingFormat !== null}
+              style={[styles.exportDataBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#0f172a' }]}
+              activeOpacity={0.8}
+            >
+              {exportingFormat === 'csv' ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <FileSpreadsheet size={15} color="#34d399" />
+                  <Text style={styles.exportDataBtnText}>Download (CSV)</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleExportMobileData('json')}
+              disabled={exportingFormat !== null}
+              style={[styles.exportDataBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#0f172a' }]}
+              activeOpacity={0.8}
+            >
+              {exportingFormat === 'json' ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <FileJson size={15} color="#60a5fa" />
+                  <Text style={styles.exportDataBtnText}>Download (JSON)</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Switch Workspace (admin only) */}
         {userRole === 'ADMIN' && !isImpersonating && (
           <TouchableOpacity
@@ -882,7 +978,7 @@ export default function SettingsScreen() {
               {
                 color: t.textPrimary,
                 borderColor: t.cardBorder,
-                backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+                backgroundColor: isDarkMode ? '#000000' : '#f8fafc',
               },
             ]}
           />
@@ -900,7 +996,7 @@ export default function SettingsScreen() {
               {
                 color: t.textPrimary,
                 borderColor: t.cardBorder,
-                backgroundColor: isDarkMode ? '#0b0f19' : '#f8fafc',
+                backgroundColor: isDarkMode ? '#000000' : '#f8fafc',
               },
             ]}
           />
@@ -1558,6 +1654,33 @@ const styles = StyleSheet.create({
   pinConfirmText: {
     color: '#ffffff',
     fontSize: 14,
+    fontFamily: 'Jakarta-Bold',
+  },
+  exportCardPanel: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  exportBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  exportDataBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+  },
+  exportDataBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
     fontFamily: 'Jakarta-Bold',
   },
 });

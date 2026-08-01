@@ -207,7 +207,7 @@ export default function ActivityHeatmap({
   const [yearDropdownOpen, setYearDropdownOpen] = useState(false);
 
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
     cardBg: isDarkMode ? '#0d121f' : '#ffffff',
     cardBorder: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',

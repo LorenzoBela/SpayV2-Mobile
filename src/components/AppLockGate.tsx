@@ -194,7 +194,7 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
       {Platform.OS === 'ios' ? (
         <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
       ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0b0f19' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
       )}
 
       <SafeAreaView style={styles.safeArea}>

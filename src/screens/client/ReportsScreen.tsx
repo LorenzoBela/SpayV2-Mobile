@@ -77,7 +77,7 @@ export default function ReportsScreen() {
 
   // Style colors mapping
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',

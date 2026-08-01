@@ -40,7 +40,7 @@ export const PaymentsSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Next Billing Countdown Card */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
         <View style={styles.headerRow}>
@@ -116,7 +116,7 @@ export const OrdersSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* 4 Stats Cards */}
       <View style={styles.grid}>
         {[1, 2, 3, 4].map((i) => (
@@ -169,7 +169,7 @@ export const BudgetSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Shared Credit limit exposure gauge card */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, paddingVertical: 24 }]}>
         <View style={{ alignItems: 'center', gap: 12 }}>
@@ -221,7 +221,7 @@ export const ReportsSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Date selector shimmers */}
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
         <ShimmerBlock width="48%" height={38} borderRadius={10} />
@@ -270,7 +270,7 @@ export const CalendarSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Calendar Card Shimmer */}
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, height: 320, justifyContent: 'center' }]}>
         <ShimmerBlock width={160} height={16} style={{ alignSelf: 'center', marginBottom: 20 }} />
@@ -313,7 +313,7 @@ export const ProfileSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       {/* Profile Info Header */}
       <View style={{ alignItems: 'center', marginVertical: 20, gap: 10 }}>
         <ShimmerBlock width={80} height={80} borderRadius={40} />
@@ -343,7 +343,7 @@ export const SettingsSkeleton = () => {
   const cardBorder = isDarkMode ? '#222d42' : '#e2e8f0';
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#0b0f19' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
+    <ScrollView style={[styles.container, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]} contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}>
       <View style={{ gap: 20, marginTop: 10 }}>
         {/* Settings Group 1 */}
         <View style={{ gap: 10 }}>

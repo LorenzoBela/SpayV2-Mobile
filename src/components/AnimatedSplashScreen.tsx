@@ -135,7 +135,7 @@ export default function AnimatedSplashScreen({
   }, []);
 
   // Theme-adaptive colors
-  const bgColor = isDark ? '#0b0f19' : '#f8fafc';
+  const bgColor = isDark ? '#000000' : '#f8fafc';
   const titleColor = isDark ? '#ffffff' : '#0f172a';
   const subtitleColor = isDark ? '#64748b' : '#475569';
   const logoBgColor = isDark ? 'rgba(238, 77, 45, 0.06)' : 'rgba(238, 77, 45, 0.04)';

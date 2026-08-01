@@ -132,7 +132,7 @@ export default function AdminReportsScreen() {
 
   // Theme object
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f8fafc',
+    bg: isDarkMode ? '#000000' : '#f8fafc',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
@@ -2607,7 +2607,7 @@ export default function AdminReportsScreen() {
                                           ? { backgroundColor: isDarkMode ? 'rgba(16, 185, 129, 0.05)' : 'rgba(16, 185, 129, 0.02)', borderColor: 'rgba(16, 185, 129, 0.1)' }
                                           : isOverdue
                                             ? { backgroundColor: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.1)' }
-                                            : { backgroundColor: isDarkMode ? '#0b0f19' : '#ffffff' }
+                                            : { backgroundColor: isDarkMode ? '#000000' : '#ffffff' }
                                       ]}
                                     >
                                       <View style={styles.paymentMiniHeader}>

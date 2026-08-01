@@ -147,8 +147,8 @@ export default function NotificationsScreen() {
   // Dynamic theme colors
   const t = useMemo(
     () => ({
-      bg: isDarkMode ? '#0b0f19' : '#f8fafc',
-      headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
+      bg: isDarkMode ? '#000000' : '#f8fafc',
+      headerBg: isDarkMode ? '#000000' : '#ffffff',
       headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
       cardBg: isDarkMode ? '#131926' : '#ffffff',
       cardBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 5,
     borderWidth: 2,
-    borderColor: '#0b0f19',
+    borderColor: '#000000',
   },
   tabBadgeSelected: {
     backgroundColor: '#ffffff',

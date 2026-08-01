@@ -54,6 +54,7 @@ import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 import NetInfo from '@react-native-community/netinfo';
 import { useClientPaymentsQuery } from '../../hooks/useClientQueries';
+import { useScreenPrivacy } from '../../hooks/useScreenPrivacy';
 import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { getBillingMonthKey, getCalendarMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import { FlashList } from '@shopify/flash-list';
@@ -345,6 +346,7 @@ const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
 });
 
 export default function PaymentsScreen() {
+  useScreenPrivacy('PaymentsScreen');
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
@@ -690,9 +692,9 @@ export default function PaymentsScreen() {
 
   // Dynamic colors
   const t = {
-    bg: isDarkMode ? '#0b0f19' : '#f1f5f9',
-    headerBg: isDarkMode ? '#0b0f19' : '#ffffff',
-    headerBorder: isDarkMode ? '#222d42' : '#e2e8f0',
+    bg: isDarkMode ? '#000000' : '#f1f5f9',
+    headerBg: isDarkMode ? '#000000' : '#ffffff',
+    headerBorder: isDarkMode ? '#1f1f1f' : '#e2e8f0',
     cardBg: isDarkMode ? '#161c2a' : '#ffffff',
     cardBorder: isDarkMode ? '#222d42' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
