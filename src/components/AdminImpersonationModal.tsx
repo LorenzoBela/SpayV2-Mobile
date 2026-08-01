@@ -30,6 +30,7 @@ import { fetchAdminClients } from '../services/adminService';
 import { useImpersonation } from '../context/ImpersonationContext';
 import { useQuery } from '@tanstack/react-query';
 import { useResponsiveLayout } from '../utils/responsive';
+import BiometricReAuthModal from './BiometricReAuthModal';
 
 interface AdminImpersonationModalProps {
   visible: boolean;
@@ -77,12 +78,20 @@ export function AdminImpersonationModal({
   const totalClients = clientsData?.total || clients.length;
   const totalPages = Math.max(1, Math.ceil(totalClients / pageSize));
 
-  const handleImpersonate = (client: any) => {
+  const [isReAuthOpen, setIsReAuthOpen] = useState(false);
+  const [pendingClient, setPendingClient] = useState<any>(null);
+
+  const executeImpersonate = (client: any) => {
     startImpersonation(client);
     if (onSelectClient) {
       onSelectClient(client);
     }
     onClose();
+  };
+
+  const handleImpersonate = (client: any) => {
+    setPendingClient(client);
+    setIsReAuthOpen(true);
   };
 
   const t = {
@@ -331,6 +340,22 @@ export function AdminImpersonationModal({
             ) : null}
           </View>
         )}
+        <BiometricReAuthModal
+          visible={isReAuthOpen}
+          onDismiss={() => {
+            setIsReAuthOpen(false);
+            setPendingClient(null);
+          }}
+          onSuccess={() => {
+            if (pendingClient) {
+              const clientToImpersonate = pendingClient;
+              setPendingClient(null);
+              executeImpersonate(clientToImpersonate);
+            }
+          }}
+          title="Impersonation Re-Authentication"
+          description={`Please verify your identity with biometrics or current password to activate impersonation mode for ${pendingClient?.name || 'this client'}.`}
+        />
       </SafeAreaView>
     </Modal>
   );

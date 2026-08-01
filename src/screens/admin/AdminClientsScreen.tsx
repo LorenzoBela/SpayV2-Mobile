@@ -45,6 +45,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import AdminHeader from '../../components/AdminHeader';
 import PremiumLoader from '../../components/PremiumLoader';
+import BiometricReAuthModal from '../../components/BiometricReAuthModal';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminClients, callAdminApi } from '../../services/adminService';
@@ -390,7 +391,21 @@ export default function AdminClientsScreen() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editMobile, setEditMobile] = useState('');
+  const [editCreditLimit, setEditCreditLimit] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Biometric Re-Auth State
+  const [isReAuthOpen, setIsReAuthOpen] = useState(false);
+  const [reAuthAction, setReAuthAction] = useState<(() => void) | null>(null);
+  const [reAuthTitle, setReAuthTitle] = useState('Security Re-Authentication');
+  const [reAuthDesc, setReAuthDesc] = useState('Please verify your identity with biometrics or current password to confirm this action.');
+
+  const triggerReAuth = useCallback((action: () => void, title?: string, description?: string) => {
+    setReAuthAction(() => action);
+    if (title) setReAuthTitle(title);
+    if (description) setReAuthDesc(description);
+    setIsReAuthOpen(true);
+  }, []);
 
   // Layout and Pagination states
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -549,7 +564,7 @@ export default function AdminClientsScreen() {
   const totalRevenue = clientsData?.stats?.totalRevenue || 0;
   const totalOutstanding = clientsData?.stats?.totalOutstanding || 0;
 
-  const handleEditProfileSubmit = async () => {
+  const executeEditProfileSubmit = async () => {
     if (!editName || !editEmail) {
       PremiumAlert.alert('Invalid Input', 'Name and Email are required.');
       return;
@@ -564,8 +579,16 @@ export default function AdminClientsScreen() {
         mobileNumber: editMobile,
       });
 
-      if (response.success) {
-        PremiumAlert.alert('Success', `Client profile updated successfully!`);
+      let limitRes: any = { success: true };
+      if (editCreditLimit && !isNaN(parseFloat(editCreditLimit))) {
+        limitRes = await callAdminApi('adjust-limit', {
+          id: selectedClient.id,
+          limit: parseFloat(editCreditLimit),
+        });
+      }
+
+      if (response.success && limitRes.success) {
+        PremiumAlert.alert('Success', `Client profile and credit line updated successfully!`);
         setIsEditProfileOpen(false);
         // Update local modal data
         setSelectedClient((prev: any) => ({
@@ -573,10 +596,42 @@ export default function AdminClientsScreen() {
           name: editName,
           email: editEmail,
           mobile_number: editMobile,
+          creditLimit: editCreditLimit ? parseFloat(editCreditLimit) : prev?.creditLimit,
+          credit_limit: editCreditLimit ? parseFloat(editCreditLimit) : prev?.credit_limit,
         }));
         queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
       } else {
-        PremiumAlert.alert('Error', response.error || 'Failed to update client profile.');
+        PremiumAlert.alert('Error', response.error || limitRes.error || 'Failed to update client profile.');
+      }
+    } catch (e: any) {
+      PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleEditProfileSubmit = () => {
+    if (!editName || !editEmail) {
+      PremiumAlert.alert('Invalid Input', 'Name and Email are required.');
+      return;
+    }
+    triggerReAuth(
+      executeEditProfileSubmit,
+      'Modify Client Credit Line & Profile',
+      'Biometric authentication required to update client credit line or credentials.'
+    );
+  };
+
+  const executeDeleteClientSubmit = async () => {
+    setActionLoading(true);
+    try {
+      const response = await callAdminApi('delete-client', { id: selectedClient.id });
+      if (response.success) {
+        PremiumAlert.alert('Deleted', 'Client profile successfully deleted.');
+        setIsDetailsOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
+      } else {
+        PremiumAlert.alert('Error', response.error || 'Failed to delete client.');
       }
     } catch (e: any) {
       PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
@@ -594,22 +649,12 @@ export default function AdminClientsScreen() {
         {
           text: 'Delete Client',
           style: 'destructive',
-          onPress: async () => {
-            setActionLoading(true);
-            try {
-              const response = await callAdminApi('delete-client', { id: selectedClient.id });
-              if (response.success) {
-                PremiumAlert.alert('Deleted', 'Client profile successfully deleted.');
-                setIsDetailsOpen(false);
-                queryClient.invalidateQueries({ queryKey: ['admin-clients'] });
-              } else {
-                PremiumAlert.alert('Error', response.error || 'Failed to delete client.');
-              }
-            } catch (e: any) {
-              PremiumAlert.alert('Network Error', e?.message || 'Server connection failed.');
-            } finally {
-              setActionLoading(false);
-            }
+          onPress: () => {
+            triggerReAuth(
+              executeDeleteClientSubmit,
+              'Delete Client Profile',
+              'Biometric authentication required to permanently delete client profile and credit records.'
+            );
           },
         },
       ]
@@ -1281,6 +1326,8 @@ export default function AdminClientsScreen() {
                     setEditName(selectedClient.name);
                     setEditEmail(selectedClient.email);
                     setEditMobile(selectedClient.mobile_number || selectedClient.mobileNumber || '');
+                    const currentLimit = selectedClient.creditLimit ?? selectedClient.credit_limit ?? selectedClient.accountLimit?.creditLimit ?? '';
+                    setEditCreditLimit(currentLimit ? String(currentLimit) : '');
                     setIsEditProfileOpen(true);
                   }}
                 >
@@ -1527,6 +1574,19 @@ export default function AdminClientsScreen() {
                       onChangeText={setEditMobile}
                     />
                   </View>
+
+                  {/* Credit Line Limit Input */}
+                  <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>CREDIT LINE LIMIT (₱)</Text>
+                    <TextInput
+                      style={[styles.premiumInput, { color: t.textPrimary }]}
+                      placeholder="Credit Line Limit (e.g. 50000)"
+                      keyboardType="numeric"
+                      placeholderTextColor={t.textSecondary}
+                      value={editCreditLimit}
+                      onChangeText={setEditCreditLimit}
+                    />
+                  </View>
                 </View>
               </ScrollView>
 
@@ -1543,6 +1603,23 @@ export default function AdminClientsScreen() {
           </SwipeDismissModal>
         </KeyboardAvoidingView>
       </Modal>
+
+      <BiometricReAuthModal
+        visible={isReAuthOpen}
+        onDismiss={() => {
+          setIsReAuthOpen(false);
+          setReAuthAction(null);
+        }}
+        onSuccess={() => {
+          if (reAuthAction) {
+            const fn = reAuthAction;
+            setReAuthAction(null);
+            fn();
+          }
+        }}
+        title={reAuthTitle}
+        description={reAuthDesc}
+      />
     </SafeAreaView>
   );
 }

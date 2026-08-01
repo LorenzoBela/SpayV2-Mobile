@@ -53,9 +53,11 @@ import { PaymentsSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 import NetInfo from '@react-native-community/netinfo';
-import { useClientPaymentsQuery } from '../../hooks/useClientQueries';
+import { useClientPaymentsQuery, useOptimisticRescheduleMutation } from '../../hooks/useClientQueries';
 import { useScreenPrivacy } from '../../hooks/useScreenPrivacy';
 import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
+import BiometricReAuthModal from '../../components/BiometricReAuthModal';
+import { PremiumAlert } from '../../services/PremiumAlertService';
 import { getBillingMonthKey, getCalendarMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
@@ -399,6 +401,19 @@ export default function PaymentsScreen() {
   const [selectedPayDetails, setSelectedPayDetails] = useState<{ id: string; name: string; amount: number }[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
+  // Biometric Re-Auth & Reschedule states
+  const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
+  const [pendingBiometricAction, setPendingBiometricAction] = useState<'PAY_SINGLE' | 'PAY_BULK' | 'RESCHEDULE' | null>(null);
+
+  // Reschedule Modal controls
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [reschedulePaymentItem, setReschedulePaymentItem] = useState<PaymentItem | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [submittingReschedule, setSubmittingReschedule] = useState(false);
+
+  const rescheduleMutation = useOptimisticRescheduleMutation();
+
 
 
   const [selectedMonthGroup, setSelectedMonthGroup] = useState<MonthlyGroup | null>(null);
@@ -686,6 +701,75 @@ export default function PaymentsScreen() {
     const suffix = pay.monthNumber ? ` (Month ${pay.monthNumber})` : '';
     setSelectedPayDetails([{ id: pay.id, name: `${pay.itemName}${suffix}`, amount: pay.amountDue }]);
     setIsPaymentModalOpen(true);
+  };
+
+  const handleOpenRescheduleModal = (item: PaymentItem) => {
+    setReschedulePaymentItem(item);
+    setRescheduleDate('');
+    setRescheduleReason('');
+    setIsRescheduleModalOpen(true);
+  };
+
+  const handleInitiateRescheduleSubmit = () => {
+    if (!reschedulePaymentItem || !rescheduleDate || !rescheduleReason.trim()) {
+      PremiumAlert.alert('Validation Error', 'Please specify a proposed due date (YYYY-MM-DD) and a reason.');
+      return;
+    }
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(rescheduleDate)) {
+      PremiumAlert.alert('Validation Error', 'Date must be formatted as YYYY-MM-DD (e.g. 2026-09-05).');
+      return;
+    }
+    setPendingBiometricAction('RESCHEDULE');
+    setIsBiometricModalOpen(true);
+  };
+
+  const handleInitiatePaymentFromModal = () => {
+    if (selectedPayDetails.length === 0) return;
+    setPendingBiometricAction(selectedPayDetails.length > 1 ? 'PAY_BULK' : 'PAY_SINGLE');
+    setIsBiometricModalOpen(true);
+  };
+
+  const handleBiometricSuccess = async () => {
+    const action = pendingBiometricAction;
+    setIsBiometricModalOpen(false);
+    setPendingBiometricAction(null);
+
+    if (action === 'PAY_SINGLE' || action === 'PAY_BULK') {
+      setIsPaymentModalOpen(false);
+      setSelectedPaymentIds([]);
+      setSelectedPayDetails([]);
+      PremiumAlert.alert(
+        'Payment Authenticated',
+        'Cash payment transaction details authenticated successfully. Please present cash payment to administrator to verify.'
+      );
+      void refetch();
+    } else if (action === 'RESCHEDULE') {
+      if (!reschedulePaymentItem) return;
+      setSubmittingReschedule(true);
+      try {
+        const [yr, mo, dy] = rescheduleDate.split('-').map(Number);
+        const proposedUtc = new Date(Date.UTC(yr, mo - 1, dy)).toISOString();
+        await rescheduleMutation.mutateAsync({
+          paymentId: reschedulePaymentItem.id,
+          requestedDueDate: proposedUtc,
+          reason: rescheduleReason.trim(),
+        });
+        setIsRescheduleModalOpen(false);
+        setReschedulePaymentItem(null);
+        setRescheduleDate('');
+        setRescheduleReason('');
+        PremiumAlert.alert(
+          'Reschedule Submitted',
+          'Your installment reschedule request has been authenticated and submitted for admin approval.'
+        );
+        void refetch();
+      } catch (err: any) {
+        PremiumAlert.alert('Reschedule Error', err?.message || 'Failed to submit reschedule request.');
+      } finally {
+        setSubmittingReschedule(false);
+      }
+    }
   };
 
 
@@ -1290,16 +1374,28 @@ export default function PaymentsScreen() {
 
                             <View style={styles.footerActionRow}>
                               {!item.isPaid && (
-                                <TouchableOpacity
-                                  onPress={() => handleOpenSinglePayModal(item)}
-                                  style={[styles.smallFillBtn, isOffline && { backgroundColor: '#4b5563', opacity: 0.5 }]}
-                                  disabled={isOffline}
-                                >
-                                  <Banknote size={12} color="#ffffff" />
-                                  <Text style={styles.smallFillBtnText}>
-                                    {isOffline ? 'Offline' : 'Settle'}
-                                  </Text>
-                                </TouchableOpacity>
+                                <View style={{ flexDirection: 'row', gap: 6 }}>
+                                  {!reschedulePending && (
+                                    <TouchableOpacity
+                                      onPress={() => handleOpenRescheduleModal(item)}
+                                      style={[styles.smallFillBtn, { backgroundColor: t.divider }, isOffline && { opacity: 0.5 }]}
+                                      disabled={isOffline}
+                                    >
+                                      <CalendarIcon size={12} color={t.textSecondary} />
+                                      <Text style={[styles.smallFillBtnText, { color: t.textSecondary }]}>Reschedule</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                  <TouchableOpacity
+                                    onPress={() => handleOpenSinglePayModal(item)}
+                                    style={[styles.smallFillBtn, isOffline && { backgroundColor: '#4b5563', opacity: 0.5 }]}
+                                    disabled={isOffline}
+                                  >
+                                    <Banknote size={12} color="#ffffff" />
+                                    <Text style={styles.smallFillBtnText}>
+                                      {isOffline ? 'Offline' : 'Settle'}
+                                    </Text>
+                                  </TouchableOpacity>
+                                </View>
                               )}
                             </View>
                           </View>
@@ -1355,13 +1451,24 @@ export default function PaymentsScreen() {
                               </View>
                               
                               {!item.isPaid && (
-                                <TouchableOpacity
-                                  onPress={() => handleOpenSinglePayModal(item)}
-                                  style={[styles.iconActionCircle, { backgroundColor: isOffline ? 'transparent' : t.divider }]}
-                                  disabled={isOffline}
-                                >
-                                  <Banknote size={14} color={isOffline ? '#4b5563' : t.accent} />
-                                </TouchableOpacity>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  {!reschedulePending && (
+                                    <TouchableOpacity
+                                      onPress={() => handleOpenRescheduleModal(item)}
+                                      style={[styles.iconActionCircle, { backgroundColor: isOffline ? 'transparent' : t.divider }]}
+                                      disabled={isOffline}
+                                    >
+                                      <CalendarIcon size={14} color={t.textSecondary} />
+                                    </TouchableOpacity>
+                                  )}
+                                  <TouchableOpacity
+                                    onPress={() => handleOpenSinglePayModal(item)}
+                                    style={[styles.iconActionCircle, { backgroundColor: isOffline ? 'transparent' : t.divider }]}
+                                    disabled={isOffline}
+                                  >
+                                    <Banknote size={14} color={isOffline ? '#4b5563' : t.accent} />
+                                  </TouchableOpacity>
+                                </View>
                               )}
                             </View>
                           </View>
@@ -1717,9 +1824,16 @@ export default function PaymentsScreen() {
                   setIsPaymentModalOpen(false);
                   setSelectedPaymentIds([]);
                 }}
-                style={styles.understoodBtn}
+                style={[styles.understoodBtn, { flex: 1, backgroundColor: t.divider }]}
               >
-                <Text style={styles.understoodBtnText}>Understood</Text>
+                <Text style={[styles.understoodBtnText, { color: t.textSecondary }]}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleInitiatePaymentFromModal}
+                style={[styles.understoodBtn, { flex: 1.5, backgroundColor: '#ee4d2d' }]}
+              >
+                <Banknote size={14} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={[styles.understoodBtnText, { color: '#ffffff' }]}>Pay Now</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1818,6 +1932,129 @@ export default function PaymentsScreen() {
           </SwipeDismissModal>
         </View>
       </Modal>
+
+      {/* --- RESCHEDULE MODAL --- */}
+      <Modal
+        visible={isRescheduleModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !submittingReschedule && setIsRescheduleModalOpen(false)}
+      >
+        <View style={[styles.modalBackdrop, { backgroundColor: t.modalOverlay }]}>
+          <SwipeDismissModal onDismiss={() => !submittingReschedule && setIsRescheduleModalOpen(false)}>
+            <View style={[styles.modalCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: getFooterPadding(insets.bottom) }]}>
+              <View style={[styles.modalHeader, { borderColor: t.divider }]}>
+                <View>
+                  <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Request Installment Reschedule</Text>
+                  <Text style={[styles.modalSubtitle, { color: t.textSecondary }]}>
+                    {reschedulePaymentItem?.itemName ? `Item: ${reschedulePaymentItem.itemName} (Month ${reschedulePaymentItem.monthNumber})` : 'Propose a new due date for this installment.'}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setIsRescheduleModalOpen(false)} disabled={submittingReschedule}>
+                  <X size={20} color={t.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ paddingVertical: 14, gap: 14 }}>
+                <View>
+                  <Text style={{ fontSize: 11, fontFamily: 'Jakarta-Bold', color: t.textSecondary, marginBottom: 6 }}>
+                    PROPOSED DUE DATE (YYYY-MM-DD)
+                  </Text>
+                  <TextInput
+                    value={rescheduleDate}
+                    onChangeText={setRescheduleDate}
+                    placeholder="e.g. 2026-09-05"
+                    placeholderTextColor="#71717a"
+                    style={{
+                      height: 44,
+                      backgroundColor: t.divider,
+                      borderColor: t.cardBorder,
+                      borderWidth: 1,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      color: t.textPrimary,
+                      fontSize: 14,
+                      fontFamily: 'Jakarta-Medium',
+                    }}
+                    editable={!submittingReschedule}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ fontSize: 11, fontFamily: 'Jakarta-Bold', color: t.textSecondary, marginBottom: 6 }}>
+                    REASON FOR RESCHEDULE
+                  </Text>
+                  <TextInput
+                    value={rescheduleReason}
+                    onChangeText={setRescheduleReason}
+                    placeholder="Explain why you need a due date extension..."
+                    placeholderTextColor="#71717a"
+                    multiline
+                    numberOfLines={3}
+                    style={{
+                      height: 76,
+                      backgroundColor: t.divider,
+                      borderColor: t.cardBorder,
+                      borderWidth: 1,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      color: t.textPrimary,
+                      fontSize: 13,
+                      fontFamily: 'Jakarta-Medium',
+                      textAlignVertical: 'top',
+                    }}
+                    editable={!submittingReschedule}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.modalActions, { borderColor: t.divider }]}>
+                <TouchableOpacity
+                  onPress={() => setIsRescheduleModalOpen(false)}
+                  disabled={submittingReschedule}
+                  style={[styles.understoodBtn, { flex: 1, backgroundColor: t.divider }]}
+                >
+                  <Text style={[styles.understoodBtnText, { color: t.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleInitiateRescheduleSubmit}
+                  disabled={submittingReschedule}
+                  style={[styles.understoodBtn, { flex: 1.5, backgroundColor: '#ee4d2d' }]}
+                >
+                  {submittingReschedule ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={[styles.understoodBtnText, { color: '#ffffff' }]}>Submit Request</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </SwipeDismissModal>
+        </View>
+      </Modal>
+
+      {/* --- BIOMETRIC RE-AUTH MODAL --- */}
+      <BiometricReAuthModal
+        visible={isBiometricModalOpen}
+        onDismiss={() => {
+          setIsBiometricModalOpen(false);
+          setPendingBiometricAction(null);
+        }}
+        onSuccess={handleBiometricSuccess}
+        title={
+          pendingBiometricAction === 'RESCHEDULE'
+            ? 'Reschedule Security Check'
+            : pendingBiometricAction === 'PAY_BULK'
+            ? 'Bulk Payment Security Check'
+            : 'Single Payment Security Check'
+        }
+        description={
+          pendingBiometricAction === 'RESCHEDULE'
+            ? `Please verify your identity with biometrics or password to submit a reschedule request for ${reschedulePaymentItem?.itemName || 'this installment'}.`
+            : `Please verify your identity with biometrics or password to confirm cash payment transaction.`
+        }
+      />
 
       <SPayLaterGuideModal
         visible={isGuideModalOpen}

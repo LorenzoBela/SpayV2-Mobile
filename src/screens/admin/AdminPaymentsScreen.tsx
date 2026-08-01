@@ -24,7 +24,9 @@ import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
-import Reanimated, { useAnimatedStyle, interpolate } from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, interpolate, FadeOut, Layout } from 'react-native-reanimated';
+import { Swipeable } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Receipt,
@@ -306,6 +308,7 @@ interface PaymentListItemProps {
   t: any;
   onPress: (payment: any) => void;
   onSelectToggle?: (id: string) => void;
+  onMarkPaid?: (id: string) => void;
 }
 
 const PaymentListItem = React.memo(function PaymentListItem({
@@ -315,57 +318,92 @@ const PaymentListItem = React.memo(function PaymentListItem({
   t,
   onPress,
   onSelectToggle,
+  onMarkPaid,
 }: PaymentListItemProps) {
   const hasProof = payment.proof_of_payment !== null && payment.proof_of_payment !== '';
-  return (
-    <TouchableOpacity
-      style={[
-        styles.paymentCard,
-        { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-        selected && { borderColor: t.accent, borderWidth: 1.5 },
-        payment.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
-      ]}
-      onPress={() => onPress(payment)}
-      activeOpacity={0.8}
-    >
-      <View style={styles.paymentCardLeft}>
-        {bulkMode && (
-          <TouchableOpacity style={styles.checkboxWrapper} onPress={() => onSelectToggle && onSelectToggle(payment.id)}>
-            {selected ? <CheckSquare size={20} color={t.accent} /> : <Square size={20} color={t.textSecondary} />}
-          </TouchableOpacity>
-        )}
-        <View style={styles.paymentMainInfo}>
-          <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
-            {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
-          </Text>
-          <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
-          <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
-        </View>
-      </View>
 
-      <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        <Text style={[styles.amountValText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
-        <View style={styles.badgeRow}>
-          {hasProof && !payment.is_paid && (
-            <View style={styles.proofBadge}>
-              <FileImage size={10} color="#eab308" />
-              <Text style={styles.proofBadgeText}>Proof</Text>
-            </View>
-          )}
-          <View style={[
-            styles.statusBadge,
-            payment.is_paid ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' } : (payment.isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' } : { backgroundColor: t.border })
-          ]}>
-            <Text style={[
-              styles.statusBadgeText,
-              payment.is_paid ? { color: '#10b981' } : (payment.isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })
-            ]}>
-              {payment.is_paid ? 'Cleared' : (payment.isOverdue ? 'Overdue' : 'Pending')}
-            </Text>
-          </View>
-        </View>
+  const renderRightActions = () => {
+    return (
+      <View style={{ backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'flex-end', paddingRight: 20, flex: 1, borderRadius: 12, marginVertical: 6, marginHorizontal: 16 }}>
+        <CheckCircle size={24} color="#fff" />
       </View>
-    </TouchableOpacity>
+    );
+  };
+
+  const handleSwipeableOpen = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (onMarkPaid) {
+      onMarkPaid(payment.id);
+    }
+  };
+
+  return (
+    <Reanimated.View layout={Layout.duration(200)} exiting={FadeOut}>
+      <Swipeable
+        renderRightActions={payment.is_paid ? undefined : renderRightActions}
+        onSwipeableRightOpen={handleSwipeableOpen}
+        friction={2}
+        rightThreshold={40}
+        enabled={!payment.is_paid && !bulkMode}
+      >
+        <TouchableOpacity
+          style={[
+            styles.paymentCard,
+            { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+            selected && { borderColor: t.accent, borderWidth: 1.5 },
+            payment.is_shared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' }
+          ]}
+          onPress={() => {
+            if (!bulkMode) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
+            onPress(payment);
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={styles.paymentCardLeft}>
+            {bulkMode && (
+              <TouchableOpacity style={styles.checkboxWrapper} onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onSelectToggle && onSelectToggle(payment.id);
+              }}>
+                {selected ? <CheckSquare size={20} color={t.accent} /> : <Square size={20} color={t.textSecondary} />}
+              </TouchableOpacity>
+            )}
+            <View style={styles.paymentMainInfo}>
+              <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
+                {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+              </Text>
+              <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
+              <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
+            </View>
+          </View>
+
+          <View style={{ alignItems: 'flex-end', gap: 6 }}>
+            <Text style={[styles.amountValText, { color: t.textPrimary }]}>{formatCurrency(payment.amount_due)}</Text>
+            <View style={styles.badgeRow}>
+              {hasProof && !payment.is_paid && (
+                <View style={styles.proofBadge}>
+                  <FileImage size={10} color="#eab308" />
+                  <Text style={styles.proofBadgeText}>Proof</Text>
+                </View>
+              )}
+              <View style={[
+                styles.statusBadge,
+                payment.is_paid ? { backgroundColor: 'rgba(16, 185, 129, 0.12)' } : (payment.isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.12)' } : { backgroundColor: t.border })
+              ]}>
+                <Text style={[
+                  styles.statusBadgeText,
+                  payment.is_paid ? { color: '#10b981' } : (payment.isOverdue ? { color: '#ef4444' } : { color: t.textSecondary })
+                ]}>
+                  {payment.is_paid ? 'Cleared' : (payment.isOverdue ? 'Overdue' : 'Pending')}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+    </Reanimated.View>
   );
 });
 
@@ -1112,13 +1150,20 @@ export default function AdminPaymentsScreen() {
 
   const BREAKDOWN_PAGE_SIZE = 5;
 
-  const sortedMonthKeys = useMemo(() => Object.keys(monthlyBreakdown)
-    .sort()
-    .reverse()
-    .filter(mKey => {
+  const sortedMonthKeys = useMemo(() => {
+    const validKeys = Object.keys(monthlyBreakdown).filter(mKey => {
       const monthData = monthlyBreakdown[mKey];
       return Object.keys(monthData.clients).length > 0;
-    }), [monthlyBreakdown]);
+    });
+
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const upcoming = validKeys.filter(k => k >= currentMonthKey).sort(); // Ascending
+    const past = validKeys.filter(k => k < currentMonthKey).sort().reverse(); // Descending
+
+    return [...upcoming, ...past];
+  }, [monthlyBreakdown]);
 
   const totalBreakdownListPages = Math.max(1, Math.ceil(sortedMonthKeys.length / BREAKDOWN_PAGE_SIZE));
   const paginatedMonthKeys = useMemo(
@@ -1169,7 +1214,7 @@ export default function AdminPaymentsScreen() {
   const toggleSelectMonth = (monthData: any) => {
     const unpaidIds = getUnpaidIdsForMonth(monthData);
     if (unpaidIds.length === 0) return;
-    const allSelected = unpaidIds.every(id => selectedIds.includes(id));
+    const allSelected = unpaidIds.every(id => selectedIdsSet.has(id));
     if (allSelected) {
       setSelectedIds(prev => prev.filter(id => !unpaidIds.includes(id)));
     } else {
@@ -1186,7 +1231,7 @@ export default function AdminPaymentsScreen() {
   const toggleSelectClient = (clientData: any) => {
     const unpaidIds = getUnpaidIdsForClient(clientData);
     if (unpaidIds.length === 0) return;
-    const allSelected = unpaidIds.every(id => selectedIds.includes(id));
+    const allSelected = unpaidIds.every(id => selectedIdsSet.has(id));
     if (allSelected) {
       setSelectedIds(prev => prev.filter(id => !unpaidIds.includes(id)));
     } else {
@@ -1807,6 +1852,36 @@ export default function AdminPaymentsScreen() {
       totalMonthlyPayment
     };
   }, [selectedImportIds, bulkItemsConfig, shopeeImports]);
+
+  const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const selectedPaymentsSummary = useMemo(() => {
+    if (selectedIdsSet.size === 0) return { totalAmount: 0, clientString: '' };
+    let total = 0;
+    const clientSet = new Set<string>();
+    
+    processedPayments.forEach((p: any) => {
+      if (selectedIdsSet.has(p.id)) {
+        total += Number(p.amount_due) || 0;
+        if (p.clientName) {
+          clientSet.add(p.clientName);
+        }
+      }
+    });
+
+    const clientsArray = Array.from(clientSet);
+    let clientString = '';
+    if (clientsArray.length === 1) {
+      clientString = clientsArray[0];
+    } else if (clientsArray.length === 2) {
+      clientString = `${clientsArray[0]} and ${clientsArray[1]}`;
+    } else if (clientsArray.length > 2) {
+      clientString = `${clientsArray[0]}, ${clientsArray[1]}, and ${clientsArray.length - 2} others`;
+    }
+
+    return { totalAmount: total, clientString };
+  }, [selectedIdsSet, processedPayments]);
+
   const tabLabels: Record<PaymentSubTab, string> = {
     ledger: 'Ledger',
     breakdown: 'Breakdown',
@@ -1818,13 +1893,14 @@ export default function AdminPaymentsScreen() {
   const renderPaymentItem = useCallback(({ item }: { item: any }) => (
     <PaymentListItem
       payment={item}
-      selected={selectedIds.includes(item.id)}
+      selected={selectedIdsSet.has(item.id)}
       bulkMode={bulkMode}
       t={t}
       onPress={handlePaymentPress}
       onSelectToggle={handleSelectToggle}
+      onMarkPaid={handleMarkPaid}
     />
-  ), [selectedIds, bulkMode, t, handlePaymentPress, handleSelectToggle]);
+  ), [selectedIdsSet, bulkMode, t, handlePaymentPress, handleSelectToggle]);
 
   if (loading && !paymentsData) {
     return (
@@ -1848,7 +1924,9 @@ export default function AdminPaymentsScreen() {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
+        stickyHeaderIndices={[1]}
       >
+        <View style={{ display: 'flex', flexDirection: 'column' }}>
         {/* Countdown card */}
         {nextBillingSchedule.earliestDueDate && (
           <View style={[styles.scheduleCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
@@ -2175,6 +2253,7 @@ export default function AdminPaymentsScreen() {
             </View>
           </View>
         </View>
+        </View>
 
         {/* Navigation Sub-Tabs */}
         <View style={styles.subTabNav}>
@@ -2498,7 +2577,7 @@ export default function AdminPaymentsScreen() {
                   const monthData = monthlyBreakdown[mKey];
                   const isMonthExpanded = expandedMonths[mKey] === true; // defaults to collapsed (hidden)
                   const monthUnpaidIds = getUnpaidIdsForMonth(monthData);
-                  const allMonthSelected = monthUnpaidIds.length > 0 && monthUnpaidIds.every(id => selectedIds.includes(id));
+                  const allMonthSelected = monthUnpaidIds.length > 0 && monthUnpaidIds.every(id => selectedIdsSet.has(id));
                   const monthStatus = monthData.pendingCount === 0 ? 'paid' : (Object.values(monthData.clients).some((c: any) => c.payments.some((p: any) => p.isOverdue)) ? 'overdue' : 'pending');
 
                   // If filtering makes a month empty of matching elements, hide it!
@@ -2515,7 +2594,10 @@ export default function AdminPaymentsScreen() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                           <TouchableOpacity
                             disabled={monthUnpaidIds.length === 0}
-                            onPress={() => toggleSelectMonth(monthData)}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              toggleSelectMonth(monthData);
+                            }}
                           >
                             {monthUnpaidIds.length === 0 ? (
                               <CheckSquare size={20} color="#10b981" />
@@ -2549,7 +2631,7 @@ export default function AdminPaymentsScreen() {
                             const clientExpandedKey = `${mKey}-${clientId}`;
                             const isClientExpanded = expandedClients[clientExpandedKey] === true; // defaults to collapsed
                             const clientUnpaidIds = getUnpaidIdsForClient(clientData);
-                            const allClientSelected = clientUnpaidIds.length > 0 && clientUnpaidIds.every(id => selectedIds.includes(id));
+                            const allClientSelected = clientUnpaidIds.length > 0 && clientUnpaidIds.every(id => selectedIdsSet.has(id));
 
                             const itemNames = Array.from(new Set((clientData.payments || []).map((p: any) => p.itemName).filter(Boolean)));
                             const itemsSummary = itemNames.slice(0, 2).join(', ') + (itemNames.length > 2 ? ` +${itemNames.length - 2} more` : '');
@@ -2562,19 +2644,7 @@ export default function AdminPaymentsScreen() {
                                   activeOpacity={0.8}
                                   onPress={() => setExpandedClients(prev => ({ ...prev, [clientExpandedKey]: !isClientExpanded }))}
                                 >
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                                    <TouchableOpacity
-                                      disabled={clientUnpaidIds.length === 0}
-                                      onPress={() => toggleSelectClient(clientData)}
-                                    >
-                                      {clientUnpaidIds.length === 0 ? (
-                                        <CheckSquare size={18} color="#10b981" />
-                                      ) : allClientSelected ? (
-                                        <CheckSquare size={18} color={t.accent} />
-                                      ) : (
-                                        <Square size={18} color={t.textSecondary} />
-                                      )}
-                                    </TouchableOpacity>
+                                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                                     <View style={{ flex: 1 }}>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                         <Text style={[styles.clientNameText, { color: t.textPrimary }]} numberOfLines={1}>{clientData.name}</Text>
@@ -2584,12 +2654,7 @@ export default function AdminPaymentsScreen() {
                                           </View>
                                         )}
                                       </View>
-                                      {itemsSummary ? (
-                                        <Text style={{ fontSize: 11, fontWeight: '600', color: t.accent, marginTop: 1 }} numberOfLines={1}>
-                                          📦 {itemsSummary}
-                                        </Text>
-                                      ) : null}
-                                      <Text style={[styles.dateLabelText, { marginTop: 1 }]}>Rate: {clientData.collectionRate.toFixed(0)}% • {formatCurrency(clientData.pendingAmount)} Pending</Text>
+                                      <Text style={[styles.clientEmailText, { marginTop: 2 }]}>{clientData.email}</Text>
                                     </View>
                                   </View>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -2601,7 +2666,7 @@ export default function AdminPaymentsScreen() {
                                 {isClientExpanded && (
                                   <View style={styles.clientPaymentsList}>
                                     {clientData.payments.map((p: any) => {
-                                      const isSel = selectedIds.includes(p.id);
+                                      const isSel = selectedIdsSet.has(p.id);
                                       return (
                                         <TouchableOpacity
                                           key={p.id}
@@ -3224,13 +3289,26 @@ export default function AdminPaymentsScreen() {
 
       {/* Floating Bulk Actions Bar for Ledger */}
       {selectedIds.length > 0 && (
-        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
-          <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedIds.length} Selected</Text>
+        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border, paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 24 }]}>
+          <View style={{ flexDirection: 'column', flex: 1, marginRight: 12 }}>
+            <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedIds.length} Selected</Text>
+            {selectedPaymentsSummary.clientString ? (
+              <Text style={{ color: t.textSecondary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                {formatCurrency(selectedPaymentsSummary.totalAmount)} • {selectedPaymentsSummary.clientString}
+              </Text>
+            ) : null}
+          </View>
           <View style={styles.bulkBtnRow}>
-            <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => setSelectedIds([])}>
+            <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSelectedIds([]);
+            }}>
               <Text style={styles.bulkCancelBtnText}>Deselect</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkConfirmBtn, { backgroundColor: t.accent }]} onPress={handleBulkClear} disabled={actionLoading}>
+            <TouchableOpacity style={[styles.bulkConfirmBtn, { backgroundColor: t.accent }]} onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              handleBulkClear();
+            }} disabled={actionLoading}>
               <Text style={styles.bulkConfirmBtnText}>{actionLoading ? 'Clearing...' : 'Verify Paid'}</Text>
             </TouchableOpacity>
           </View>
@@ -3239,7 +3317,7 @@ export default function AdminPaymentsScreen() {
 
       {/* Floating Bulk Actions Bar for Shopee Imports */}
       {subTab === 'imports' && selectedImportIds.length > 0 && (
-        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
+        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border, paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 24 }]}>
           <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedImportIds.length} Selected</Text>
           <View style={styles.bulkBtnRow}>
             <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => setSelectedImportIds([])}>
@@ -6071,6 +6149,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: 'rgba(148, 163, 184, 0.15)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   // Tab Badge style for imports count
   tabBadge: {

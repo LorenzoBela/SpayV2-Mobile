@@ -1,5 +1,6 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+import BiometricReAuthModal from '../../components/BiometricReAuthModal';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
@@ -111,6 +112,22 @@ export default function SettingsScreen() {
   const [updateInfo, setUpdateInfo] = useState<AppUpdateRuntimeInfo>(() => getAppUpdateRuntimeInfo());
   const [isApkDownloaded, setIsApkDownloaded] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'json' | null>(null);
+  const [exportReAuthVisible, setExportReAuthVisible] = useState(false);
+  const [pendingExportFormat, setPendingExportFormat] = useState<'csv' | 'json' | null>(null);
+
+  const handleInitiateExport = (format: 'csv' | 'json') => {
+    setPendingExportFormat(format);
+    setExportReAuthVisible(true);
+  };
+
+  const handleExportReAuthSuccess = () => {
+    const fmt = pendingExportFormat;
+    setExportReAuthVisible(false);
+    setPendingExportFormat(null);
+    if (fmt) {
+      void handleExportMobileData(fmt);
+    }
+  };
 
   const handleExportMobileData = async (format: 'csv' | 'json') => {
     setExportingFormat(format);
@@ -832,7 +849,7 @@ export default function SettingsScreen() {
 
           <View style={styles.exportBtnRow}>
             <TouchableOpacity
-              onPress={() => handleExportMobileData('csv')}
+              onPress={() => handleInitiateExport('csv')}
               disabled={exportingFormat !== null}
               style={[styles.exportDataBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#0f172a' }]}
               activeOpacity={0.8}
@@ -848,7 +865,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => handleExportMobileData('json')}
+              onPress={() => handleInitiateExport('json')}
               disabled={exportingFormat !== null}
               style={[styles.exportDataBtn, { backgroundColor: isDarkMode ? '#1e293b' : '#0f172a' }]}
               activeOpacity={0.8}
@@ -1126,6 +1143,16 @@ export default function SettingsScreen() {
 
       {renderLanguageModal()}
       {renderPinModal()}
+      <BiometricReAuthModal
+        visible={exportReAuthVisible}
+        onDismiss={() => {
+          setExportReAuthVisible(false);
+          setPendingExportFormat(null);
+        }}
+        onSuccess={handleExportReAuthSuccess}
+        title="Export Data Security Check"
+        description="Please verify your identity with biometrics or password to export account data."
+      />
     </SafeAreaView>
   );
 }

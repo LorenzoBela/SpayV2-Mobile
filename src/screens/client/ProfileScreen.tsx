@@ -23,7 +23,7 @@ import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useImpersonation } from '../../context/ImpersonationContext';
 import { ProfileSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
-import ReAuthModal from '../../components/ReAuthModal';
+import BiometricReAuthModal from '../../components/BiometricReAuthModal';
 
 const BIOMETRIC_EMAIL_KEY = 'biometric_email';
 const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
@@ -615,11 +615,16 @@ export default function ProfileScreen() {
           </Modal>
 
           {/* Re-Authentication Modal for Sensitive Operations */}
-          <ReAuthModal
+          <BiometricReAuthModal
             visible={reAuthModalVisible}
             onDismiss={() => setReAuthModalVisible(false)}
             onSuccess={handleReAuthSuccess}
-            email={profile.email}
+            title={pendingAction === 'UPDATE_PASSWORD' ? 'Password Security Check' : 'Profile Security Check'}
+            description={
+              pendingAction === 'UPDATE_PASSWORD'
+                ? 'Please verify your identity with biometrics or password to update your password.'
+                : 'Please verify your identity with biometrics or password to save profile changes.'
+            }
           />
         </>
       )}
