@@ -994,8 +994,11 @@ function Invoke-CopyWidgetFiles {
     Copy-Item -Path (Join-Path $widgetsDir "kotlin\*") -Destination $destJavaDir -Force
     # Copy Layout files
     Copy-Item -Path (Join-Path $widgetsDir "layout\*") -Destination $destLayoutDir -Force
-    # Copy XML files
-    Copy-Item -Path (Join-Path $widgetsDir "xml\*") -Destination $destXmlDir -Force
+    # Copy XML files and sanitize missing previewImage/description attributes
+    Get-ChildItem -Path (Join-Path $widgetsDir "xml\*.xml") | ForEach-Object {
+        $cleanXml = (Get-Content $_.FullName) | Where-Object { $_ -notmatch 'android:previewImage=' -and $_ -notmatch 'android:description=' }
+        Set-Content -Path (Join-Path $destXmlDir $_.Name) -Value $cleanXml
+    }
     # Copy Drawable files (backgrounds, dots, icons referenced by widget layouts)
     $srcDrawableDir = Join-Path $widgetsDir "drawable"
     if (Test-Path $srcDrawableDir) {
