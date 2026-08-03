@@ -47,6 +47,8 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
+import CountdownTimer from '../../components/CountdownTimer';
+import { parseUtcDate } from '../../utils/date';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import {
   getSalaryData,
@@ -309,15 +311,7 @@ export default function AdminSalaryScreen() {
   const [payslipModalVisible, setPayslipModalVisible] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<SalaryPaycheckRecord | null>(null);
 
-  // Countdown State
-  const [countdown, setCountdown] = useState<CountdownTime>({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    isToday: false,
-    isOverdue: false,
-  });
+
 
   const loadData = useCallback(async () => {
     try {
@@ -340,41 +334,7 @@ export default function AdminSalaryScreen() {
     loadData();
   }, [loadData]);
 
-  // Payday Countdown Timer Effect
-  useEffect(() => {
-    if (!salaryData?.nextPaydayIso) return;
 
-    const targetDateStr = salaryData.nextPaydayIso.split('T')[0];
-    const targetDateObj = new Date(`${targetDateStr}T00:00:00`);
-    const target = targetDateObj.getTime();
-
-    const updateTimer = () => {
-      const now = new Date().getTime();
-      const diff = target - now;
-
-      if (diff <= 0) {
-        const currentDate = new Date();
-        const isSameDay = targetDateObj.toDateString() === currentDate.toDateString();
-
-        if (isSameDay) {
-          setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, isToday: true, isOverdue: false });
-        } else {
-          setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, isToday: false, isOverdue: true });
-        }
-        return;
-      }
-
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      setCountdown({ days, hours, minutes, seconds, isToday: false, isOverdue: false });
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [salaryData?.nextPaydayIso]);
 
   // Confirm Paycheck handler
   const handleOpenConfirmModal = (check: SalaryPaycheckRecord) => {
@@ -607,36 +567,42 @@ export default function AdminSalaryScreen() {
           </Text>
 
           {/* Flip Digit Containers */}
-          <View style={styles.flipGrid}>
-            <SalaryFlipCard value={countdown.days} label="DAYS" />
-            <Text style={styles.flipColon}>:</Text>
-            <SalaryFlipCard value={countdown.hours} label="HOURS" />
-            <Text style={styles.flipColon}>:</Text>
-            <SalaryFlipCard value={countdown.minutes} label="MINS" />
-            <Text style={styles.flipColon}>:</Text>
-            <SalaryFlipCard value={countdown.seconds} label="SECS" isSecs />
-          </View>
+          <CountdownTimer targetDate={salaryData?.nextPaydayIso} parseDateFn={parseUtcDate}>
+            {(cDown) => (
+              <>
+                <View style={styles.flipGrid}>
+                  <SalaryFlipCard value={cDown.days} label="DAYS" />
+                  <Text style={styles.flipColon}>:</Text>
+                  <SalaryFlipCard value={cDown.hours} label="HOURS" />
+                  <Text style={styles.flipColon}>:</Text>
+                  <SalaryFlipCard value={cDown.minutes} label="MINS" />
+                  <Text style={styles.flipColon}>:</Text>
+                  <SalaryFlipCard value={cDown.seconds} label="SECS" isSecs />
+                </View>
 
-          {/* Status Message */}
-          <View style={styles.heroStatusContainer}>
-            <Clock size={13} color="#ee4d2d" />
-            <Text style={styles.heroStatusText}>
-              {countdown.isToday
-                ? 'Payday Today — Cash is in'
-                : countdown.isOverdue
-                ? 'Payday Date Arrived'
-                : `Target: ${
-                    salaryData?.nextPaydayIso
-                      ? new Date(`${salaryData.nextPaydayIso.split('T')[0]}T00:00:00`).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })
-                      : 'Next Payday'
-                  }`}
-            </Text>
-          </View>
+                {/* Status Message */}
+                <View style={styles.heroStatusContainer}>
+                  <Clock size={13} color="#ee4d2d" />
+                  <Text style={styles.heroStatusText}>
+                    {cDown.isToday
+                      ? 'Payday Today — Cash is in'
+                      : cDown.isOverdue
+                      ? 'Payday Date Arrived'
+                      : `Target: ${
+                          salaryData?.nextPaydayIso
+                            ? new Date(`${salaryData.nextPaydayIso.split('T')[0]}T00:00:00`).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })
+                            : 'Next Payday'
+                        }`}
+                  </Text>
+                </View>
+              </>
+            )}
+          </CountdownTimer>
 
           {/* Progress Bar towards Annual Gross Target */}
           <View style={styles.heroTargetProgressBox}>

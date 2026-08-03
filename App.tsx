@@ -36,18 +36,8 @@ import {
   PlusJakartaSans_700Bold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 
-// Configure TanStack Query client for fetching states with custom cache/gc lifetime
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours cache retention/garbage collection time
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: 'always',
-    },
-  },
-});
+import { queryClient } from './src/utils/queryClient';
+export { queryClient };
 
 const getApiUrl = () => {
   const url = process.env.EXPO_PUBLIC_API_URL?.trim();

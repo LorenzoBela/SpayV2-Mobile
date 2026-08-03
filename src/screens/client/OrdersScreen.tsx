@@ -195,7 +195,8 @@ export default function OrdersScreen() {
     successText: '#10b981',
   };
 
-  const formatCurrency = (val: number | string) => {
+  const formatCurrency = (val: number | string | null | undefined) => {
+    if (val === null || val === undefined) return '₱0.00';
     const num = typeof val === 'string' ? parseFloat(val) : val;
     if (isNaN(num)) return '₱0.00';
     return '₱' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -8,7 +8,7 @@ import { syncWidgetData } from '../utils/widgetSync';
  * Custom hook that subscribes to realtime changes in specified Supabase tables.
  * When changes occur (INSERT, UPDATE, DELETE), the callback is triggered or specific query keys are invalidated.
  * Changes are debounced by 300ms to group rapid succession events (e.g. bulk inserts).
- * Automatically invalidates all active queries when transitioning from offline to online.
+ * Automatically invalidates all active queries ONLY when transitioning from offline to online.
  */
 export function useRealtimeSync(
   tables: string[], 
@@ -17,15 +17,21 @@ export function useRealtimeSync(
 ) {
   const onSyncRef = useRef(onSync);
   onSyncRef.current = onSync;
-  const queryClient = useQueryClient();
+  const queryKeysRef = useRef(queryKeysToInvalidate);
+  queryKeysRef.current = queryKeysToInvalidate;
 
-  // Handle offline -> online transition
+  const queryClient = useQueryClient();
+  const wasOfflineRef = useRef(false);
+
+  // Handle actual offline -> online state transition only
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
-      // Invalidate all active queries when transitioning from offline back to online
-      // We check if it's connected and internet is reachable (if known)
-      if (state.isConnected && state.isInternetReachable !== false) {
-        console.log('[useRealtimeSync] Network status is ONLINE. Invalidating all active queries to ensure data consistency.');
+      const isOnline = Boolean(state.isConnected && state.isInternetReachable !== false);
+      if (!isOnline) {
+        wasOfflineRef.current = true;
+      } else if (wasOfflineRef.current) {
+        wasOfflineRef.current = false;
+        console.log('[useRealtimeSync] Transitioned offline -> online. Invalidating active queries.');
         queryClient.invalidateQueries({ type: 'active' });
         void syncWidgetData();
       }
@@ -34,36 +40,34 @@ export function useRealtimeSync(
     return () => unsubscribe();
   }, [queryClient]);
 
-  useEffect(() => {
-    if (tables.length === 0) return;
+  const tablesKey = tables.join(',');
 
-    // Generate a unique channel identifier to avoid collision
+  useEffect(() => {
+    if (!tablesKey) return;
+
     const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const channelName = `realtime-sync-${tables.join('-')}-${uniqueId}`;
+    const channelName = `realtime-sync-${tablesKey}-${uniqueId}`;
 
     let debounceTimer: any = null;
     const triggerSync = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        // Targeted invalidation if query keys are provided
-        if (queryKeysToInvalidate && queryKeysToInvalidate.length > 0) {
-          queryKeysToInvalidate.forEach((key) => {
+        if (queryKeysRef.current && queryKeysRef.current.length > 0) {
+          queryKeysRef.current.forEach((key) => {
             console.log(`[useRealtimeSync] Targeted invalidation for query key: ${JSON.stringify(key)}`);
             queryClient.invalidateQueries({ queryKey: key });
           });
         }
         
-        // Execute legacy/custom callback if provided
         if (onSyncRef.current) {
           onSyncRef.current();
         }
 
-        // Sync home screen widgets with updated data
         void syncWidgetData();
       }, 300);
     };
 
-    console.log(`[useRealtimeSync] Subscribing to changes on [${tables.join(', ')}] under channel: ${channelName}`);
+    console.log(`[useRealtimeSync] Subscribing to changes on [${tablesKey}] under channel: ${channelName}`);
     const channel = supabase.channel(channelName);
 
     tables.forEach((table) => {
@@ -96,5 +100,5 @@ export function useRealtimeSync(
       console.log(`[useRealtimeSync] Cleaning up subscription for channel: ${channelName}`);
       void supabase.removeChannel(channel);
     };
-  }, [tables.join(','), JSON.stringify(queryKeysToInvalidate), queryClient]); // Re-subscribe if the table list or keys change
+  }, [tablesKey, queryClient]);
 }

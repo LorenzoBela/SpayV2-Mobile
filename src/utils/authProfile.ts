@@ -9,7 +9,22 @@ export type LinkedProfile = {
   name?: string | null;
   role?: string | null;
   mobile_number?: string | null;
+  avatar_url?: string | null;
+  avatarUrl?: string | null;
 };
+
+export function getClientAvatarUrl(
+  item: { avatar_url?: string | null; avatarUrl?: string | null; avatar?: string | null; name?: string | null; full_name?: string | null; email?: string | null } | null | undefined,
+  fallbackName?: string,
+  size = 120
+): string {
+  const url = item?.avatar_url || item?.avatarUrl || item?.avatar;
+  if (url && typeof url === 'string' && url.trim().length > 0 && !url.includes('undefined') && !url.includes('null')) {
+    return url.trim();
+  }
+  const name = fallbackName || item?.name || item?.full_name || item?.email || '?';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ee4d2d&color=fff&size=${size}&bold=true`;
+}
 
 export type CachedUserProfile = {
   role: string;
@@ -37,7 +52,7 @@ export function setCachedUserProfile(cached: CachedUserProfile): void {
   }
 }
 
-const PROFILE_SELECT = 'id, email, name, role, mobile_number';
+const PROFILE_SELECT = 'id, email, name, role, mobile_number, avatar_url';
 
 export async function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
   const { data: linkedProfile, error: rpcError } = await supabase
@@ -82,6 +97,12 @@ export async function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>):
   return profileByEmail;
 }
 
+let memoryProfileCache: { userId: string; profile: LinkedProfile | null; profileId: string; timestamp: number } | null = null;
+
+export function clearMemoryProfileCache(): void {
+  memoryProfileCache = null;
+}
+
 export async function getLinkedProfileForCurrentUser() {
   try {
     const raw = await expoSecureStorage.getItem('impersonated_user');
@@ -106,6 +127,8 @@ export async function getLinkedProfileForCurrentUser() {
             name: imp.name,
             role: 'CLIENT',
             mobile_number: null,
+            avatar_url: imp.avatarUrl || null,
+            avatarUrl: imp.avatarUrl || null,
           },
           profileId: imp.id,
         };
@@ -115,17 +138,57 @@ export async function getLinkedProfileForCurrentUser() {
     // Fall back to default session user
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let { data: { session } } = await supabase.auth.getSession();
+
+  if (session && session.expires_at) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (session.expires_at <= nowSec) {
+      try {
+        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+        if (refreshed) {
+          session = refreshed;
+        }
+      } catch (refreshErr) {
+        console.warn('[AuthProfile] Failed to refresh expired session:', refreshErr);
+      }
+    }
+  }
+
+  const user = session?.user || null;
 
   if (!user) {
+    memoryProfileCache = null;
     return { user: null, profile: null, profileId: null };
   }
 
+  if (memoryProfileCache && memoryProfileCache.userId === user.id) {
+    return {
+      user,
+      profile: memoryProfileCache.profile,
+      profileId: memoryProfileCache.profileId,
+    };
+  }
+
   const profile = await getLinkedProfileForUser(user);
+  const profileId = profile?.id || user.id;
+
+  memoryProfileCache = {
+    userId: user.id,
+    profile,
+    profileId,
+    timestamp: Date.now(),
+  };
+
+  if (profile) {
+    setCachedUserProfile({
+      role: profile.role || 'CLIENT',
+      linkedProfileId: profileId,
+    });
+  }
 
   return {
     user,
     profile,
-    profileId: profile?.id || user.id,
+    profileId,
   };
 }

@@ -63,8 +63,11 @@ export default function ProfileScreen() {
 
   // Sensitive Action Re-Auth Modal state
   const [reAuthModalVisible, setReAuthModalVisible] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'UPDATE_PROFILE' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'UPDATE_PROFILE' | 'UPDATE_PASSWORD' | null>(null);
   const [savingUpdate, setSavingUpdate] = useState(false);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   // Dynamic theme colors
   const t = {
@@ -164,16 +167,13 @@ export default function ProfileScreen() {
         setEditProfileModalVisible(false);
         PremiumAlert.alert('Profile Updated', 'Your profile details have been saved successfully.');
       } else if (pendingAction === 'UPDATE_PASSWORD') {
-        const { error } = await supabase.auth.updateUser({
-          password: newPassword,
-        });
-
-        if (error) throw error;
-
-        setNewPassword('');
-        setConfirmPassword('');
-        setPasswordModalVisible(false);
-        PremiumAlert.alert('Password Updated', 'Your account password has been updated securely.');
+        if (newPassword) {
+          await supabase.auth.updateUser({ password: newPassword });
+          setNewPassword('');
+          setConfirmPassword('');
+          setPasswordModalVisible(false);
+          PremiumAlert.alert('Password Updated', 'Your password has been updated successfully.');
+        }
       }
     } catch (err: any) {
       PremiumAlert.alert('Update Failed', err?.message || 'Could not apply profile updates.');
@@ -531,12 +531,8 @@ export default function ProfileScreen() {
             visible={reAuthModalVisible}
             onDismiss={() => setReAuthModalVisible(false)}
             onSuccess={handleReAuthSuccess}
-            title={pendingAction === 'UPDATE_PASSWORD' ? 'Password Security Check' : 'Profile Security Check'}
-            description={
-              pendingAction === 'UPDATE_PASSWORD'
-                ? 'Please verify your identity with biometrics or password to update your password.'
-                : 'Please verify your identity with biometrics or password to save profile changes.'
-            }
+            title="Profile Security Check"
+            description="Please verify your identity with biometrics or password to save profile changes."
           />
         </>
       )}

@@ -54,6 +54,7 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
 import { fetchAdminOrders, callAdminApi } from '../../services/adminService';
+import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
@@ -1284,7 +1285,7 @@ export default function AdminOrdersScreen() {
                           >
                             <View style={styles.clientAvatarWrapper}>
                               <Image
-                                source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=120&bold=true` }}
+                                source={{ uri: getClientAvatarUrl(client, client.name || client.email, 120) }}
                                 style={[styles.clientAvatar, { borderColor: selected ? t.accent : t.cardBorder }]}
                                 cachePolicy="memory-disk"
                                 contentFit="cover"
@@ -1825,7 +1826,7 @@ export default function AdminOrdersScreen() {
                         }}
                       >
                         <Image
-                          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          source={{ uri: getClientAvatarUrl(client, client.name || client.email, 100) }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           cachePolicy="memory-disk"
                           contentFit="cover"
@@ -1917,7 +1918,7 @@ export default function AdminOrdersScreen() {
                             }}
                           >
                             <Image
-                              source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=50&bold=true` }}
+                              source={{ uri: getClientAvatarUrl(client, client.name || client.email, 50) }}
                               style={{ width: 20, height: 20, borderRadius: 10 }}
                               contentFit="cover"
                               cachePolicy="memory-disk"
@@ -2019,7 +2020,7 @@ export default function AdminOrdersScreen() {
                         }}
                       >
                         <Image
-                          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          source={{ uri: getClientAvatarUrl(client, client.name || client.email, 100) }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           contentFit="cover"
                           cachePolicy="memory-disk"

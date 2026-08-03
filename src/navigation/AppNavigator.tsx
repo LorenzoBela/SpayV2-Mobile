@@ -381,6 +381,16 @@ const MainNavigator = () => {
   const { unreadCount } = useNotifications();
 
   const trpcUtils = trpc.useUtils();
+  const tabPrefetchTimers = useRef<Record<string, any>>({});
+
+  const debouncedTabPrefetch = useCallback((key: string, prefetchFn: () => void, delayMs = 300) => {
+    if (tabPrefetchTimers.current[key]) {
+      clearTimeout(tabPrefetchTimers.current[key]);
+    }
+    tabPrefetchTimers.current[key] = setTimeout(() => {
+      runIdlePrefetch(key, prefetchFn);
+    }, delayMs);
+  }, []);
 
   useEffect(() => {
     // Warm client orders and payments in the background ONCE after initial animations complete
@@ -401,7 +411,7 @@ const MainNavigator = () => {
         component={DashboardGestureScreen}
         listeners={{
           tabPress: () => {
-            runIdlePrefetch('tab_dashboard', () => {
+            debouncedTabPrefetch('tab_dashboard', () => {
               trpcUtils.orders.list.prefetch();
               trpcUtils.payments.listClient.prefetch();
             });
@@ -413,7 +423,7 @@ const MainNavigator = () => {
         component={OrdersGestureScreen}
         listeners={{
           tabPress: () => {
-            runIdlePrefetch('tab_orders', () => {
+            debouncedTabPrefetch('tab_orders', () => {
               trpcUtils.orders.list.prefetch();
             });
           },
@@ -424,7 +434,7 @@ const MainNavigator = () => {
         component={PaymentsGestureScreen}
         listeners={{
           tabPress: () => {
-            runIdlePrefetch('tab_payments', () => {
+            debouncedTabPrefetch('tab_payments', () => {
               trpcUtils.payments.listClient.prefetch();
             });
           },

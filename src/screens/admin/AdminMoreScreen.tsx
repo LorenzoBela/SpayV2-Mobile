@@ -33,6 +33,7 @@ import {
   Banknote,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -53,11 +54,11 @@ export default function AdminMoreScreen() {
   const [isImpersonationModalOpen, setIsImpersonationModalOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setAdminName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Admin');
-        setAdminEmail(user.email || '');
-        setAdminPhoto(user.user_metadata?.avatar_url || user.user_metadata?.picture || null);
+    getLinkedProfileForCurrentUser().then(({ user, profile }) => {
+      if (user || profile) {
+        setAdminName(profile?.name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin');
+        setAdminEmail(profile?.email || user?.email || '');
+        setAdminPhoto((profile as any)?.avatar_url || (profile as any)?.avatarUrl || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null);
       }
     });
   }, []);

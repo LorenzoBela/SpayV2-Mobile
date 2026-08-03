@@ -238,7 +238,23 @@ export async function clearNotification(notificationId: string) {
   }
 }
 
+const MAX_DEDUP_SIZE = 100;
+const processedTrayNotificationIds = new Set<string>();
+
 export async function mirrorToLocalTray(notification: AppNotification) {
+  if (notification.id) {
+    if (processedTrayNotificationIds.has(notification.id)) {
+      return;
+    }
+    processedTrayNotificationIds.add(notification.id);
+    if (processedTrayNotificationIds.size > MAX_DEDUP_SIZE) {
+      const oldestKey = processedTrayNotificationIds.values().next().value;
+      if (oldestKey !== undefined) {
+        processedTrayNotificationIds.delete(oldestKey);
+      }
+    }
+  }
+
   const hasPermission = await ensureTrayNotificationPermissions();
   if (!hasPermission) return;
 
@@ -284,6 +300,7 @@ export function subscribeToRealtimeNotifications(
         filter: `user_id=eq.${userId}`,
       },
       (payload) => {
+        if (payload.eventType !== 'INSERT' || !payload.new) return;
         onNotification(payload.new as AppNotification);
       }
     )

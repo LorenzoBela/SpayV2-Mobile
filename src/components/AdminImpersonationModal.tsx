@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getClientAvatarUrl } from '../utils/authProfile';
 import {
   Search,
   X,
@@ -204,11 +205,7 @@ export function AdminImpersonationModal({
                   <View style={[styles.clientCardList, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                     <View style={styles.clientInfoRow}>
                       <Image
-                        source={{
-                          uri:
-                            item.avatar_url ||
-                            `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=ee4d2d&color=fff&size=100&bold=true`,
-                        }}
+                        source={{ uri: getClientAvatarUrl(item, item.name, 100) }}
                         style={styles.avatarList}
                       />
 
@@ -252,11 +249,7 @@ export function AdminImpersonationModal({
                   // Card Grid Bento View
                   <View style={[styles.clientCardGrid, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                     <Image
-                      source={{
-                        uri:
-                          item.avatar_url ||
-                          `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=ee4d2d&color=fff&size=100&bold=true`,
-                      }}
+                      source={{ uri: getClientAvatarUrl(item, item.name, 100) }}
                       style={styles.avatarGrid}
                     />
                     <Text style={[styles.gridName, { color: t.textPrimary }]} numberOfLines={1}>

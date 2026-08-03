@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../utils/supabase';
 import { subscribeToRealtimeNotificationChanges } from '../services/notificationService';
 
@@ -31,9 +31,17 @@ export const NotificationProvider = ({
       return;
     }
     try {
+      const { data: rpcCount, error: rpcError } = await supabase.rpc('get_unread_notification_count', {
+        p_user_id: userId,
+      });
+      if (!rpcError && typeof rpcCount === 'number') {
+        setUnreadCount(rpcCount);
+        return;
+      }
+
       const { count, error } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
         .is('read_at', null);
 
@@ -62,9 +70,15 @@ export const NotificationProvider = ({
     };
   }, [userId, refreshUnreadCount]);
 
+  const value = useMemo(
+    () => ({ unreadCount, setUnreadCount, refreshUnreadCount }),
+    [unreadCount, refreshUnreadCount]
+  );
+
   return (
-    <NotificationContext.Provider value={{ unreadCount, setUnreadCount, refreshUnreadCount }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
 };
+

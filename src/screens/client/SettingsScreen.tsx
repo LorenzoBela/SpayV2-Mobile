@@ -203,7 +203,7 @@ export default function SettingsScreen() {
           name: profileData.name || loadedProfile.name,
           email: profileData.email || loadedProfile.email,
           mobileNumber: profileData.mobile_number || loadedProfile.mobileNumber,
-          avatarUrl: loadedProfile.avatarUrl,
+          avatarUrl: profileData?.avatar_url ?? (profileData as { avatarUrl?: string })?.avatarUrl ?? loadedProfile.avatarUrl,
           role: profileData.role || 'CLIENT',
         };
       }

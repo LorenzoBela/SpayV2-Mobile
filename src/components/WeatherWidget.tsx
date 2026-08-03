@@ -146,6 +146,54 @@ function getRainBarColor(chance: number): string {
   return '#60a5fa';
 }
 
+// Helper to parse YYYY-MM-DD date as local midnight to avoid UTC offset shifting
+function parseLocalDate(dateStr: string): Date {
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  return new Date(dateStr);
+}
+
+function generateFallbackDailyForecast(): DailyForecast[] {
+  const now = new Date();
+  const days: DailyForecast[] = [];
+  const codes = [2, 1, 61, 3, 0, 1, 2];
+  const maxTemps = [31, 32, 29, 30, 33, 31, 30];
+  const minTemps = [25, 25, 24, 24, 26, 25, 24];
+  const rainMax = [40, 20, 70, 30, 10, 25, 35];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    days.push({
+      day: i === 0 ? 'Today' : d.toLocaleDateString([], { weekday: 'short' }),
+      dateLabel: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      code: codes[i % codes.length],
+      tempMax: maxTemps[i % maxTemps.length],
+      tempMin: minTemps[i % minTemps.length],
+      precipSum: i === 2 ? 12.5 : 0,
+      rainChanceMax: rainMax[i % rainMax.length],
+      windMax: 12 + (i % 5),
+    });
+  }
+  return days;
+}
+
+function generateFallbackHourlyRain(): HourlyRainSlot[] {
+  const now = new Date();
+  const slots: HourlyRainSlot[] = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getTime() + i * 3600000);
+    slots.push({
+      hour: d.toLocaleTimeString([], { hour: 'numeric', hour12: true }),
+      prob: Math.max(10, Math.min(80, Math.round(30 + Math.sin(i) * 30))),
+      code: 2,
+      temp: 30,
+    });
+  }
+  return slots;
+}
+
 export default function WeatherWidget() {
   const themeContext = useContext(ThemeContext);
   const isDarkMode = themeContext ? themeContext.isDarkMode : true;
@@ -161,24 +209,31 @@ export default function WeatherWidget() {
 
     try {
       if (!force) {
-        const cached = storage.getString('cached_weather');
-        const cachedTime = storage.getString('cached_weather_time');
-        if (cached && cachedTime && Date.now() - Number(cachedTime) < 1800000) {
-          // 30 min cache
+        const cachedPayloadRaw = storage.getString('cached_weather_payload_v2') || storage.getString('cached_weather');
+        const cachedTimeRaw = storage.getString('cached_weather_time');
+        const cachedTime = cachedTimeRaw ? Number(cachedTimeRaw) : 0;
+        
+        if (cachedPayloadRaw) {
           try {
-            const parsed = JSON.parse(cached);
+            const parsed = JSON.parse(cachedPayloadRaw);
+            const weatherData = parsed.weather || parsed;
+            const timestamp = parsed.timestamp || cachedTime;
+            
             if (
-              parsed.rainChance !== undefined &&
-              Array.isArray(parsed.dailyForecast) &&
-              Array.isArray(parsed.hourlyRain)
+              weatherData &&
+              weatherData.rainChance !== undefined &&
+              Array.isArray(weatherData.dailyForecast) &&
+              weatherData.dailyForecast.length > 0 &&
+              Array.isArray(weatherData.hourlyRain) &&
+              Date.now() - timestamp < 1800000 // 30 min expiration TTL
             ) {
-              const date = new Date(Number(cachedTime));
-              parsed.lastUpdated = date.toLocaleTimeString('en-US', {
+              const date = new Date(timestamp);
+              weatherData.lastUpdated = date.toLocaleTimeString([], {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true,
               });
-              setWeather(parsed);
+              setWeather(weatherData);
               setWeatherLoading(false);
               return;
             }
@@ -188,11 +243,24 @@ export default function WeatherWidget() {
         }
       }
 
-      // 1. Geolocate using Native GPS or IP Fallback
+      // 1. Geolocate using Native GPS or cached geocode fallback
       let lat = 14.5995;
       let lon = 120.9842;
       let city = 'Manila, PH';
       let nativeGeoSuccess = false;
+
+      // Check if we have valid cached geocode coordinates to avoid HTTP cascade
+      try {
+        const cachedPayloadRaw = storage.getString('cached_weather_payload_v2');
+        if (cachedPayloadRaw) {
+          const parsed = JSON.parse(cachedPayloadRaw);
+          if (parsed.lat && parsed.lon && parsed.city) {
+            lat = parsed.lat;
+            lon = parsed.lon;
+            city = parsed.city;
+          }
+        }
+      } catch (_) {}
 
       try {
         const permissionResult = await Promise.race([
@@ -278,7 +346,7 @@ export default function WeatherWidget() {
       const weatherData = await weatherRes.json();
       const current = weatherData.current;
       const details = getWeatherDetails(current.weather_code);
-      const lastUpdatedStr = new Date().toLocaleTimeString('en-US', {
+      const lastUpdatedStr = new Date().toLocaleTimeString([], {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
@@ -307,7 +375,7 @@ export default function WeatherWidget() {
             if (prob > maxProb) {
               maxProb = prob;
               const d = new Date(times[i]);
-              maxProbTimeStr = d.toLocaleTimeString('en-US', {
+              maxProbTimeStr = d.toLocaleTimeString([], {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true,
@@ -315,7 +383,7 @@ export default function WeatherWidget() {
             }
             if (prob >= 35 && !firstRainTimeStr) {
               const d = new Date(times[i]);
-              firstRainTimeStr = d.toLocaleTimeString('en-US', {
+              firstRainTimeStr = d.toLocaleTimeString([], {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true,
@@ -327,7 +395,7 @@ export default function WeatherWidget() {
           if (hourTime >= nowTime && hourTime <= nowTime + 18 * 3600000) {
             const d = new Date(times[i]);
             hourlyRain.push({
-              hour: d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
+              hour: d.toLocaleTimeString([], { hour: 'numeric', hour12: true }),
               prob: probs[i] ?? 0,
               code: hourlyCodes[i] ?? 0,
               temp: Math.round(hourlyTemps[i] ?? 0),
@@ -350,11 +418,11 @@ export default function WeatherWidget() {
         const dWindMax = (weatherData.daily.wind_speed_10m_max as number[]) ?? [];
 
         for (let i = 0; i < dTimes.length; i++) {
-          const d = new Date(dTimes[i]);
+          const d = parseLocalDate(dTimes[i]);
           const isToday = d.toDateString() === new Date().toDateString();
           dailyForecast.push({
-            day: isToday ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' }),
-            dateLabel: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            day: isToday ? 'Today' : d.toLocaleDateString([], { weekday: 'short' }),
+            dateLabel: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
             code: dCodes[i] ?? 0,
             tempMax: Math.round(dMaxT[i] ?? 0),
             tempMin: Math.round(dMinT[i] ?? 0),
@@ -378,24 +446,34 @@ export default function WeatherWidget() {
         lastUpdated: lastUpdatedStr,
         rainChance: maxProb,
         rainTime,
-        dailyForecast,
-        hourlyRain,
+        dailyForecast: dailyForecast.length > 0 ? dailyForecast : generateFallbackDailyForecast(),
+        hourlyRain: hourlyRain.length > 0 ? hourlyRain : generateFallbackHourlyRain(),
         stormAlert,
       };
 
       setWeather(newWeather);
       try {
+        const payload = {
+          timestamp: Date.now(),
+          lat,
+          lon,
+          city,
+          weather: newWeather,
+        };
+        storage.set('cached_weather_payload_v2', JSON.stringify(payload));
         storage.set('cached_weather', JSON.stringify(newWeather));
         storage.set('cached_weather_time', Date.now().toString());
       } catch (_) {}
     } catch (err) {
       console.error('Failed to fetch mobile weather details:', err);
       // Fallback with mock data
-      const lastUpdatedStr = new Date().toLocaleTimeString('en-US', {
+      const lastUpdatedStr = new Date().toLocaleTimeString([], {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
       });
+      const fallbackDaily = generateFallbackDailyForecast();
+      const fallbackHourly = generateFallbackHourlyRain();
       setWeather({
         temp: 30,
         feelsLike: 34,
@@ -407,8 +485,8 @@ export default function WeatherWidget() {
         lastUpdated: lastUpdatedStr,
         rainChance: 45,
         rainTime: '3:00 PM',
-        dailyForecast: [],
-        hourlyRain: [],
+        dailyForecast: fallbackDaily,
+        hourlyRain: fallbackHourly,
         stormAlert: null,
       });
     } finally {

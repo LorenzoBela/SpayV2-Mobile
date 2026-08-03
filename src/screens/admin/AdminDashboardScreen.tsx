@@ -68,6 +68,7 @@ import {
 import Svg, { Path, Circle, Rect, Line, Text as SvgText, G } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../../utils/supabase';
+import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useNavigation } from '@react-navigation/native';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -78,6 +79,9 @@ import { useExitAppConfirmation } from '../../hooks/useExitAppConfirmation';
 import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import PremiumLoader from '../../components/PremiumLoader';
 import AdminHeader from '../../components/AdminHeader';
+import CountdownTimer from '../../components/CountdownTimer';
+import { FlashList } from '@shopify/flash-list';
+const AnyFlashList = FlashList as any;
 import DatePicker from '../../components/DatePicker';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminDashboardData, callAdminApi } from '../../services/adminService';
@@ -380,16 +384,8 @@ export default function AdminDashboardScreen() {
     }
   };
 
-  // Time & Weather Live display
-  const [currentTime, setCurrentTime] = useState(() => dayjs());
+  // Weather Info
   const [weatherInfo, setWeatherInfo] = useState({ temp: '31°C', text: 'Sunny' });
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(dayjs());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Modals & form state
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
@@ -460,15 +456,6 @@ export default function AdminDashboardScreen() {
   // Expandable list state
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({});
-
-  const [timeLeft, setTimeLeft] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    isOverdue: false,
-    hasTarget: false,
-  });
 
   useRealtimeSync(
     ['orders', 'payments', 'account_limits', 'profiles'],
@@ -626,34 +613,7 @@ export default function AdminDashboardScreen() {
   }, [refetch]);
 
   // Flip countdown updater
-  useEffect(() => {
-    if (!nextBillingSchedule.earliestDueDate) {
-      setTimeLeft(prev => ({ ...prev, hasTarget: false }));
-      return;
-    }
 
-    const targetDate = parseUtcDate(nextBillingSchedule.earliestDueDate);
-
-    const calc = () => {
-      const diff = targetDate.getTime() - Date.now();
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isOverdue: true, hasTarget: true });
-      } else {
-        setTimeLeft({
-          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-          minutes: Math.floor((diff / 1000 / 60) % 60),
-          seconds: Math.floor((diff / 1000) % 60),
-          isOverdue: false,
-          hasTarget: true,
-        });
-      }
-    };
-
-    calc();
-    const timer = setInterval(calc, 1000);
-    return () => clearInterval(timer);
-  }, [nextBillingSchedule.earliestDueDate]);
 
   const handleScheduleOrderSubmit = async () => {
     if (isBulkMode) {
@@ -978,39 +938,45 @@ export default function AdminDashboardScreen() {
           ]}>
             {/* Left section: Countdown Clock */}
             <View style={[styles.countdownLeftSection, layout.isTablet && { flex: 7, borderBottomWidth: 0, paddingBottom: 0 }]}>
-              <View style={styles.flipClockRow}>
-                {timeLeft.hasTarget ? (
+              <CountdownTimer targetDate={nextBillingSchedule.earliestDueDate} parseDateFn={parseUtcDate}>
+                {(tLeft) => (
                   <>
-                    <FlipCard value={timeLeft.days} label="Days" />
-                    <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                    <FlipCard value={timeLeft.hours} label="Hours" />
-                    <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                    <FlipCard value={timeLeft.minutes} label="Min" />
-                    <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                    <FlipCard value={timeLeft.seconds} label="Sec" />
-                  </>
-                ) : (
-                  <>
-                    <FlipCard value={0} label="Days" />
-                    <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                    <FlipCard value={0} label="Hours" />
-                    <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                    <FlipCard value={0} label="Min" />
-                    <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                    <FlipCard value={0} label="Sec" />
+                    <View style={styles.flipClockRow}>
+                      {tLeft.hasTarget ? (
+                        <>
+                          <FlipCard value={tLeft.days} label="Days" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={tLeft.hours} label="Hours" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={tLeft.minutes} label="Min" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={tLeft.seconds} label="Sec" />
+                        </>
+                      ) : (
+                        <>
+                          <FlipCard value={0} label="Days" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={0} label="Hours" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={0} label="Min" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={0} label="Sec" />
+                        </>
+                      )}
+                    </View>
+                    <View style={styles.countdownStatusRow}>
+                      <Clock size={12} color={t.accent} />
+                      <Text style={[styles.countdownStatusText, { color: t.accent }]}>
+                        {!tLeft.hasTarget
+                          ? 'No payments scheduled'
+                          : tLeft.isOverdue
+                            ? 'DEADLINE HAS PASSED'
+                            : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
+                      </Text>
+                    </View>
                   </>
                 )}
-              </View>
-              <View style={styles.countdownStatusRow}>
-                <Clock size={12} color={t.accent} />
-                <Text style={[styles.countdownStatusText, { color: t.accent }]}>
-                  {!timeLeft.hasTarget
-                    ? 'No payments scheduled'
-                    : timeLeft.isOverdue
-                      ? 'DEADLINE HAS PASSED'
-                      : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
-                </Text>
-              </View>
+              </CountdownTimer>
               {(nextBillingSchedule.hasShared || nextBillingSchedule.payments?.some((p: any) => p.isShared) || nextBillingSchedule.clients?.some((c: any) => c.hasShared || c.items?.some((i: any) => i.isShared))) && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, justifyContent: 'center' }}>
                   <Users size={12} color="#ee4d2d" style={{ marginRight: 4 }} />
@@ -1888,7 +1854,7 @@ export default function AdminDashboardScreen() {
                           >
                             <View style={styles.clientAvatarWrapper}>
                               <Image
-                                source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=120&bold=true` }}
+                                source={{ uri: getClientAvatarUrl(client, client.name || client.email, 120) }}
                                 style={[styles.clientAvatar, { borderColor: selected ? t.accent : t.cardBorder }]}
                                 contentFit="cover"
                                 cachePolicy="memory-disk"
@@ -2417,7 +2383,7 @@ export default function AdminDashboardScreen() {
                         }}
                       >
                         <Image
-                          source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          source={{ uri: getClientAvatarUrl(client, client.name || client.email, 100) }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           contentFit="cover"
                           cachePolicy="memory-disk"
@@ -2507,7 +2473,7 @@ export default function AdminDashboardScreen() {
                             }}
                           >
                             <Image
-                              source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=50&bold=true` }}
+                              source={{ uri: getClientAvatarUrl(client, client.name || client.email, 50) }}
                               style={{ width: 20, height: 20, borderRadius: 10 }}
                               contentFit="cover"
                               cachePolicy="memory-disk"
@@ -2598,7 +2564,7 @@ export default function AdminDashboardScreen() {
                         }}
                       >
                         <Image
-                          source={{ uri: client.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          source={{ uri: getClientAvatarUrl(client, client.name || client.email, 100) }}
                           style={[styles.clientListAvatar, { borderColor: isSelected ? t.accent : t.border }]}
                           contentFit="cover"
                           cachePolicy="memory-disk"

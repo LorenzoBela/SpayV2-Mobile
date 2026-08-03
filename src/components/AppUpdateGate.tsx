@@ -106,6 +106,7 @@ export default function AppUpdateGate() {
           <Pressable
             style={({ pressed }) => [styles.banner, { opacity: pressed ? 0.85 : 1 }]}
             onPress={() => setShowModal(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel="Open update modal"
           >

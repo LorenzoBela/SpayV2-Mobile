@@ -56,6 +56,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminReports, fetchAdminClients, getExportLedgerCsv, callAdminApi } from '../../services/adminService';
+import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -2079,9 +2080,9 @@ export default function AdminReportsScreen() {
                           onPress={() => setSelectedClientId(client.id)}
                         >
                           <View style={styles.avatarCircleWrapper}>
-                            {client.avatarUrl ? (
+                            {(client.avatar_url || client.avatarUrl || client.avatar) ? (
                               <Image
-                                source={{ uri: client.avatarUrl }}
+                                source={{ uri: (client.avatar_url || client.avatarUrl || client.avatar)! }}
                                 style={[styles.clientAvatarImage, isSelected && { borderColor: t.accent, borderWidth: 1.5 }]}
                                 cachePolicy="memory-disk"
                                 contentFit="cover"
@@ -2118,9 +2119,9 @@ export default function AdminReportsScreen() {
                 <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
                   <View style={styles.profileHeader}>
                     <View style={styles.profileAvatarLarge}>
-                      {selectedClientData.profile.avatarUrl ? (
+                      {(selectedClientData.profile.avatar_url || selectedClientData.profile.avatarUrl || selectedClientData.profile.avatar) ? (
                         <Image
-                          source={{ uri: selectedClientData.profile.avatarUrl }}
+                          source={{ uri: (selectedClientData.profile.avatar_url || selectedClientData.profile.avatarUrl || selectedClientData.profile.avatar)! }}
                           style={styles.avatarLargeImage}
                           cachePolicy="memory-disk"
                           contentFit="cover"

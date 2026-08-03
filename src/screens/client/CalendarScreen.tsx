@@ -39,6 +39,7 @@ import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { CalendarSkeleton } from '../../components/SkeletonLoader';
 import { trpc } from '../../utils/trpc';
+import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 
@@ -220,105 +221,63 @@ export default function CalendarScreen() {
     inputBorder: isDarkMode ? '#222d42' : '#cbd5e1',
   };
 
-  const fetchCalendarPayments = async () => {
-    try {
-      const { user, profile, profileId } = await getLinkedProfileForCurrentUser();
-      if (!user) return;
-
-      setProfileName(profile?.name || user.user_metadata?.full_name || 'Client');
-
-      // 2. Fetch Orders
-      const { data: dbOrders } = await supabase
-        .from('orders')
-        .select('id, item_name, amount, installment_months')
-        .eq('user_id', profileId);
-
-      const ordersList = dbOrders || [];
-      setRawOrders(ordersList);
-
-      if (ordersList.length === 0) {
-        setRawPayments([]);
-        setLoading(false);
-        return;
-      }
-      const orderIds = ordersList.map((o) => o.id);
-
-      // 3. Fetch Payments
-      const { data: dbPayments, error: paymentsErr } = await supabase
-        .from('payments')
-        .select('id, order_id, due_date, amount_due, is_paid, payment_date, proof_of_payment, month_number')
-        .in('order_id', orderIds);
-
-      if (paymentsErr) throw paymentsErr;
-      const paymentsList = dbPayments || [];
-
-      // 4. Fetch Reschedule History
-      let reschedulesList: any[] = [];
-      if (paymentsList.length > 0) {
-        const { data: dbReschedules } = await supabase
-          .from('payment_reschedule_history')
-          .select('id, payment_id, old_due_date, new_due_date, reason, admin_approved, created_at')
-          .in('payment_id', paymentsList.map((p) => p.id));
-        if (dbReschedules) reschedulesList = dbReschedules;
-      }
-
-      // Merge and set payments
-      const reschedulesByPaymentId = new Map<string, any[]>();
-      reschedulesList.forEach((r) => {
-        const list = reschedulesByPaymentId.get(r.payment_id) || [];
-        list.push({
-          id: r.id,
-          oldDueDate: r.old_due_date,
-          newDueDate: r.new_due_date,
-          reason: r.reason,
-          adminApproved: r.admin_approved,
-          createdAt: r.created_at,
-        });
-        reschedulesByPaymentId.set(r.payment_id, list);
-      });
-
-      const mappedPayments = paymentsList.map((p) => {
-        const history = reschedulesByPaymentId.get(p.id) || [];
-        return {
-          ...p,
-          rescheduleHistory: history,
-        };
-      });
-      setRawPayments(mappedPayments);
-
-      // 5. Fetch Budget Categories
-      const { data: dbBudgets } = await supabase
-        .from('user_budget_categories')
-        .select('id, category, monthly_limit, current_spent, alert_threshold, color')
-        .eq('user_id', profileId)
-        .order('current_spent', { ascending: false })
-        .limit(3);
-      setRawBudgets(dbBudgets || []);
-
-    } catch (e) {
-      console.warn('Failed to fetch calendar dataset:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const { data: paymentsHookList, isLoading: paymentsLoading, refetch: refetchPayments } = useClientPaymentsQuery();
+  const { data: ordersHookData, isLoading: ordersLoading, refetch: refetchOrders } = useClientOrdersQuery();
 
   useEffect(() => {
-    fetchCalendarPayments();
+    getLinkedProfileForCurrentUser().then(({ user, profile }) => {
+      if (user) {
+        setProfileName(profile?.name || user.user_metadata?.full_name || 'Client');
+      }
+    });
   }, []);
+
+  useEffect(() => {
+    if (ordersHookData?.orders) {
+      setRawOrders(ordersHookData.orders.map((o: any) => ({
+        id: o.id,
+        item_name: o.itemName,
+        amount: o.amount,
+        installment_months: o.installmentMonths,
+      })));
+    }
+  }, [ordersHookData]);
+
+  useEffect(() => {
+    if (paymentsHookList) {
+      setRawPayments(paymentsHookList.map((p: any) => ({
+        id: p.id,
+        order_id: p.orderId,
+        due_date: p.rawDueDate || p.dueDate,
+        amount_due: p.amountDue,
+        is_paid: p.isPaid,
+        payment_date: p.paymentDate,
+        proof_of_payment: p.proofOfPayment,
+        month_number: p.monthNumber,
+        rescheduleHistory: p.rescheduleHistory || [],
+      })));
+    }
+  }, [paymentsHookList]);
+
+  useEffect(() => {
+    if (!paymentsLoading && !ordersLoading) {
+      setLoading(false);
+    }
+  }, [paymentsLoading, ordersLoading]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.allSettled([
-        fetchCalendarPayments(),
+        refetchPayments(),
+        refetchOrders(),
       ]);
     } catch (err) {
       console.warn('Calendar pull-to-refresh error:', err);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchCalendarPayments]);
+  }, [refetchPayments, refetchOrders]);
 
   // Perform calculations identical to web
   const calculatedData = useMemo(() => {
@@ -631,7 +590,8 @@ export default function CalendarScreen() {
       setSelectedEvent(null);
       setRescheduleDate('');
       setRescheduleReason('');
-      fetchCalendarPayments(); // refresh data
+      refetchPayments();
+      refetchOrders();
     } catch (e: any) {
       console.warn('Error rescheduling payment:', e);
       PremiumAlert.alert('Error', e.message || 'An error occurred while submitting the request.');

@@ -49,6 +49,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminReminders, fetchAdminClients, callAdminApi, triggerNotificationScheduler } from '../../services/adminService';
+import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { WebView } from 'react-native-webview';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -2122,7 +2123,7 @@ export default function AdminRemindersScreen() {
                             >
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <Image
-                                  source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name || client.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                                  source={{ uri: getClientAvatarUrl(client, client.name || client.email, 100) }}
                                   style={styles.previewTabAvatarImage}
                                 />
                                 <View style={{ maxWidth: 100 }}>
@@ -2323,7 +2324,7 @@ export default function AdminRemindersScreen() {
                         
                         {/* Client Avatar */}
                         <Image
-                          source={{ uri: c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || c.email || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                          source={{ uri: getClientAvatarUrl(c, c.name || c.email, 100) }}
                           style={styles.clientAvatar}
                         />
 

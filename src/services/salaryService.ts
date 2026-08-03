@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../utils/queryPersister';
 import { supabase } from '../utils/supabase';
 import {
   calculatePhilippineTaxAndDeductions,
@@ -188,14 +188,14 @@ function getFallbackSalaryPayload(): SalaryDataPayload {
 }
 
 /**
- * Fetch salary data with AsyncStorage local cache for instant loading
+ * Fetch salary data with MMKV local cache for instant loading
  */
 export async function getSalaryData(forceRefresh: boolean = false): Promise<SalaryDataPayload> {
   try {
     let cachedData: any = null;
 
     if (!forceRefresh) {
-      const rawCache = await AsyncStorage.getItem(SALARY_CACHE_KEY);
+      const rawCache = storage.getString(SALARY_CACHE_KEY);
       if (rawCache) {
         try {
           cachedData = JSON.parse(rawCache);
@@ -226,12 +226,12 @@ export async function getSalaryData(forceRefresh: boolean = false): Promise<Sala
 
     if (freshData) {
       const normalized = normalizeSalaryPayload(freshData);
-      await AsyncStorage.setItem(SALARY_CACHE_KEY, JSON.stringify(normalized));
+      storage.set(SALARY_CACHE_KEY, JSON.stringify(normalized));
       return normalized;
     }
   } catch (error: any) {
     console.error('[salaryService] Error in getSalaryData:', error);
-    const rawCache = await AsyncStorage.getItem(SALARY_CACHE_KEY);
+    const rawCache = storage.getString(SALARY_CACHE_KEY);
     if (rawCache) {
       return normalizeSalaryPayload(JSON.parse(rawCache));
     }
@@ -266,7 +266,7 @@ export async function updateSalarySettings(updatePayload: any): Promise<SalaryDa
     const updatedData = result.data ?? result;
 
     if (updatedData) {
-      await AsyncStorage.setItem(SALARY_CACHE_KEY, JSON.stringify(updatedData));
+      storage.set(SALARY_CACHE_KEY, JSON.stringify(updatedData));
     }
 
     return updatedData;
@@ -310,7 +310,7 @@ export async function confirmPaycheck(
 
     const result = await response.json();
     if (result.data) {
-      await AsyncStorage.setItem(SALARY_CACHE_KEY, JSON.stringify(result.data));
+      storage.set(SALARY_CACHE_KEY, JSON.stringify(result.data));
     }
 
     return result.data ?? (await getSalaryData(true));
@@ -361,7 +361,7 @@ export async function addJobHistory(
 
     const result = await response.json();
     if (result.data) {
-      await AsyncStorage.setItem(SALARY_CACHE_KEY, JSON.stringify(result.data));
+      storage.set(SALARY_CACHE_KEY, JSON.stringify(result.data));
     }
 
     return result.data ?? (await getSalaryData(true));

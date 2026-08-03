@@ -49,6 +49,7 @@ import BiometricReAuthModal from '../../components/BiometricReAuthModal';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminClients, callAdminApi } from '../../services/adminService';
+import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
@@ -157,7 +158,7 @@ const ClientListItem = React.memo(function ClientListItem({
         activeOpacity={0.8}
       >
         <Image
-          source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+          source={{ uri: getClientAvatarUrl(client, client.name, 100) }}
           style={styles.clientGridAvatar}
           cachePolicy="memory-disk"
           contentFit="cover"
@@ -216,7 +217,7 @@ const ClientListItem = React.memo(function ClientListItem({
       <View style={styles.clientCardHeader}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           <Image
-            source={{ uri: client.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(client.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+            source={{ uri: getClientAvatarUrl(client, client.name, 100) }}
             style={styles.clientListAvatar}
             cachePolicy="memory-disk"
             contentFit="cover"
@@ -814,7 +815,7 @@ export default function AdminClientsScreen() {
                       <Text style={[styles.rankText, idx === 0 && { color: '#fff' }]}>{idx + 1}</Text>
                     </View>
                     <Image
-                      source={{ uri: spender.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(spender.name)}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                      source={{ uri: getClientAvatarUrl(spender, spender.name, 100) }}
                       style={styles.spenderAvatar}
                       cachePolicy="memory-disk"
                       contentFit="cover"
@@ -946,7 +947,7 @@ export default function AdminClientsScreen() {
               <View style={styles.detailsHeroCardRow}>
                 <View style={styles.detailsHeroAvatarWrapper}>
                   <Image
-                    source={{ uri: selectedClient.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedClient.name)}&background=ee4d2d&color=fff&size=150&bold=true` }}
+                    source={{ uri: getClientAvatarUrl(selectedClient, selectedClient.name, 150) }}
                     style={styles.detailsHeroAvatar}
                     cachePolicy="memory-disk"
                     contentFit="cover"

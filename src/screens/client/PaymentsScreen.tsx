@@ -61,6 +61,7 @@ import { PremiumAlert } from '../../services/PremiumAlertService';
 import { getBillingMonthKey, getCalendarMonthKey, formatBillingMonthKey, parseUtcDate } from '../../utils/date';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
+import CountdownTimer from '../../components/CountdownTimer';
 
 // --- DATABASE INTERFACES ---
 interface PaymentReschedule {
@@ -394,8 +395,7 @@ export default function PaymentsScreen() {
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(0);
   const nextPaymentCountdown = unpaidBillingMonths[selectedMonthIndex] || null;
 
-  // Countdown timer clock
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, isOverdue: false });
+
 
   // Modal controls
   const [selectedPayDetails, setSelectedPayDetails] = useState<{ id: string; name: string; amount: number }[]>([]);
@@ -652,30 +652,7 @@ export default function PaymentsScreen() {
     }
   }, [refetch]);
 
-  // Clock Countdown logic
-  useEffect(() => {
-    if (!nextPaymentCountdown || !nextPaymentCountdown.dueDate) return;
 
-    const targetDate = parseUtcDate(nextPaymentCountdown.dueDate);
-    const calculateTime = () => {
-      const difference = targetDate.getTime() - Date.now();
-      if (difference <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isOverdue: true });
-      } else {
-        setTimeLeft({
-          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-          minutes: Math.floor((difference / 1000 / 60) % 60),
-          seconds: Math.floor((difference / 1000) % 60),
-          isOverdue: false,
-        });
-      }
-    };
-
-    calculateTime();
-    const timer = setInterval(calculateTime, 1000);
-    return () => clearInterval(timer);
-  }, [nextPaymentCountdown]);
 
   // Reset pagination on filter or search
   useEffect(() => {
@@ -797,7 +774,8 @@ export default function PaymentsScreen() {
     overdueBorder: 'rgba(239, 68, 68, 0.3)'
   };
 
-  const formatCurrency = (val: number | string) => {
+  const formatCurrency = (val: number | string | null | undefined) => {
+    if (val === null || val === undefined) return '₱0.00';
     const num = typeof val === 'string' ? parseFloat(val) : val;
     if (isNaN(num)) return '₱0.00';
     return '₱' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -973,15 +951,19 @@ export default function PaymentsScreen() {
 
               <View style={[styles.countdownClockSection, { backgroundColor: isDarkMode ? '#111827' : '#f8fafc', borderColor: t.divider }]}>
                 {/* 3D Skeuomorphic Flip Countdown */}
-                <View style={styles.countdownRow}>
-                  <FlipCard value={timeLeft.days} label="Days" />
-                  <Text style={[styles.countdownColon, { color: t.textSecondary }]}>:</Text>
-                  <FlipCard value={timeLeft.hours} label="Hours" />
-                  <Text style={[styles.countdownColon, { color: t.textSecondary }]}>:</Text>
-                  <FlipCard value={timeLeft.minutes} label="Mins" />
-                  <Text style={[styles.countdownColon, { color: t.textSecondary }]}>:</Text>
-                  <FlipCard value={timeLeft.seconds} label="Secs" />
-                </View>
+                <CountdownTimer targetDate={nextPaymentCountdown?.dueDate} parseDateFn={parseUtcDate}>
+                  {(tLeft) => (
+                    <View style={styles.countdownRow}>
+                      <FlipCard value={tLeft.days} label="Days" />
+                      <Text style={[styles.countdownColon, { color: t.textSecondary }]}>:</Text>
+                      <FlipCard value={tLeft.hours} label="Hours" />
+                      <Text style={[styles.countdownColon, { color: t.textSecondary }]}>:</Text>
+                      <FlipCard value={tLeft.minutes} label="Mins" />
+                      <Text style={[styles.countdownColon, { color: t.textSecondary }]}>:</Text>
+                      <FlipCard value={tLeft.seconds} label="Secs" />
+                    </View>
+                  )}
+                </CountdownTimer>
 
                 <View style={styles.countdownBottomAmountCol}>
                   <Text style={[styles.billLabel, { color: t.textSecondary }]}>Your Amount Due</Text>

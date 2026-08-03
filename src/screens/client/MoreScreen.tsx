@@ -55,7 +55,7 @@ export default function MoreScreen() {
     if (isImpersonating && impersonatedUser) {
       setUserName(impersonatedUser.name || impersonatedUser.email?.split('@')[0] || 'Client User');
       setUserEmail(impersonatedUser.email || '');
-      setUserPhoto(impersonatedUser.avatarUrl || null);
+      setUserPhoto(impersonatedUser.avatarUrl || impersonatedUser.avatar_url || null);
       return;
     }
 
@@ -63,7 +63,7 @@ export default function MoreScreen() {
       if (user || profile) {
         setUserName(profile?.name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Client');
         setUserEmail(profile?.email || user?.email || '');
-        setUserPhoto(user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null);
+        setUserPhoto((profile as any)?.avatar_url || (profile as any)?.avatarUrl || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null);
       }
     });
   }, [isImpersonating, impersonatedUser]);

@@ -72,10 +72,12 @@ import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DatePar
 import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminPayments, callAdminApi } from '../../services/adminService';
+import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
+import CountdownTimer from '../../components/CountdownTimer';
 import AdminHeader from '../../components/AdminHeader';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 
@@ -641,14 +643,6 @@ export default function AdminPaymentsScreen() {
 
   // Countdown timer & next billing schedule
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    isOverdue: false,
-    hasTarget: false,
-  });
 
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const toggleClientExpand = (clientId: string) => {
@@ -992,32 +986,7 @@ export default function AdminPaymentsScreen() {
     payments: [],
   };
 
-  // Countdown timer clock
-  useEffect(() => {
-    if (!nextBillingSchedule.earliestDueDate) {
-      setTimeLeft(prev => ({ ...prev, hasTarget: false }));
-      return;
-    }
-    const targetDate = parseUtcDate(nextBillingSchedule.earliestDueDate);
-    const calc = () => {
-      const diff = targetDate.getTime() - Date.now();
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isOverdue: true, hasTarget: true });
-      } else {
-        setTimeLeft({
-          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-          minutes: Math.floor((diff / 1000 / 60) % 60),
-          seconds: Math.floor((diff / 1000) % 60),
-          isOverdue: false,
-          hasTarget: true,
-        });
-      }
-    };
-    calc();
-    const clockTimer = setInterval(calc, 1000);
-    return () => clearInterval(clockTimer);
-  }, [nextBillingSchedule.earliestDueDate]);
+
 
   // Tab 1: Filtered payments
   const filteredPayments = useMemo(() => processedPayments.filter((p: any) => {
@@ -1998,39 +1967,45 @@ export default function AdminPaymentsScreen() {
             ]}>
               {/* Left section: Countdown Clock */}
               <View style={[styles.countdownLeftSection, layout.isTablet && { flex: 7, borderBottomWidth: 0, paddingBottom: 0 }]}>
-                <View style={styles.flipClockRow}>
-                  {timeLeft.hasTarget ? (
+                <CountdownTimer targetDate={nextBillingSchedule.earliestDueDate} parseDateFn={parseUtcDate}>
+                  {(tLeft) => (
                     <>
-                      <FlipCard value={timeLeft.days} label="Days" />
-                      <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                      <FlipCard value={timeLeft.hours} label="Hours" />
-                      <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                      <FlipCard value={timeLeft.minutes} label="Min" />
-                      <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                      <FlipCard value={timeLeft.seconds} label="Sec" />
-                    </>
-                  ) : (
-                    <>
-                      <FlipCard value={0} label="Days" />
-                      <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                      <FlipCard value={0} label="Hours" />
-                      <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                      <FlipCard value={0} label="Min" />
-                      <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
-                      <FlipCard value={0} label="Sec" />
+                      <View style={styles.flipClockRow}>
+                        {tLeft.hasTarget ? (
+                          <>
+                            <FlipCard value={tLeft.days} label="Days" />
+                            <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                            <FlipCard value={tLeft.hours} label="Hours" />
+                            <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                            <FlipCard value={tLeft.minutes} label="Min" />
+                            <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                            <FlipCard value={tLeft.seconds} label="Sec" />
+                          </>
+                        ) : (
+                          <>
+                            <FlipCard value={0} label="Days" />
+                            <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                            <FlipCard value={0} label="Hours" />
+                            <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                            <FlipCard value={0} label="Min" />
+                            <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                            <FlipCard value={0} label="Sec" />
+                          </>
+                        )}
+                      </View>
+                      <View style={styles.countdownStatusRow}>
+                        <Clock size={12} color={t.accent} />
+                        <Text style={[styles.countdownStatusText, { color: t.accent }]}>
+                          {!tLeft.hasTarget
+                            ? 'No payments scheduled'
+                            : tLeft.isOverdue
+                            ? 'DEADLINE HAS PASSED'
+                            : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
+                        </Text>
+                      </View>
                     </>
                   )}
-                </View>
-                <View style={styles.countdownStatusRow}>
-                  <Clock size={12} color={t.accent} />
-                  <Text style={[styles.countdownStatusText, { color: t.accent }]}>
-                    {!timeLeft.hasTarget
-                      ? 'No payments scheduled'
-                      : timeLeft.isOverdue
-                      ? 'DEADLINE HAS PASSED'
-                      : `Time Remaining Until ${nextBillingSchedule.earliestDueDate ? formatRelativeDate(nextBillingSchedule.earliestDueDate) : ''}`}
-                  </Text>
-                </View>
+                </CountdownTimer>
                 {nextBillingSchedule.payments?.some((p: any) => p.isShared) && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, justifyContent: 'center' }}>
                     <Users size={12} color="#ee4d2d" style={{ marginRight: 4 }} />
@@ -4310,7 +4285,7 @@ export default function AdminPaymentsScreen() {
                             onPress={() => handleDefaultClientChange(isSelected ? '' : c.id)}
                           >
                             <Image
-                              source={{ uri: c.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || '?')}&background=ee4d2d&color=fff&size=100&bold=true` }}
+                              source={{ uri: getClientAvatarUrl(c, c.name, 100) }}
                               style={{ width: 36, height: 36, borderRadius: 18 }}
                               cachePolicy="memory-disk"
                               contentFit="cover"

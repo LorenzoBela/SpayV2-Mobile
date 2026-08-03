@@ -14,14 +14,27 @@ const getApiUrl = () => {
   return 'https://nootspaytracker.vercel.app';
 };
 
+export const ADMIN_QUERY_OPTIONS = {
+  staleTime: 5 * 60 * 1000,
+  gcTime: 10 * 60 * 1000,
+};
+
 export const callAdminApi = async (action: string, bodyData: any = {}) => {
   DeviceEventEmitter.emit('progress-start', action);
   try {
-    // 1. Try tRPC mutation
-    const result = await (trpcVanillaClient.admin as any).dispatch.mutate({
-      action,
-      ...bodyData,
-    });
+    const isQueryAction = action.startsWith('fetch-') || action.startsWith('get-');
+    let result: any;
+    if (isQueryAction && (trpcVanillaClient.admin as any).dispatch?.query) {
+      result = await (trpcVanillaClient.admin as any).dispatch.query({
+        action,
+        ...bodyData,
+      });
+    } else {
+      result = await (trpcVanillaClient.admin as any).dispatch.mutate({
+        action,
+        ...bodyData,
+      });
+    }
     return result;
   } catch (trpcError) {
     console.warn(`[adminService] tRPC failed for action ${action}, falling back to REST:`, trpcError);
@@ -44,40 +57,7 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
         }),
       });
 
-      if (!response.body) {
-        const result = await response.json();
-        return result;
-      }
-
-      const reader = response.body.getReader();
-      const contentLength = response.headers.get('Content-Length');
-      const total = contentLength ? parseInt(contentLength, 10) : 0;
-      let loaded = 0;
-      const chunks: Uint8Array[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        chunks.push(value);
-        loaded += value.length;
-
-        if (total > 0) {
-          const percent = loaded / total;
-          DeviceEventEmitter.emit('progress-update', { percent, action });
-        }
-      }
-
-      const allChunks = new Uint8Array(loaded);
-      let position = 0;
-      for (const chunk of chunks) {
-        allChunks.set(chunk, position);
-        position += chunk.length;
-      }
-
-      const decoder = new TextDecoder();
-      const text = decoder.decode(allChunks);
-      const result = JSON.parse(text);
+      const result = await response.json();
       return result;
     } catch (error: any) {
       console.error(`[adminService] REST fallback error running action ${action}:`, error);

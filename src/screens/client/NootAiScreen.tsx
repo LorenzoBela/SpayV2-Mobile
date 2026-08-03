@@ -23,6 +23,7 @@ import { PremiumAlert } from '../../services/PremiumAlertService';
 import NetInfo from '@react-native-community/netinfo';
 import { storage } from '../../utils/queryPersister';
 import { trpc } from '../../utils/trpc';
+import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
 
 const formatCurrency = (val: number | string) => {
   return '₱' + Number(val).toLocaleString('en-US', {
@@ -233,6 +234,8 @@ export default function NootAiScreen() {
   );
 
   const chatMutation = trpc.nootai.chat.useMutation();
+  const { data: paymentsList, isLoading: paymentsLoading } = useClientPaymentsQuery();
+  const { data: ordersData, isLoading: ordersLoading } = useClientOrdersQuery();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -260,7 +263,7 @@ export default function NootAiScreen() {
     setLoading(true);
     setError(null);
     try {
-      const { user, profile, profileId } = await getLinkedProfileForCurrentUser();
+      const { user, profile } = await getLinkedProfileForCurrentUser();
       if (!user) {
         setDemoParams('Client Guest');
         return;
@@ -268,38 +271,23 @@ export default function NootAiScreen() {
 
       const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
 
-      // Fetch orders to compute health score
-      const { data: dbOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('user_id', profileId);
-
-      if (ordersError) throw ordersError;
-
-      if (!dbOrders || dbOrders.length === 0) {
+      const ordersList = ordersData?.orders || [];
+      if (!ordersList || ordersList.length === 0) {
         setDemoParams(profileName);
         return;
       }
 
-      const orderIds = dbOrders.map(o => o.id);
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payments')
-        .select('due_date, is_paid, payment_date')
-        .in('order_id', orderIds);
-
-      if (paymentsError) throw paymentsError;
-
-      // Calculate health score matching web
+      // Calculate health score using pre-warmed tRPC hook cache data
       let totalCompletedCount = 0;
       let onTimeCount = 0;
       let totalDaysLate = 0;
 
-      (paymentsData || []).forEach(p => {
-        if (p.is_paid) {
+      (paymentsList || []).forEach((p: any) => {
+        if (p.isPaid) {
           totalCompletedCount++;
-          if (p.payment_date && p.due_date) {
-            const payTime = new Date(p.payment_date).getTime();
-            const dueTime = new Date(p.due_date).getTime();
+          if (p.paymentDate && (p.rawDueDate || p.dueDate)) {
+            const payTime = new Date(p.paymentDate).getTime();
+            const dueTime = new Date(p.rawDueDate || p.dueDate).getTime();
             if (payTime <= dueTime) {
               onTimeCount++;
             } else {
@@ -355,8 +343,10 @@ export default function NootAiScreen() {
   };
 
   useEffect(() => {
-    fetchNootAiMetrics();
-  }, []);
+    if (!paymentsLoading && !ordersLoading) {
+      fetchNootAiMetrics();
+    }
+  }, [paymentsLoading, ordersLoading, paymentsList, ordersData]);
 
   useEffect(() => {
     if (messages.length > 0) {

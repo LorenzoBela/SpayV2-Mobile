@@ -5,16 +5,27 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { getLinkedProfileForCurrentUser } from './authProfile';
 import { callAdminApi } from '../services/adminService';
+import { queryClient } from './queryClient';
 
 dayjs.extend(relativeTime);
 
 const { SpayWidgetModule } = NativeModules;
+
+let lastSyncTimestamp = 0;
+const SYNC_THROTTLE_MS = 3000;
 
 export async function syncWidgetData() {
   // Guard for platform and module existence
   if (Platform.OS !== 'android' || !SpayWidgetModule) {
     return;
   }
+
+  // Throttle sync operations to prevent rapid redundant executions
+  const now = Date.now();
+  if (now - lastSyncTimestamp < SYNC_THROTTLE_MS) {
+    return;
+  }
+  lastSyncTimestamp = now;
 
   try {
     const netState = await NetInfo.fetch();
@@ -59,12 +70,43 @@ export async function syncWidgetData() {
       baselineLimit: globalLimit,
     };
 
+    // Attempt to compute data directly from local TanStack Query cache first
+    let cachedOrdersData: any = null;
+    let cachedPaymentsData: any = null;
+    try {
+      const allQueries = queryClient.getQueryCache().getAll();
+      for (const query of allQueries) {
+        const keyStr = JSON.stringify(query.queryKey);
+        if (keyStr.includes('orders') && keyStr.includes('list')) {
+          cachedOrdersData = query.state.data;
+        }
+        if (keyStr.includes('payments') && keyStr.includes('listClient')) {
+          cachedPaymentsData = query.state.data;
+        }
+      }
+    } catch (e) {
+      console.warn('[widgetSync] Error reading queryCache:', e);
+    }
+
     // Client specific queries (run for everyone, including admins)
     try {
-      const { data: dbOrders } = await supabase
-        .from('orders')
-        .select('id, item_name, amount, installment_months, order_date, is_paid')
-        .eq('user_id', profileId);
+      let dbOrders: any[] | null = null;
+      if (cachedOrdersData?.orders) {
+        dbOrders = cachedOrdersData.orders.map((o: any) => ({
+          id: o.id,
+          item_name: o.itemName || o.item_name,
+          amount: o.amount,
+          installment_months: o.installmentMonths || o.installment_months,
+          order_date: o.orderDate || o.order_date,
+          is_paid: o.isPaid ?? o.is_paid,
+        }));
+      } else {
+        const { data } = await supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, is_paid')
+          .eq('user_id', profileId);
+        dbOrders = data;
+      }
 
       let billingCycles: any[] = [];
       let upcomingInstallments: any[] = [];
@@ -77,11 +119,26 @@ export async function syncWidgetData() {
 
       if (dbOrders && dbOrders.length > 0) {
         const orderIds = dbOrders.map(o => o.id);
-        const { data: dbPayments } = await supabase
-          .from('payments')
-          .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
-          .in('order_id', orderIds)
-          .order('due_date', { ascending: true });
+        let dbPayments: any[] | null = null;
+
+        if (cachedPaymentsData?.payments) {
+          dbPayments = cachedPaymentsData.payments.map((p: any) => ({
+            id: p.id,
+            order_id: p.orderId || p.order_id,
+            due_date: p.rawDueDate || p.dueDate || p.due_date,
+            amount_due: p.amountDue || p.amount_due,
+            is_paid: p.isPaid ?? p.is_paid,
+            payment_date: p.paymentDate || p.payment_date,
+            month_number: p.monthNumber || p.month_number,
+          }));
+        } else {
+          const { data } = await supabase
+            .from('payments')
+            .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
+            .in('order_id', orderIds)
+            .order('due_date', { ascending: true });
+          dbPayments = data;
+        }
 
         if (dbPayments && dbPayments.length > 0) {
           const ordersMap = new Map();

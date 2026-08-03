@@ -864,7 +864,7 @@ export default function DashboardScreen() {
       if (user) {
         const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
         const profileEmail = profile?.email || user.email || 'client@spay.com';
-        const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+        const photoUrl = (profile as any)?.avatar_url || (profile as any)?.avatarUrl || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
         setUserName(profileName);
         setUserEmail(profileEmail);
         setUserPhoto(photoUrl);

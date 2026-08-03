@@ -125,7 +125,7 @@ export default function AdminSettingsScreen() {
       // 1. Fetch Profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('name, email, mobile_number, role')
+        .select('name, email, mobile_number, role, avatar_url')
         .eq('id', user.id)
         .single();
 
@@ -142,7 +142,7 @@ export default function AdminSettingsScreen() {
           name: profileData.name || loadedProfile.name,
           email: profileData.email || loadedProfile.email,
           mobileNumber: profileData.mobile_number || loadedProfile.mobileNumber,
-          avatarUrl: loadedProfile.avatarUrl,
+          avatarUrl: profileData?.avatar_url ?? (profileData as { avatarUrl?: string })?.avatarUrl ?? loadedProfile.avatarUrl,
           role: profileData.role || 'ADMIN',
         };
       }
