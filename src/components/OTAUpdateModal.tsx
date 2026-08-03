@@ -11,15 +11,23 @@ import { Download } from 'lucide-react-native';
 
 interface OTAUpdateModalProps {
   visible: boolean;
-  onRestart: () => void;
+  onRestart?: () => void;
+  onApply?: () => void;
+  onDismiss?: () => void;
   runtimeVersion?: string | null;
+  type?: 'ota' | 'apk';
 }
 
 export default function OTAUpdateModal({
   visible,
   onRestart,
+  onApply,
+  onDismiss,
   runtimeVersion,
+  type = 'ota',
 }: OTAUpdateModalProps) {
+  const handleAction = onRestart || onApply || (() => {});
+  const isApk = type === 'apk';
 
   return (
     <Modal
@@ -27,41 +35,63 @@ export default function OTAUpdateModal({
       transparent
       animationType="slide"
       statusBarTranslucent
-      onRequestClose={() => {}}
+      onRequestClose={onDismiss || (() => {})}
     >
       <SafeAreaProvider>
-      <View style={[styles.backdrop, { backgroundColor: 'rgba(11, 15, 25, 0.7)' }]}>
-        <View style={styles.sheet}>
-          <SafeAreaView edges={['bottom']} style={styles.safeAreaSheet}>
-            <View style={styles.dragIndicator} />
-            <View style={styles.iconFrame}>
-              <Download size={30} color="#ee4d2d" />
-            </View>
-          <Text style={styles.title}>Update Ready</Text>
-          <Text style={styles.description}>
-            A newer version has been downloaded. The app will now close so you can reopen on the latest version.
-          </Text>
-          {runtimeVersion ? (
-            <View style={styles.versionPill}>
-              <Text style={styles.versionText}>v{runtimeVersion}</Text>
-            </View>
-          ) : null}
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              { opacity: pressed ? 0.75 : 1 },
-            ]}
-            onPress={onRestart}
-            accessibilityRole="button"
-            accessibilityLabel="Close app and apply update"
-          >
-            <Text style={styles.buttonText} numberOfLines={1} adjustsFontSizeToFit>
-              Close and Reopen
-            </Text>
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: 'rgba(11, 15, 25, 0.7)' }]}
+          onPress={onDismiss}
+        >
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <SafeAreaView edges={['bottom']} style={styles.safeAreaSheet}>
+              <View style={styles.dragIndicator} />
+              <View style={styles.iconFrame}>
+                <Download size={30} color="#ee4d2d" />
+              </View>
+              <Text style={styles.title}>
+                {isApk ? 'App Update Available' : 'Update Ready'}
+              </Text>
+              <Text style={styles.description}>
+                {isApk
+                  ? 'A new build is available. Update to get the latest features and improvements.'
+                  : 'A newer version has been downloaded. Restart S-Pay now to apply the latest features.'}
+              </Text>
+              {runtimeVersion ? (
+                <View style={styles.versionPill}>
+                  <Text style={styles.versionText}>v{runtimeVersion}</Text>
+                </View>
+              ) : null}
+              <View style={styles.buttonContainer}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.button,
+                    { opacity: pressed ? 0.75 : 1 },
+                  ]}
+                  onPress={handleAction}
+                  accessibilityRole="button"
+                  accessibilityLabel={isApk ? 'Update App' : 'Restart and apply update'}
+                >
+                  <Text style={styles.buttonText} numberOfLines={1} adjustsFontSizeToFit>
+                    {isApk ? 'Download & Install' : 'Restart Now'}
+                  </Text>
+                </Pressable>
+                {onDismiss ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.laterButton,
+                      { opacity: pressed ? 0.75 : 1 },
+                    ]}
+                    onPress={onDismiss}
+                    accessibilityRole="button"
+                    accessibilityLabel="Postpone update"
+                  >
+                    <Text style={styles.laterButtonText}>Later</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </SafeAreaView>
           </Pressable>
-          </SafeAreaView>
-        </View>
-      </View>
+        </Pressable>
       </SafeAreaProvider>
     </Modal>
   );
@@ -133,6 +163,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Jakarta-Bold',
   },
+  buttonContainer: {
+    width: '100%',
+    gap: 10,
+  },
   button: {
     width: '100%',
     height: 54,
@@ -146,5 +180,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontFamily: 'Outfit-Bold',
+  },
+  laterButton: {
+    width: '100%',
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  laterButtonText: {
+    color: '#94a3b8',
+    fontSize: 15,
+    fontFamily: 'Outfit-SemiBold',
   },
 });

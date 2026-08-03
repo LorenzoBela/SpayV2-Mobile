@@ -788,26 +788,22 @@ export default function AdminSettingsScreen() {
           Your administrator account is linked and secured via Google OAuth Single Sign-On (SSO). There is no active password associated with this profile.
         </Text>
 
-        {/* Biometric Sign-In Toggle */}
+        {/* Biometric Sign-In Status */}
         <View style={styles.toggleRowContainer}>
           <View style={styles.toggleRowLeft}>
             <View style={[styles.toggleIconBox, { backgroundColor: isDarkMode ? 'rgba(238,77,45,0.1)' : 'rgba(238,77,45,0.05)' }]}>
               <Fingerprint size={16} color={t.accent} />
             </View>
             <View style={styles.toggleTextCol}>
-              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>Biometric Sign-In</Text>
+              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>Biometrics & Hardware Lock</Text>
               <Text style={[styles.toggleDescText, { color: t.textSecondary }]}>
-                Use FaceID / TouchID for quick sign-in with a 6-digit fallback PIN.
+                FaceID / TouchID & 6-digit PIN authentication are active.
               </Text>
             </View>
           </View>
-          <Switch
-            value={biometricsEnabled}
-            onValueChange={handleToggleBiometrics}
-            disabled={savingBiometrics}
-            trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
-            thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
-          />
+          <View style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.3)' }}>
+            <Text style={{ color: '#22c55e', fontSize: 12, fontFamily: 'Outfit-Bold' }}>Enforced</Text>
+          </View>
         </View>
 
         <View style={[styles.formDivider, { backgroundColor: t.divider }]} />

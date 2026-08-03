@@ -13,7 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Mail, Phone, Fingerprint, LogOut, LayoutDashboard, Sun, Moon, Edit3, KeyRound } from 'lucide-react-native';
+import { Mail, Phone, Fingerprint, LogOut, LayoutDashboard, Sun, Moon, Edit3, KeyRound, ShieldCheck } from 'lucide-react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
@@ -61,14 +61,9 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editMobile, setEditMobile] = useState('');
 
-  // Password Update modal state
-  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
   // Sensitive Action Re-Auth Modal state
   const [reAuthModalVisible, setReAuthModalVisible] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'UPDATE_PROFILE' | 'UPDATE_PASSWORD' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'UPDATE_PROFILE' | null>(null);
   const [savingUpdate, setSavingUpdate] = useState(false);
 
   // Dynamic theme colors
@@ -127,12 +122,6 @@ export default function ProfileScreen() {
     setEditProfileModalVisible(true);
   };
 
-  const openPasswordModal = () => {
-    setNewPassword('');
-    setConfirmPassword('');
-    setPasswordModalVisible(true);
-  };
-
   // Trigger ReAuthModal before saving sensitive profile updates
   const handleInitiateSaveProfile = () => {
     if (!editName.trim()) {
@@ -140,20 +129,6 @@ export default function ProfileScreen() {
       return;
     }
     setPendingAction('UPDATE_PROFILE');
-    setReAuthModalVisible(true);
-  };
-
-  // Trigger ReAuthModal before saving sensitive password updates
-  const handleInitiateSavePassword = () => {
-    if (!newPassword || newPassword.length < 6) {
-      PremiumAlert.alert('Validation Error', 'Password must be at least 6 characters long.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      PremiumAlert.alert('Validation Error', 'New passwords do not match.');
-      return;
-    }
-    setPendingAction('UPDATE_PASSWORD');
     setReAuthModalVisible(true);
   };
 
@@ -369,23 +344,22 @@ export default function ProfileScreen() {
                 <View style={styles.switchLabelCol}>
                   <Fingerprint size={20} color="#ee4d2d" />
                   <View style={styles.switchLabelInfo}>
-                    <Text style={[styles.switchTitle, { color: t.textPrimary }]}>Biometric Sign-In</Text>
-                    <Text style={[styles.switchSub, { color: t.textMuted }]}>Use FaceID / TouchID for logins</Text>
+                    <Text style={[styles.switchTitle, { color: t.textPrimary }]}>Biometrics & Hardware Lock</Text>
+                    <Text style={[styles.switchSub, { color: t.textMuted }]}>FaceID / TouchID & 6-digit PIN mandatory</Text>
                   </View>
                 </View>
-                <Switch
-                  value={biometricsEnabled}
-                  onValueChange={handleToggleBiometrics}
-                  disabled={savingBiometrics}
-                  trackColor={{ false: t.switchTrackFalse, true: '#3b82f6' }}
-                  thumbColor={biometricsEnabled ? '#ffffff' : t.switchThumbFalse}
-                />
+                <View style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.3)' }}>
+                  <Text style={{ color: '#22c55e', fontSize: 12, fontFamily: 'Outfit-Bold' }}>Enforced</Text>
+                </View>
               </View>
 
-              <TouchableOpacity style={styles.passwordBtn} onPress={openPasswordModal}>
-                <KeyRound size={18} color={t.textPrimary} />
-                <Text style={[styles.passwordBtnText, { color: t.textPrimary }]}>Update Password</Text>
-              </TouchableOpacity>
+              <View style={[styles.ssoBadgeRow, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.05)', borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.15)' }]}>
+                <ShieldCheck size={18} color="#3b82f6" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.ssoBadgeTitle, { color: t.textPrimary }]}>Google OAuth Secured</Text>
+                  <Text style={[styles.ssoBadgeSub, { color: t.textMuted }]}>Account authenticated via Google SSO. No password required.</Text>
+                </View>
+              </View>
             </View>
 
             {/* Actions */}
@@ -550,69 +524,7 @@ export default function ProfileScreen() {
             </View>
           </Modal>
 
-          {/* Update Password Modal */}
-          <Modal
-            visible={passwordModalVisible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => !savingUpdate && setPasswordModalVisible(false)}
-          >
-            <View style={styles.modalBackdrop}>
-              <View style={[styles.editModal, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Update Password</Text>
-                <Text style={[styles.modalBody, { color: t.textSecondary }]}>
-                  Enter a new password for your account.
-                </Text>
 
-                <TextInput
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  placeholder="New Password"
-                  placeholderTextColor={t.textMuted}
-                  secureTextEntry
-                  editable={!savingUpdate}
-                  style={[
-                    styles.formInput,
-                    { color: t.textPrimary, borderColor: t.cardBorder, backgroundColor: t.inputBg },
-                  ]}
-                />
-
-                <TextInput
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Confirm New Password"
-                  placeholderTextColor={t.textMuted}
-                  secureTextEntry
-                  editable={!savingUpdate}
-                  style={[
-                    styles.formInput,
-                    { color: t.textPrimary, borderColor: t.cardBorder, backgroundColor: t.inputBg },
-                  ]}
-                />
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalCancelButton]}
-                    onPress={() => setPasswordModalVisible(false)}
-                    disabled={savingUpdate}
-                  >
-                    <Text style={[styles.modalCancelText, { color: t.textSecondary }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalConfirmButton]}
-                    onPress={handleInitiateSavePassword}
-                    disabled={savingUpdate}
-                  >
-                    {savingUpdate ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <Text style={styles.modalConfirmText}>Update</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
 
           {/* Re-Authentication Modal for Sensitive Operations */}
           <BiometricReAuthModal
@@ -907,5 +819,25 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
+  },
+  ssoBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  ssoBadgeTitle: {
+    fontSize: 13,
+    fontFamily: 'Outfit-Bold',
+  },
+  ssoBadgeSub: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+    marginTop: 2,
+    lineHeight: 15,
   },
 });

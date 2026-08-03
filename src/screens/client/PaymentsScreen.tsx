@@ -797,8 +797,10 @@ export default function PaymentsScreen() {
     overdueBorder: 'rgba(239, 68, 68, 0.3)'
   };
 
-  const formatCurrency = (val: number) => {
-    return '₱' + val.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const formatCurrency = (val: number | string) => {
+    const num = typeof val === 'string' ? parseFloat(val) : val;
+    if (isNaN(num)) return '₱0.00';
+    return '₱' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   // Filter dues list
