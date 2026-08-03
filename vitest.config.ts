@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/tests/**/*.test.ts', 'src/tests/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     alias: {
       '@': path.resolve(__dirname, './src'),
       'react-native': path.resolve(__dirname, './src/tests/__mocks__/react-native.js'),
@@ -22,6 +22,12 @@ export default defineConfig({
       'expo-blur': path.resolve(__dirname, './src/tests/__mocks__/ui-libs.js'),
       'react-native-gesture-handler': path.resolve(__dirname, './src/tests/__mocks__/ui-libs.js'),
       'react-native-reanimated': path.resolve(__dirname, './src/tests/__mocks__/ui-libs.js'),
+      'react-native-mmkv': path.resolve(__dirname, './src/tests/__mocks__/mmkv.js'),
+      '@react-native-community/netinfo': path.resolve(__dirname, './src/tests/__mocks__/netinfo.js'),
+      'expo-secure-store': path.resolve(__dirname, './src/tests/__mocks__/expo.js'),
     },
+  },
+  define: {
+    __DEV__: 'true',
   },
 });

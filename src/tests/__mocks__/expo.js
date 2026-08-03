@@ -14,4 +14,7 @@ module.exports = {
   checkForUpdateAsync: () => Promise.resolve({ isAvailable: false }),
   fetchUpdateAsync: () => Promise.resolve(),
   exitApp: () => {},
+  getItem: () => null,
+  setItem: () => {},
+  deleteItemAsync: () => Promise.resolve(),
 };
