@@ -41,6 +41,9 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
 
   const appState = useRef<AppStateStatus>(AppState.currentState);
+  const isPromptingRef = useRef<boolean>(false);
+  const ignoreNextActiveRef = useRef<boolean>(false);
+  const hasCheckedInitialLock = useRef<boolean>(false);
   const shakeOffset = useSharedValue(0);
 
   const shakeAnimatedStyle = useAnimatedStyle(() => ({
@@ -59,11 +62,12 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
   };
 
   const triggerBiometrics = useCallback(async () => {
-    if (!isSupported || !isEnrolled) {
-      setShowPinPad(true);
+    if (!isSupported || !isEnrolled || isPromptingRef.current) {
+      if (!isSupported || !isEnrolled) setShowPinPad(true);
       return;
     }
 
+    isPromptingRef.current = true;
     setIsAuthenticating(true);
     try {
       const res = await authenticate('Unlock S-Pay Vault');
@@ -81,6 +85,9 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
       setShowPinPad(true);
     } finally {
       setIsAuthenticating(false);
+      setTimeout(() => {
+        isPromptingRef.current = false;
+      }, 500);
     }
   }, [isSupported, isEnrolled, authenticate]);
 
@@ -88,22 +95,22 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
   useEffect(() => {
     if (!sessionExists) {
       setIsLocked(false);
+      hasCheckedInitialLock.current = false;
       return;
     }
 
-    const checkLockStatus = () => {
-      const shouldLock = (isSupported && isEnrolled) || hasPin;
-      if (shouldLock) {
-        setIsLocked(true);
-        setTimeout(() => {
-          void triggerBiometrics();
-        }, 300);
-      } else {
-        setIsLocked(false);
-      }
-    };
+    if (hasCheckedInitialLock.current) return;
 
-    checkLockStatus();
+    const shouldLock = (isSupported && isEnrolled) || hasPin;
+    if (shouldLock) {
+      hasCheckedInitialLock.current = true;
+      setIsLocked(true);
+      setTimeout(() => {
+        void triggerBiometrics();
+      }, 300);
+    } else {
+      setIsLocked(false);
+    }
   }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
 
   // AppState Backgrounding Listener
@@ -111,18 +118,30 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
     if (!sessionExists) return;
 
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        const shouldLock = (isSupported && isEnrolled) || hasPin;
-        if (shouldLock) {
-          setIsLocked(true);
-          setPin('');
-          setPinError(false);
-          setTimeout(() => {
-            void triggerBiometrics();
-          }, 300);
+      if (nextAppState.match(/inactive|background/)) {
+        if (isPromptingRef.current) {
+          ignoreNextActiveRef.current = true;
+        }
+      } else if (nextAppState === 'active') {
+        if (ignoreNextActiveRef.current || isPromptingRef.current) {
+          ignoreNextActiveRef.current = false;
+          appState.current = nextAppState;
+          return;
+        }
+
+        if (
+          appState.current.match(/inactive|background/) &&
+          nextAppState === 'active'
+        ) {
+          const shouldLock = (isSupported && isEnrolled) || hasPin;
+          if (shouldLock) {
+            setIsLocked(true);
+            setPin('');
+            setPinError(false);
+            setTimeout(() => {
+              void triggerBiometrics();
+            }, 300);
+          }
         }
       }
       appState.current = nextAppState;

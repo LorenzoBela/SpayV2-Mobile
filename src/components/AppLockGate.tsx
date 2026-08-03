@@ -38,9 +38,13 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
 
   const appState = useRef(AppState.currentState);
   const lastBackgroundTime = useRef<number | null>(null);
+  const isPromptingRef = useRef<boolean>(false);
+  const ignoreNextActiveRef = useRef<boolean>(false);
 
   // Trigger biometrics authentication
   const triggerBiometricUnlock = async () => {
+    if (isPromptingRef.current) return;
+    isPromptingRef.current = true;
     setCheckingBiometrics(true);
     try {
       const result = await LocalAuthentication.authenticateAsync({
@@ -61,6 +65,9 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
       console.warn('[AppLockGate] Biometric unlock error:', error);
     } finally {
       setCheckingBiometrics(false);
+      setTimeout(() => {
+        isPromptingRef.current = false;
+      }, 500);
     }
   };
 
@@ -110,23 +117,35 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
     if (!sessionExists || !hasBiometricSetup) return;
 
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        if (lastBackgroundTime.current) {
-          const elapsed = Date.now() - lastBackgroundTime.current;
-          if (elapsed > GRACE_PERIOD_MS) {
-            setIsLocked(true);
-            setPin('');
-            setPinError(false);
-            setTimeout(() => {
-              void triggerBiometricUnlock();
-            }, 300);
+      if (nextAppState.match(/inactive|background/)) {
+        if (isPromptingRef.current) {
+          ignoreNextActiveRef.current = true;
+        } else {
+          lastBackgroundTime.current = Date.now();
+        }
+      } else if (nextAppState === 'active') {
+        if (ignoreNextActiveRef.current || isPromptingRef.current) {
+          ignoreNextActiveRef.current = false;
+          appState.current = nextAppState;
+          return;
+        }
+
+        if (
+          appState.current.match(/inactive|background/) &&
+          nextAppState === 'active'
+        ) {
+          if (lastBackgroundTime.current) {
+            const elapsed = Date.now() - lastBackgroundTime.current;
+            if (elapsed > GRACE_PERIOD_MS) {
+              setIsLocked(true);
+              setPin('');
+              setPinError(false);
+              setTimeout(() => {
+                void triggerBiometricUnlock();
+              }, 300);
+            }
           }
         }
-      } else if (nextAppState.match(/inactive|background/)) {
-        lastBackgroundTime.current = Date.now();
       }
       appState.current = nextAppState;
     };

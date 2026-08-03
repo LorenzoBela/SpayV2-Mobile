@@ -54,6 +54,10 @@ export async function setupAndroidNotificationChannels() {
     description: 'Payment reminders, due dates, confirmations, and order updates.',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
+    enableVibrate: true,
+    enableLights: true,
+    showBadge: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     lightColor: '#ee4d2d',
   });
 
@@ -62,6 +66,10 @@ export async function setupAndroidNotificationChannels() {
     description: 'Important account, budget, and system alerts.',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 350, 150, 350],
+    enableVibrate: true,
+    enableLights: true,
+    showBadge: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     lightColor: '#ef4444',
   });
 
@@ -70,6 +78,10 @@ export async function setupAndroidNotificationChannels() {
     description: 'S-Pay promotions and announcements.',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
+    enableVibrate: true,
+    enableLights: true,
+    showBadge: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     lightColor: '#3b82f6',
   });
 
@@ -78,6 +90,10 @@ export async function setupAndroidNotificationChannels() {
     description: 'Account notices and general system messages.',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 150, 250],
+    enableVibrate: true,
+    enableLights: true,
+    showBadge: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     lightColor: '#10b981',
   });
 }

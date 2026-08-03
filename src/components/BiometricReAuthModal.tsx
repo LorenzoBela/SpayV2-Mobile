@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Modal,
   View,
@@ -65,12 +65,15 @@ export function BiometricReAuthModal({
     );
   };
 
+  const isPromptingRef = useRef<boolean>(false);
+
   const triggerBiometrics = useCallback(async () => {
-    if (!isSupported || !isEnrolled) {
-      setShowPinPad(true);
+    if (!isSupported || !isEnrolled || isPromptingRef.current) {
+      if (!isSupported || !isEnrolled) setShowPinPad(true);
       return;
     }
 
+    isPromptingRef.current = true;
     setIsAuthenticating(true);
     setPinError(null);
 
@@ -94,6 +97,9 @@ export function BiometricReAuthModal({
       setShowPinPad(true);
     } finally {
       setIsAuthenticating(false);
+      setTimeout(() => {
+        isPromptingRef.current = false;
+      }, 500);
     }
   }, [isSupported, isEnrolled, authenticate, title, onSuccess, onDismiss]);
 
