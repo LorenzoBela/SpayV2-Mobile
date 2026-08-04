@@ -107,6 +107,25 @@ export default function AdminSettingsScreen() {
   const [updateInfo, setUpdateInfo] = useState<AppUpdateRuntimeInfo>(() => getAppUpdateRuntimeInfo());
   const [isApkDownloaded, setIsApkDownloaded] = useState(false);
 
+  // Master refresh state
+  const [refreshingCache, setRefreshingCache] = useState(false);
+
+  const handleMasterRefresh = async () => {
+    setRefreshingCache(true);
+    try {
+      const result = await callAdminApi('master-refresh-data');
+      if (result?.success) {
+        PremiumAlert.alert('Cache Refreshed', 'All cached data has been purged. Fresh data will load on next request.');
+      } else {
+        PremiumAlert.alert('Refresh Failed', result?.error || 'Could not refresh cache. Try again later.');
+      }
+    } catch (err: any) {
+      PremiumAlert.alert('Error', err?.message || 'Network error during cache refresh.');
+    } finally {
+      setRefreshingCache(false);
+    }
+  };
+
   const checkDownloadedApkState = async () => {
     try {
       const downloadedVersion = await getDownloadedApkVersionCode();
@@ -900,6 +919,37 @@ export default function AdminSettingsScreen() {
               )}
             </TouchableOpacity>
           ) : null}
+        </View>
+
+        {/* Master Refresh Data */}
+        <View style={[styles.updatePanel, { backgroundColor: t.inputBg, borderColor: t.cardBorder }]}>
+          <View style={styles.updateHeader}>
+            <View style={[styles.toggleIconBox, { backgroundColor: isDarkMode ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.05)' }]}>
+              <RefreshCw size={16} color={isDarkMode ? '#818cf8' : '#6366f1'} />
+            </View>
+            <View style={styles.updateHeaderText}>
+              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>Master Refresh Data</Text>
+              <Text style={[styles.toggleDescText, { color: t.textSecondary }]}>
+                Purge all Redis caches and in-memory data. Fresh data loads on next request.
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            onPress={handleMasterRefresh}
+            disabled={refreshingCache}
+            style={[styles.updatePrimaryBtn, { backgroundColor: isDarkMode ? '#6366f1' : '#4f46e5' }]}
+            activeOpacity={0.8}
+          >
+            {refreshingCache ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <RefreshCw size={15} color="#ffffff" />
+                <Text style={styles.updatePrimaryBtnText}>Refresh All Data</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Switch Workspace */}
