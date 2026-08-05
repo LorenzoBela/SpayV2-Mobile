@@ -1,6 +1,8 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
+import { formatAmount } from '../../utils/money';
+import { generatePaymentRef } from '../../utils/id';
 import {
   View,
   Text,

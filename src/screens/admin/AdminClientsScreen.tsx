@@ -1,5 +1,7 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
+import { formatAmount } from '../../utils/money';
+import { generatePaymentRef } from '../../utils/id';
 import {
   StyleSheet,
   Text,

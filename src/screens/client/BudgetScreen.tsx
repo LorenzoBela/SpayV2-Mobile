@@ -1,5 +1,7 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useEffect, useState, useContext, useMemo } from 'react';
+import { formatAmount } from '../../utils/money';
+import { generatePaymentRef } from '../../utils/id';
 import {
   StyleSheet,
   Text,

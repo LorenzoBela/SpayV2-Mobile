@@ -1,6 +1,8 @@
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import DatePicker from '../../components/DatePicker';
 import React, { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react';
+import { formatAmount } from '../../utils/money';
+import { generatePaymentRef } from '../../utils/id';
 import {
   StyleSheet,
   Text,

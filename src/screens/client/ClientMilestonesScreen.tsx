@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useContext } from 'react';
+import { formatAmount } from '../../utils/money';
+import { generatePaymentRef } from '../../utils/id';
 import {
   StyleSheet,
   Text,
