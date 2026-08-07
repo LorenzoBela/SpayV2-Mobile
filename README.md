@@ -23,17 +23,17 @@ The SpayV2 Mobile App uses an offline-first data architecture designed to elimin
 
 ```mermaid
 graph TD
-    AppLaunch[User Taps Mobile App Icon] -->|1. Initialize Native Modules| ExpoRuntime[Expo React Native Runtime]
-    ExpoRuntime -->|2. Fetch AES-256 Key| SecureStore[Expo SecureStore]
-    SecureStore -->|3. Instantiate Encrypted MMKV| MMKV[react-native-mmkv Client]
+    AppLaunch["User Taps Mobile App Icon"] -->|"1. Initialize Native Modules"| ExpoRuntime["Expo React Native Runtime"]
+    ExpoRuntime -->|"2. Fetch AES-256 Key"| SecureStore["Expo SecureStore"]
+    SecureStore -->|"3. Instantiate Encrypted MMKV"| MMKV["react-native-mmkv Client"]
     
-    MMKV -->|4. Sync Read Snapshot <50ms| Persister[TanStack Query Async Persister]
-    Persister -->|5. Hydrate Cache| QueryClient[TanStack Query Cache]
-    QueryClient -->|6. Render UI Instantly| DashboardScreen[Dashboard UI Ready]
+    MMKV -->|"4. Sync Read Snapshot <50ms"| Persister["TanStack Query Async Persister"]
+    Persister -->|"5. Hydrate Cache"| QueryClient["TanStack Query Cache"]
+    QueryClient -->|"6. Render UI Instantly"| DashboardScreen["Dashboard UI Ready"]
     
-    DashboardScreen -->|7. Check NetInfo Connectivity| NetCheck{Is Online?}
-    NetCheck -->|No| OfflineMode[Keep Displaying MMKV Snapshot + Offline Banner]
-    NetCheck -->|Yes| BackgroundFetch[Refetch API / tRPC in Background]
+    DashboardScreen -->|"7. Check NetInfo Connectivity"| NetCheck{"Is Online?"}
+    NetCheck -->|No| OfflineMode["Keep Displaying MMKV Snapshot and Offline Banner"]
+    NetCheck -->|Yes| BackgroundFetch["Refetch API / tRPC in Background"]
     BackgroundFetch -->|Update Cache| QueryClient
     QueryClient -->|Persist New Snapshot| MMKV
 ```
@@ -80,18 +80,12 @@ The storage engine uses a JavaScript `Proxy` wrapper (`export const storage = ne
 
 ```mermaid
 graph LR
-    UI[React Native Components] -->|Read Local State| Jotai[Jotai Atoms]
-    UI -->|Query/Mutation Hooks| TanStack[TanStack Query v5]
-    TanStack -->|Network Transport| TRPC[tRPC / Supabase SDK]
-    TRPC -->|HTTP/REST| WebBackend[SpayV2 Web API]
-    TanStack <-->|Background Sync| MMKV[Encrypted MMKV Storage]
+    UI["React Native Components"] -->|Read Local State| Jotai["Jotai Atoms"]
+    UI -->|Query/Mutation Hooks| TanStack["TanStack Query v5"]
+    TanStack -->|Network Transport| TRPC["tRPC / Supabase SDK"]
+    TRPC -->|HTTP/REST| WebBackend["SpayV2 Web API"]
+    TanStack <-->|Background Sync| MMKV["Encrypted MMKV Storage"]
 ```
-
-### State Division
-* **Jotai Atoms**: UI state (active tab indexes, modal visibility, draft input forms, temporary filter criteria).
-* **TanStack Query v5**: Server data (Orders list, Payment schedules, Budget categories, NootAI history).
-  * `staleTime`: 5 minutes (prevents spamming network requests during rapid screen switches).
-  * `gcTime` / `maxAge`: 24 hours (preserves offline data across app restarts).
 
 ---
 
