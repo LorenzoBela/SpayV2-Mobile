@@ -30,6 +30,8 @@ import { runIdlePrefetch } from '../utils/idlePrefetch';
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForUser } from '../utils/authProfile';
 import { useImpersonation } from '../context/ImpersonationContext';
+import { DynamicIslandProvider } from '../context/DynamicIslandContext';
+import FloatingDynamicIsland from '../components/FloatingDynamicIsland';
 import ImpersonationBanner from '../components/ImpersonationBanner';
 import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
@@ -911,72 +913,76 @@ export default function AppNavigator() {
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
         <NotificationProvider userId={effectiveUserId || undefined}>
-          <TabBarProvider>
-            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }}>
-              <StatusBar
-                barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-                backgroundColor={isDarkMode ? '#000000' : '#ffffff'}
-                translucent={false}
-                animated
-              />
+          <DynamicIslandProvider userId={effectiveUserId || undefined} userRole={activeRole || userRole || undefined}>
+            <TabBarProvider>
+              <View style={{ flex: 1, backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }}>
+                <StatusBar
+                  barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+                  backgroundColor={isDarkMode ? '#000000' : '#ffffff'}
+                  translucent={false}
+                  animated
+                />
 
-              <ImpersonationBanner />
+                <ImpersonationBanner />
 
-              {!isActuallyLoading && (
-                <BiometricLockOverlay sessionExists={!!session}>
-                  <NavigationContainer ref={navigationRef} theme={navigationTheme}>
-                    <Stack.Navigator screenOptions={{ headerShown: false }}>
-                      {session ? (
-                        userRole === 'ADMIN' && activeRole === null ? (
-                          <Stack.Screen name="RoleSelect">
-                            {(props) => (
-                              <RoleSelectionScreen
-                                {...props}
-                                onSelectRole={(role) => setActiveRole(role)}
-                                onSignOut={async () => {
-                                  await supabase.auth.signOut();
-                                }}
-                              />
-                            )}
-                          </Stack.Screen>
-                        ) : activeRole === 'admin' ? (
-                          <>
-                            <Stack.Screen name="Admin" component={AdminNavigator} />
-                            <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
-                          </>
+                {!isActuallyLoading && (
+                  <BiometricLockOverlay sessionExists={!!session}>
+                    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+                      <Stack.Navigator screenOptions={{ headerShown: false }}>
+                        {session ? (
+                          userRole === 'ADMIN' && activeRole === null ? (
+                            <Stack.Screen name="RoleSelect">
+                              {(props) => (
+                                <RoleSelectionScreen
+                                  {...props}
+                                  onSelectRole={(role) => setActiveRole(role)}
+                                  onSignOut={async () => {
+                                    await supabase.auth.signOut();
+                                  }}
+                                />
+                              )}
+                            </Stack.Screen>
+                          ) : activeRole === 'admin' ? (
+                            <>
+                              <Stack.Screen name="Admin" component={AdminNavigator} />
+                              <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
+                            </>
+                          ) : (
+                            <>
+                              <Stack.Screen name="Main" component={MainNavigator} />
+                            </>
+                          )
                         ) : (
-                          <>
-                            <Stack.Screen name="Main" component={MainNavigator} />
-                          </>
-                        )
-                      ) : (
-                        <Stack.Screen name="Auth" component={AuthNavigator} />
-                      )}
-                    </Stack.Navigator>
-                  </NavigationContainer>
-                </BiometricLockOverlay>
-              )}
+                          <Stack.Screen name="Auth" component={AuthNavigator} />
+                        )}
+                      </Stack.Navigator>
+                    </NavigationContainer>
+                  </BiometricLockOverlay>
+                )}
 
-              {showOverlay && (
-                <Animated.View
-                  style={[
-                    StyleSheet.absoluteFill,
-                    {
-                      opacity: overlayOpacity,
-                      zIndex: 9999,
-                    },
-                  ]}
-                >
-                  <PremiumLoader
-                    title={session ? 'Syncing Account Config' : 'Initializing Session'}
-                    subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
-                    error={profileError}
-                    onRetry={handleRetry}
-                  />
-                </Animated.View>
-              )}
-            </View>
-          </TabBarProvider>
+                <FloatingDynamicIsland />
+
+                {showOverlay && (
+                  <Animated.View
+                    style={[
+                      StyleSheet.absoluteFill,
+                      {
+                        opacity: overlayOpacity,
+                        zIndex: 9999,
+                      },
+                    ]}
+                  >
+                    <PremiumLoader
+                      title={session ? 'Syncing Account Config' : 'Initializing Session'}
+                      subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
+                      error={profileError}
+                      onRetry={handleRetry}
+                    />
+                  </Animated.View>
+                )}
+              </View>
+            </TabBarProvider>
+          </DynamicIslandProvider>
         </NotificationProvider>
       </RoleContext.Provider>
     </ThemeContext.Provider>

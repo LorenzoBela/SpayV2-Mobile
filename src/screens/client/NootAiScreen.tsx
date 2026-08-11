@@ -38,6 +38,7 @@ interface Message {
   sender: 'ai' | 'user';
   text: string;
   timestamp: Date;
+  toolsUsed?: Array<{ name: string; args: Record<string, unknown>; resultSummary: string; status: string }>;
 }
 
 // Module-level array to persist request timestamps across component unmounts
@@ -76,10 +77,9 @@ function checkInputSafety(input: string): { isSafe: boolean; reason: string } {
 
   // 3. Detect requests for code, scripts, programming, or database injection
   const codeKeywords = [
-    'python', 'javascript', 'typescript', 'c++', 'java', 'rust', 'golang', 
     'write a script', 'write code', 'coding', 'programming', 'code script',
-    'bash script', 'powershell', 'sql query', 'html code', 'css style',
-    'function in', 'class in', 'develop a', 'program a'
+    'bash script', 'powershell', 'write python', 'write javascript',
+    'function in python', 'class in java', 'develop a script', 'program a script'
   ];
   if (codeKeywords.some(keyword => lowerInput.includes(keyword))) {
     return { 
@@ -454,7 +454,7 @@ export default function NootAiScreen() {
 
         if (result.success) {
           const safeResponse = checkOutputSafety(result.response);
-          setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date() }]);
+          setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date(), toolsUsed: (result as any).toolsUsed }]);
         } else {
           throw new Error('Server error');
         }
@@ -474,7 +474,7 @@ export default function NootAiScreen() {
         const data = await response.json();
         if (data.success) {
           const safeResponse = checkOutputSafety(data.response);
-          setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date() }]);
+          setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date(), toolsUsed: data.toolsUsed }]);
         } else {
           throw new Error(data.error || 'Server error');
         }
@@ -619,6 +619,13 @@ export default function NootAiScreen() {
                   ]}
                 >
                   <View style={styles.bubbleTextContainer}>
+                    {isAi && msg.toolsUsed && msg.toolsUsed.length > 0 && (
+                      <View style={{ marginBottom: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: t.accentLight, alignSelf: 'flex-start' }}>
+                        <Text style={{ fontSize: 10, color: t.accent, fontWeight: '600' }}>
+                          ⚡ Used tool: {Array.from(new Set(msg.toolsUsed.map(t => t.name))).join(', ')}
+                        </Text>
+                      </View>
+                    )}
                     {isAi ? renderFormattedMessage(msg.text, t) : (
                       <Text style={[styles.bubbleText, { color: '#ffffff' }]}>
                         {msg.text}
@@ -646,9 +653,11 @@ export default function NootAiScreen() {
         {messages.length === 1 && !isOffline && (
           <View style={styles.suggestionsContainer}>
             {[
+              '📊 Full financial breakdown',
               'Check my available credit',
               'Am I on track with my budgets?',
               'Show my next installment due date',
+              '📈 Show my spending chart',
             ].map((prompt, i) => (
               <TouchableOpacity
                 key={i}
