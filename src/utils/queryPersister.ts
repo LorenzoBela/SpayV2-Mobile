@@ -12,14 +12,20 @@ function getOrCreateEncryptionKey(): string {
   try {
     let key = SecureStore.getItem(SECURE_KEY_ALIAS);
     if (!key) {
-      // Generate a random 64-character hex key (32 bytes / 256 bits)
-      // Since we don't have expo-crypto, we use a slightly better random generation
-      // than Math.random() if possible, but in this environment Math.random is our baseline.
-      const chars = '0123456789abcdef';
-      let generatedKey = '';
-      for (let i = 0; i < 64; i++) {
-        generatedKey += chars.charAt(Math.floor(Math.random() * chars.length));
+      // Generate a cryptographically secure 64-character hex key (32 bytes / 256 bits)
+      const bytes = new Uint8Array(32);
+      if (typeof globalThis.crypto?.getRandomValues === 'function') {
+        globalThis.crypto.getRandomValues(bytes);
+      } else {
+        // Fallback for engines without globalThis.crypto
+        for (let i = 0; i < 32; i++) {
+          bytes[i] = Math.floor(Math.random() * 256);
+        }
       }
+      const generatedKey = Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
       SecureStore.setItem(SECURE_KEY_ALIAS, generatedKey);
       key = generatedKey;
     }
@@ -27,7 +33,6 @@ function getOrCreateEncryptionKey(): string {
   } catch (error) {
     console.error('[queryPersister] Failed to get/create encryption key from SecureStore:', error);
     // Fallback to a stable local key in case SecureStore is failing, to avoid app crash.
-    // This key is exactly 64 characters (32 bytes in hex).
     return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
   }
 }

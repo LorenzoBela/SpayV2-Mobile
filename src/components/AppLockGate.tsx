@@ -14,6 +14,7 @@ import {
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
+import * as Device from 'expo-device';
 import { BlurView } from 'expo-blur';
 import { Fingerprint, Lock, ShieldAlert, X } from 'lucide-react-native';
 
@@ -31,10 +32,28 @@ const keypadButtonSize = width < 380 ? 64 : 72;
 
 export default function AppLockGate({ children, sessionExists }: AppLockGateProps) {
   const [isLocked, setIsLocked] = useState(false);
+  const [isRootedWarning, setIsRootedWarning] = useState(false);
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
   const [checkingBiometrics, setCheckingBiometrics] = useState(false);
   const [hasBiometricSetup, setHasBiometricSetup] = useState(false);
+
+  // Check device status on mount (OTA safe)
+  useEffect(() => {
+    async function checkRootStatus() {
+      try {
+        if ('isRootedAsync' in Device && typeof (Device as any).isRootedAsync === 'function') {
+          const isRooted = await (Device as any).isRootedAsync();
+          if (isRooted) {
+            setIsRootedWarning(true);
+          }
+        }
+      } catch {
+        // Ignore check failure
+      }
+    }
+    void checkRootStatus();
+  }, []);
 
   const appState = useRef(AppState.currentState);
   const lastBackgroundTime = useRef<number | null>(null);
