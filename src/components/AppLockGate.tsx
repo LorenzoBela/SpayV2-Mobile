@@ -17,9 +17,9 @@ import * as Haptics from 'expo-haptics';
 import * as Device from 'expo-device';
 import { BlurView } from 'expo-blur';
 import { Fingerprint, Lock, ShieldAlert, X } from 'lucide-react-native';
+import { useSecurityPin } from '../hooks/useSecurityPin';
 
 const BIOMETRIC_EMAIL_KEY = 'biometric_email';
-const BIOMETRIC_PIN_KEY = 'biometric_pin';
 const GRACE_PERIOD_MS = 30000; // 30 seconds
 
 interface AppLockGateProps {
@@ -30,7 +30,6 @@ interface AppLockGateProps {
 const { width } = Dimensions.get('window');
 const keypadButtonSize = width < 380 ? 64 : 72;
 
-// KeypadButton component extracted OUT of parent to prevent re-declaration crash
 const KeypadButton: React.FC<{ val: string; onPress: (val: string) => void }> = React.memo(({ val, onPress }) => (
   <TouchableOpacity
     onPress={() => onPress(val)}
@@ -48,6 +47,8 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
   const [pinError, setPinError] = useState(false);
   const [checkingBiometrics, setCheckingBiometrics] = useState(false);
   const [hasBiometricSetup, setHasBiometricSetup] = useState(false);
+
+  const { hasPin, verifyPin } = useSecurityPin();
 
   useEffect(() => {
     async function checkRootStatus() {
@@ -82,12 +83,12 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
       });
 
       if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); } catch {}
         setIsLocked(false);
         setPin('');
         setPinError(false);
       } else {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}); } catch {}
       }
     } catch (error) {
       console.warn('[AppLockGate] Biometric unlock error:', error);
@@ -114,7 +115,7 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
         const savedEmail = await SecureStore.getItemAsync(BIOMETRIC_EMAIL_KEY);
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-        const setup = !!(savedEmail && hasHardware && isEnrolled);
+        const setup = !!(savedEmail && hasHardware && isEnrolled) || hasPin;
         
         if (active) {
           setHasBiometricSetup(setup);
@@ -136,7 +137,7 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
     return () => {
       active = false;
     };
-  }, [sessionExists, triggerBiometricUnlock]);
+  }, [sessionExists, hasPin, triggerBiometricUnlock]);
 
   useEffect(() => {
     if (!sessionExists || !hasBiometricSetup) return;
@@ -181,38 +182,47 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
     };
   }, [sessionExists, hasBiometricSetup, triggerBiometricUnlock]);
 
-  const handleKeyPress = useCallback(async (num: string) => {
-    setPin((prevPin) => {
-      if (prevPin.length >= 6) return prevPin;
-      const nextPin = prevPin + num;
-      setPinError(false);
+  // Clean keypad entry without side effects in state updater
+  const handleKeyPress = useCallback((num: string) => {
+    if (pin.length >= 6) return;
+    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
+    setPin((prev) => (prev.length < 6 ? prev + num : prev));
+    setPinError(false);
+  }, [pin.length]);
 
-      if (nextPin.length === 6) {
-        SecureStore.getItemAsync(BIOMETRIC_PIN_KEY).then((savedPin) => {
-          if (nextPin === savedPin) {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setIsLocked(false);
-            setPin('');
-          } else {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            setPinError(true);
-            setPin('');
-          }
-        }).catch(() => {
-          setPinError(true);
-          setPin('');
-        });
-      }
-      return nextPin;
-    });
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
-
-  const handleBackspace = useCallback(async () => {
+  const handleBackspace = useCallback(() => {
+    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
     setPin((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''));
     setPinError(false);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
+
+  // Dedicated PIN validation effect using unified verifyPin hook
+  useEffect(() => {
+    if (pin.length !== 6 || !isLocked) return;
+    let active = true;
+
+    verifyPin(pin).then((valid) => {
+      if (!active) return;
+      if (valid) {
+        try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); } catch {}
+        setIsLocked(false);
+        setPin('');
+      } else {
+        try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); } catch {}
+        setPinError(true);
+        setPin('');
+      }
+    }).catch(() => {
+      if (active) {
+        setPinError(true);
+        setPin('');
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [pin, isLocked, verifyPin]);
 
   if (!isLocked) {
     return <>{children}</>;

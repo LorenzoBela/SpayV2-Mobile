@@ -137,16 +137,22 @@ export const FloatingDynamicIsland: React.FC = () => {
       translateX.value = withSpring(0, SPRING_PHYSICS);
     });
 
+  // Extract primitives BEFORE the worklet boundary — JS objects with function
+  // properties (onAction) cannot be serialized to the native UI thread.
+  const hasAction = !!activeNotification?.actionText;
+  const hasProgress = !!activeNotification?.hasProgress;
+  const activeId = activeNotification?.id ?? '';
+  const secondaryId = secondaryNotification?.id ?? '';
+  const hasSecondary = !!secondaryNotification && secondaryId !== activeId;
+
   const animatedContainerStyle = useAnimatedStyle(() => {
     'worklet';
-    const hasAction = !!activeNotification?.actionText;
-    const hasProgress = !!activeNotification?.hasProgress;
     let targetHeight = 44;
     if (isExpanded) {
       targetHeight = hasAction ? (hasProgress ? 184 : 172) : 132;
     }
 
-    const showSecondary = !!secondaryNotification && !isExpanded && secondaryNotification.id !== activeNotification?.id;
+    const showSecondary = hasSecondary && !isExpanded;
     const targetWidth = isExpanded
       ? Math.min(SCREEN_WIDTH - 24, 380)
       : showSecondary

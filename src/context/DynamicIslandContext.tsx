@@ -109,13 +109,15 @@ export const DynamicIslandProvider: React.FC<{
   const [activeNotification, setActiveNotification] = useState<DynamicIslandNotificationPayload | null>(null);
   const [secondaryNotification, setSecondaryNotification] = useState<DynamicIslandNotificationPayload | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [resolvedUserId, setResolvedUserId] = useState<string | undefined>(propUserId);
-  const [userName, setUserName] = useState<string>('');
+  const [userName, setUserName] = useState<string>('Lorenzo');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
   const [lastOnlineAt, setLastOnlineAt] = useState<string | null>(null);
   const [missedCount, setMissedCount] = useState<number>(0);
+  
   const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasShownGreetingRef = useRef<boolean>(false);
+  const userNameRef = useRef<string>('Lorenzo');
+  const userAvatarRef = useRef<string>('');
 
   const clearTimer = () => {
     if (dismissTimerRef.current) {
@@ -154,7 +156,13 @@ export const DynamicIslandProvider: React.FC<{
       dismissTimerRef.current = setTimeout(() => {
         setActiveNotification((current) => {
           if (current?.id === payload.id) {
-            setSecondaryNotification(null);
+            setSecondaryNotification((sec) => {
+              if (sec) {
+                setActiveNotification(sec);
+                return null;
+              }
+              return null;
+            });
             return null;
           }
           return current;
@@ -174,8 +182,8 @@ export const DynamicIslandProvider: React.FC<{
 
       const isAdmin = userRole === 'ADMIN' || userRole === 'admin' || activeRole === 'admin';
 
-      let userFirstName = userName;
-      let avatar = userAvatarUrl;
+      let userFirstName = userNameRef.current;
+      let avatar = userAvatarRef.current;
 
       const { data: authData } = await supabase.auth.getUser();
       if (authData?.user) {
@@ -215,8 +223,14 @@ export const DynamicIslandProvider: React.FC<{
             '';
         }
 
-        if (userFirstName) setUserName(userFirstName);
-        if (avatar) setUserAvatarUrl(avatar);
+        if (userFirstName) {
+          userNameRef.current = userFirstName;
+          setUserName(userFirstName);
+        }
+        if (avatar) {
+          userAvatarRef.current = avatar;
+          setUserAvatarUrl(avatar);
+        }
       }
 
       const [recentPaymentsRes, recentOverdueRes, unreadCountRes] = await Promise.allSettled([
@@ -332,9 +346,9 @@ export const DynamicIslandProvider: React.FC<{
     } catch (err) {
       console.warn('[Mobile DynamicIsland] Catch-up error:', err);
     }
-  }, [sessionExists, activeRole, userRole, userName, userAvatarUrl, triggerIsland]);
+  }, [sessionExists, activeRole, userRole, triggerIsland]);
 
-  // Reset greeting ref on logout or session end
+  // Trigger check ONLY when sessionExists and activeRole transition to valid
   useEffect(() => {
     if (!sessionExists || !activeRole) {
       hasShownGreetingRef.current = false;

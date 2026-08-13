@@ -63,7 +63,7 @@ import NootAiScreen from '../screens/client/NootAiScreen';
 import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen'; // refresh cache
 import WishlistScreen from '../screens/client/WishlistScreen';
 import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen'; // refresh cache
-import AdminSalaryScreen from '@/screens/admin/AdminSalaryScreen';
+import AdminSalaryScreen from '../screens/admin/AdminSalaryScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,

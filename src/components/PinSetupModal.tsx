@@ -26,6 +26,19 @@ interface PinSetupModalProps {
 const { width } = Dimensions.get('window');
 const keypadButtonSize = width < 380 ? 60 : 68;
 
+const SetupKeypadButton: React.FC<{
+  val: string;
+  onPress: (val: string) => void;
+}> = React.memo(({ val, onPress }) => (
+  <TouchableOpacity
+    onPress={() => onPress(val)}
+    activeOpacity={0.7}
+    style={styles.keypadBtn}
+  >
+    <Text style={styles.keypadBtnText}>{val}</Text>
+  </TouchableOpacity>
+));
+
 export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalProps) {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<1 | 2>(1);
@@ -118,15 +131,7 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
   const currentPin = step === 1 ? pin : confirmPin;
   const dots = Array(6).fill(0);
 
-  const KeypadButton = ({ val }: { val: string }) => (
-    <TouchableOpacity
-      onPress={() => handleKeyPress(val)}
-      activeOpacity={0.7}
-      style={styles.keypadBtn}
-    >
-      <Text style={styles.keypadBtnText}>{val}</Text>
-    </TouchableOpacity>
-  );
+
 
   return (
     <Modal
@@ -195,23 +200,23 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
           {/* Keypad Grid */}
           <View style={styles.keypad}>
             <View style={styles.keypadRow}>
-              <KeypadButton val="1" />
-              <KeypadButton val="2" />
-              <KeypadButton val="3" />
+              <SetupKeypadButton val="1" onPress={handleKeyPress} />
+              <SetupKeypadButton val="2" onPress={handleKeyPress} />
+              <SetupKeypadButton val="3" onPress={handleKeyPress} />
             </View>
             <View style={styles.keypadRow}>
-              <KeypadButton val="4" />
-              <KeypadButton val="5" />
-              <KeypadButton val="6" />
+              <SetupKeypadButton val="4" onPress={handleKeyPress} />
+              <SetupKeypadButton val="5" onPress={handleKeyPress} />
+              <SetupKeypadButton val="6" onPress={handleKeyPress} />
             </View>
             <View style={styles.keypadRow}>
-              <KeypadButton val="7" />
-              <KeypadButton val="8" />
-              <KeypadButton val="9" />
+              <SetupKeypadButton val="7" onPress={handleKeyPress} />
+              <SetupKeypadButton val="8" onPress={handleKeyPress} />
+              <SetupKeypadButton val="9" onPress={handleKeyPress} />
             </View>
             <View style={styles.keypadRow}>
               <View style={[styles.keypadBtn, styles.actionBtn]} />
-              <KeypadButton val="0" />
+              <SetupKeypadButton val="0" onPress={handleKeyPress} />
               <TouchableOpacity
                 onPress={handleBackspace}
                 activeOpacity={0.7}

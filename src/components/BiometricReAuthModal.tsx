@@ -32,6 +32,21 @@ export interface BiometricReAuthModalProps {
 const { width } = Dimensions.get('window');
 const keypadButtonSize = width < 380 ? 60 : 68;
 
+const ReAuthKeypadButton: React.FC<{
+  val: string;
+  onPress: (val: string) => void;
+  disabled?: boolean;
+}> = React.memo(({ val, onPress, disabled }) => (
+  <TouchableOpacity
+    onPress={() => onPress(val)}
+    activeOpacity={0.7}
+    disabled={disabled}
+    style={styles.keypadBtn}
+  >
+    <Text style={styles.keypadBtnText}>{val}</Text>
+  </TouchableOpacity>
+));
+
 export function BiometricReAuthModal({
   visible,
   title = 'Security Re-Authentication',
@@ -169,16 +184,7 @@ export function BiometricReAuthModal({
 
   const dots = Array(6).fill(0);
 
-  const KeypadButton = ({ val }: { val: string }) => (
-    <TouchableOpacity
-      onPress={() => handleKeyPress(val)}
-      activeOpacity={0.7}
-      disabled={isAuthenticating}
-      style={styles.keypadBtn}
-    >
-      <Text style={styles.keypadBtnText}>{val}</Text>
-    </TouchableOpacity>
-  );
+
 
   return (
     <Modal
@@ -268,19 +274,19 @@ export function BiometricReAuthModal({
 
               <View style={styles.keypad}>
                 <View style={styles.keypadRow}>
-                  <KeypadButton val="1" />
-                  <KeypadButton val="2" />
-                  <KeypadButton val="3" />
+                  <ReAuthKeypadButton val="1" onPress={handleKeyPress} disabled={isAuthenticating} />
+                  <ReAuthKeypadButton val="2" onPress={handleKeyPress} disabled={isAuthenticating} />
+                  <ReAuthKeypadButton val="3" onPress={handleKeyPress} disabled={isAuthenticating} />
                 </View>
                 <View style={styles.keypadRow}>
-                  <KeypadButton val="4" />
-                  <KeypadButton val="5" />
-                  <KeypadButton val="6" />
+                  <ReAuthKeypadButton val="4" onPress={handleKeyPress} disabled={isAuthenticating} />
+                  <ReAuthKeypadButton val="5" onPress={handleKeyPress} disabled={isAuthenticating} />
+                  <ReAuthKeypadButton val="6" onPress={handleKeyPress} disabled={isAuthenticating} />
                 </View>
                 <View style={styles.keypadRow}>
-                  <KeypadButton val="7" />
-                  <KeypadButton val="8" />
-                  <KeypadButton val="9" />
+                  <ReAuthKeypadButton val="7" onPress={handleKeyPress} disabled={isAuthenticating} />
+                  <ReAuthKeypadButton val="8" onPress={handleKeyPress} disabled={isAuthenticating} />
+                  <ReAuthKeypadButton val="9" onPress={handleKeyPress} disabled={isAuthenticating} />
                 </View>
                 <View style={styles.keypadRow}>
                   {isSupported && isEnrolled ? (
@@ -296,7 +302,7 @@ export function BiometricReAuthModal({
                     <View style={[styles.keypadBtn, styles.actionBtn]} />
                   )}
 
-                  <KeypadButton val="0" />
+                  <ReAuthKeypadButton val="0" onPress={handleKeyPress} disabled={isAuthenticating} />
 
                   <TouchableOpacity
                     onPress={handleBackspace}
