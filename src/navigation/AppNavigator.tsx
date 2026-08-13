@@ -35,7 +35,6 @@ import FloatingDynamicIsland from '../components/FloatingDynamicIsland';
 import ImpersonationBanner from '../components/ImpersonationBanner';
 import ClientTabGestureSurface from '../components/ClientTabGestureSurface';
 import PremiumLoader from '../components/PremiumLoader';
-import AppLockGate from '../components/AppLockGate';
 import BiometricLockOverlay from '../components/BiometricLockOverlay';
 import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '../screens/auth/OnboardingScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -821,6 +820,7 @@ export default function AppNavigator() {
   useEffect(() => {
     if (!effectiveUserId) return;
 
+    let isMounted = true;
     let nativeFcmRegistered = false;
     let unsubscribeFcmTokenRefresh: (() => void) | undefined;
 
@@ -828,16 +828,24 @@ export default function AppNavigator() {
     (async () => {
       try {
         const fcmToken = await registerForFcmNotifications(effectiveUserId);
+        if (!isMounted) return;
         nativeFcmRegistered = Boolean(fcmToken);
         if (fcmToken) {
-          unsubscribeFcmTokenRefresh = subscribeToFcmTokenRefresh(effectiveUserId);
+          const unsub = subscribeToFcmTokenRefresh(effectiveUserId);
+          if (!isMounted) {
+            unsub();
+          } else {
+            unsubscribeFcmTokenRefresh = unsub;
+          }
         }
       } catch (error: any) {
         console.warn('[FCM] Registration skipped:', error?.message || error);
       }
 
       try {
-        await registerForTrayNotifications(effectiveUserId);
+        if (isMounted) {
+          await registerForTrayNotifications(effectiveUserId);
+        }
       } catch (error: any) {
         console.warn('[Notifications] Registration skipped:', error?.message || error);
       }
@@ -868,6 +876,7 @@ export default function AppNavigator() {
     });
 
     return () => {
+      isMounted = false;
       unsubscribeFcmTokenRefresh?.();
       unsubscribeForegroundFcm();
       unsubscribeRealtime();
@@ -886,8 +895,10 @@ export default function AppNavigator() {
         toValue: 0,
         duration: 350,
         useNativeDriver: true,
-      }).start(() => {
-        setShowOverlay(false);
+      }).start(({ finished }) => {
+        if (finished) {
+          setShowOverlay(false);
+        }
       });
     } else {
       setShowOverlay(true);

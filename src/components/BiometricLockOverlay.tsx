@@ -128,21 +128,29 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
     }
   }, [isSupported, isEnrolled]);
 
+  const pinLengthRef = useRef(pin.length);
+  pinLengthRef.current = pin.length;
+
   useEffect(() => {
     if (!sessionExists) {
       setIsLocked(false);
       return;
     }
 
+    let timeoutId: NodeJS.Timeout | null = null;
     const shouldLock = (isSupported && isEnrolled) || hasPin;
     if (shouldLock) {
       setIsLocked(true);
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         void triggerBiometrics();
       }, 400);
     } else {
       setIsLocked(false);
     }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
 
   useEffect(() => {
@@ -191,11 +199,11 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
   }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
 
   const handleKeyPress = useCallback((num: string) => {
-    if (pin.length >= 6) return;
+    if (pinLengthRef.current >= 6) return;
     try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
     setPin((prev) => (prev.length < 6 ? prev + num : prev));
     setPinError(false);
-  }, [pin.length]);
+  }, []);
 
   const handleBackspace = useCallback(() => {
     try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}

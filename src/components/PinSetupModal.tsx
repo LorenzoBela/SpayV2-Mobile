@@ -48,6 +48,15 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
 
   const shakeOffset = useSharedValue(0);
 
+  const stepTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearStepTimeout = () => {
+    if (stepTimeoutRef.current) {
+      clearTimeout(stepTimeoutRef.current);
+      stepTimeoutRef.current = null;
+    }
+  };
+
   const shakeAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shakeOffset.value }],
   }));
@@ -65,15 +74,17 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
 
   useEffect(() => {
     if (isVisible) {
+      clearStepTimeout();
       setStep(1);
       setPin('');
       setConfirmPin('');
       setErrorMsg(null);
     }
+    return () => clearStepTimeout();
   }, [isVisible]);
 
-  const handleKeyPress = async (num: string) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const handleKeyPress = useCallback(async (num: string) => {
+    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
     setErrorMsg(null);
 
     if (step === 1) {
@@ -82,8 +93,8 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
       setPin(nextPin);
 
       if (nextPin.length === 6) {
-        // Transition to confirm step
-        setTimeout(() => {
+        clearStepTimeout();
+        stepTimeoutRef.current = setTimeout(() => {
           setStep(2);
         }, 150);
       }
@@ -94,39 +105,41 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
 
       if (nextConfirm.length === 6) {
         if (nextConfirm === pin) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); } catch {}
           onSuccess(nextConfirm);
+          setPin('');
+          setConfirmPin('');
         } else {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); } catch {}
           triggerShake();
           setErrorMsg('PINs do not match. Please try again.');
           setConfirmPin('');
           setPin('');
-          setTimeout(() => {
+          clearStepTimeout();
+          stepTimeoutRef.current = setTimeout(() => {
             setStep(1);
           }, 600);
         }
       }
     }
-  };
+  }, [step, pin, confirmPin, onSuccess]);
 
-  const handleBackspace = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const handleBackspace = useCallback(async () => {
+    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
+    clearStepTimeout();
     setErrorMsg(null);
     if (step === 1) {
       if (pin.length > 0) {
-        setPin(pin.slice(0, -1));
+        setPin((prev) => prev.slice(0, -1));
       }
     } else {
       if (confirmPin.length > 0) {
-        setConfirmPin(confirmPin.slice(0, -1));
+        setConfirmPin((prev) => prev.slice(0, -1));
       } else {
-        // Go back to step 1 if deleting on empty confirm
         setStep(1);
-        setPin(pin.slice(0, -1));
       }
     }
-  };
+  }, [step, pin.length, confirmPin.length]);
 
   const currentPin = step === 1 ? pin : confirmPin;
   const dots = Array(6).fill(0);

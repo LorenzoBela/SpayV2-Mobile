@@ -145,7 +145,8 @@ export const DynamicIslandProvider: React.FC<{
     clearTimer();
     setActiveNotification((prev) => {
       if (prev && prev.id !== payload.id) {
-        setSecondaryNotification(prev);
+        // Queue previous notification as secondary
+        setTimeout(() => setSecondaryNotification(prev), 0);
       }
       return payload;
     });
@@ -156,13 +157,6 @@ export const DynamicIslandProvider: React.FC<{
       dismissTimerRef.current = setTimeout(() => {
         setActiveNotification((current) => {
           if (current?.id === payload.id) {
-            setSecondaryNotification((sec) => {
-              if (sec) {
-                setActiveNotification(sec);
-                return null;
-              }
-              return null;
-            });
             return null;
           }
           return current;

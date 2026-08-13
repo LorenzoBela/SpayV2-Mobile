@@ -50,12 +50,32 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SPAY_PRIMARY = '#ee4d2d';
 const RED_ALERT = '#ef4444';
+const MEDIUM_HAPTIC = Haptics.ImpactFeedbackStyle.Medium;
 
 const SPRING_PHYSICS = {
   damping: 24,
   stiffness: 380,
   mass: 0.35,
   overshootClamping: false,
+};
+
+const ICON_COLOR_MAP: Record<string, string> = {
+  payment: SPAY_PRIMARY,
+  order_assigned: SPAY_PRIMARY,
+  biometric_auth: SPAY_PRIMARY,
+  overdue_alert: RED_ALERT,
+  admin_risk_alert: RED_ALERT,
+  low_balance: RED_ALERT,
+  payment_success: '#10b981',
+  debt_free: '#10b981',
+  admin_client_payment: '#10b981',
+  ota_update: '#00F2FE',
+  sync: '#00F2FE',
+  limit_increase: '#00F2FE',
+  offline_queue: '#00F2FE',
+  shared_payment: '#a855f7',
+  pro_subscription: '#a855f7',
+  zero_interest: '#a855f7',
 };
 
 const AnimatedEqBar: React.FC<{ color: string; minH: number; maxH: number; duration: number }> = ({ color, minH, maxH, duration }) => {
@@ -131,7 +151,7 @@ export const FloatingDynamicIsland: React.FC = () => {
         Math.abs(event.velocityX) > 300
       ) {
         runOnJS(dismissIsland)();
-        runOnJS(triggerHaptic)(Haptics.ImpactFeedbackStyle.Medium);
+        runOnJS(triggerHaptic)(MEDIUM_HAPTIC);
       }
       translateY.value = withSpring(0, SPRING_PHYSICS);
       translateX.value = withSpring(0, SPRING_PHYSICS);
@@ -185,18 +205,7 @@ export const FloatingDynamicIsland: React.FC = () => {
   const showUserPhoto = isGreeting && !!islandData.avatarUrl;
 
   const renderIcon = (type: string) => {
-    const iconColor =
-      type === 'payment' || type === 'order_assigned' || type === 'biometric_auth'
-        ? SPAY_PRIMARY
-        : type === 'overdue_alert' || type === 'admin_risk_alert' || type === 'low_balance'
-        ? RED_ALERT
-        : type === 'payment_success' || type === 'debt_free' || type === 'admin_client_payment'
-        ? '#10b981'
-        : type === 'ota_update' || type === 'sync' || type === 'limit_increase' || type === 'offline_queue'
-        ? '#00F2FE'
-        : type === 'shared_payment' || type === 'pro_subscription' || type === 'zero_interest'
-        ? '#a855f7'
-        : '#f59e0b';
+    const iconColor = ICON_COLOR_MAP[type] || '#f59e0b';
 
     switch (type) {
       case 'promo_ad':

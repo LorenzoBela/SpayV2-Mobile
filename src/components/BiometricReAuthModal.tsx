@@ -31,6 +31,7 @@ export interface BiometricReAuthModalProps {
 
 const { width } = Dimensions.get('window');
 const keypadButtonSize = width < 380 ? 60 : 68;
+const DOTS_ARRAY = Array(6).fill(0);
 
 const ReAuthKeypadButton: React.FC<{
   val: string;
@@ -135,9 +136,9 @@ export function BiometricReAuthModal({
     }
   }, [visible, isSupported, isEnrolled, triggerBiometrics]);
 
-  const handleKeyPress = async (num: string) => {
+  const handleKeyPress = useCallback(async (num: string) => {
     if (pin.length >= 6 || isAuthenticating) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
 
     const nextPin = pin + num;
     setPin(nextPin);
@@ -148,13 +149,13 @@ export function BiometricReAuthModal({
       try {
         const valid = await verifyPin(nextPin);
         if (valid) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); } catch {}
           setPin('');
           setPinError(null);
           onSuccess();
           onDismiss();
         } else {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); } catch {}
           triggerShake();
           setPinError('Incorrect 6-digit Security PIN');
           setPin('');
@@ -166,14 +167,14 @@ export function BiometricReAuthModal({
         setIsAuthenticating(false);
       }
     }
-  };
+  }, [pin, isAuthenticating, verifyPin, onSuccess, onDismiss, triggerShake]);
 
-  const handleBackspace = async () => {
+  const handleBackspace = useCallback(async () => {
     if (pin.length === 0 || isAuthenticating) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPin(pin.slice(0, -1));
+    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } catch {}
+    setPin((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''));
     setPinError(null);
-  };
+  }, [pin.length, isAuthenticating]);
 
   const handleClose = () => {
     if (isAuthenticating) return;
@@ -182,7 +183,7 @@ export function BiometricReAuthModal({
     onDismiss();
   };
 
-  const dots = Array(6).fill(0);
+  const dots = DOTS_ARRAY;
 
 
 
