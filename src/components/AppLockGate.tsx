@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -30,6 +30,17 @@ interface AppLockGateProps {
 const { width } = Dimensions.get('window');
 const keypadButtonSize = width < 380 ? 64 : 72;
 
+// KeypadButton component extracted OUT of parent to prevent re-declaration crash
+const KeypadButton: React.FC<{ val: string; onPress: (val: string) => void }> = React.memo(({ val, onPress }) => (
+  <TouchableOpacity
+    onPress={() => onPress(val)}
+    activeOpacity={0.7}
+    style={styles.keypadBtn}
+  >
+    <Text style={styles.keypadBtnText}>{val}</Text>
+  </TouchableOpacity>
+));
+
 export default function AppLockGate({ children, sessionExists }: AppLockGateProps) {
   const [isLocked, setIsLocked] = useState(false);
   const [isRootedWarning, setIsRootedWarning] = useState(false);
@@ -38,7 +49,6 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
   const [checkingBiometrics, setCheckingBiometrics] = useState(false);
   const [hasBiometricSetup, setHasBiometricSetup] = useState(false);
 
-  // Check device status on mount (OTA safe)
   useEffect(() => {
     async function checkRootStatus() {
       try {
@@ -60,8 +70,7 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
   const isPromptingRef = useRef<boolean>(false);
   const ignoreNextActiveRef = useRef<boolean>(false);
 
-  // Trigger biometrics authentication
-  const triggerBiometricUnlock = async () => {
+  const triggerBiometricUnlock = useCallback(async () => {
     if (isPromptingRef.current) return;
     isPromptingRef.current = true;
     setCheckingBiometrics(true);
@@ -86,11 +95,10 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
       setCheckingBiometrics(false);
       setTimeout(() => {
         isPromptingRef.current = false;
-      }, 500);
+      }, 1000);
     }
-  };
+  }, []);
 
-  // Check setup status on load or session state change
   useEffect(() => {
     let active = true;
     const checkBiometricStatus = async () => {
@@ -112,10 +120,9 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
           setHasBiometricSetup(setup);
           if (setup) {
             setIsLocked(true);
-            // Trigger biometrics immediately after status check
             setTimeout(() => {
               void triggerBiometricUnlock();
-            }, 300);
+            }, 400);
           } else {
             setIsLocked(false);
           }
@@ -129,9 +136,8 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
     return () => {
       active = false;
     };
-  }, [sessionExists]);
+  }, [sessionExists, triggerBiometricUnlock]);
 
-  // Monitor AppState changes for grace period lock trigger
   useEffect(() => {
     if (!sessionExists || !hasBiometricSetup) return;
 
@@ -161,7 +167,7 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
               setPinError(false);
               setTimeout(() => {
                 void triggerBiometricUnlock();
-              }, 300);
+              }, 400);
             }
           }
         }
@@ -173,62 +179,49 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
     return () => {
       subscription.remove();
     };
-  }, [sessionExists, hasBiometricSetup]);
+  }, [sessionExists, hasBiometricSetup, triggerBiometricUnlock]);
 
-  const handleKeyPress = async (num: string) => {
-    if (pin.length >= 6) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    const nextPin = pin + num;
-    setPin(nextPin);
-    setPinError(false);
+  const handleKeyPress = useCallback(async (num: string) => {
+    setPin((prevPin) => {
+      if (prevPin.length >= 6) return prevPin;
+      const nextPin = prevPin + num;
+      setPinError(false);
 
-    if (nextPin.length === 6) {
-      try {
-        const savedPin = await SecureStore.getItemAsync(BIOMETRIC_PIN_KEY);
-        if (nextPin === savedPin) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setIsLocked(false);
-          setPin('');
-        } else {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (nextPin.length === 6) {
+        SecureStore.getItemAsync(BIOMETRIC_PIN_KEY).then((savedPin) => {
+          if (nextPin === savedPin) {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setIsLocked(false);
+            setPin('');
+          } else {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            setPinError(true);
+            setPin('');
+          }
+        }).catch(() => {
           setPinError(true);
-          setPin(''); // Clear input on error
-        }
-      } catch (err) {
-        setPinError(true);
-        setPin('');
+          setPin('');
+        });
       }
-    }
-  };
+      return nextPin;
+    });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
-  const handleBackspace = async () => {
-    if (pin.length === 0) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPin(pin.slice(0, -1));
+  const handleBackspace = useCallback(async () => {
+    setPin((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''));
     setPinError(false);
-  };
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   if (!isLocked) {
     return <>{children}</>;
   }
 
-  // Visual dot renders for passcode feedback
   const dots = Array(6).fill(0);
-
-  const KeypadButton = ({ val }: { val: string }) => (
-    <TouchableOpacity
-      onPress={() => handleKeyPress(val)}
-      activeOpacity={0.7}
-      style={styles.keypadBtn}
-    >
-      <Text style={styles.keypadBtnText}>{val}</Text>
-    </TouchableOpacity>
-  );
 
   return (
     <View style={styles.container}>
-      {/* Background Mask View with Fallback for iOS Blur */}
       {Platform.OS === 'ios' ? (
         <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
       ) : (
@@ -237,7 +230,6 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
 
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
-          {/* Header Status */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <Lock size={32} color="#ee4d2d" strokeWidth={1.8} />
@@ -248,7 +240,6 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
             </Text>
           </View>
 
-          {/* Code Indicators */}
           <View style={styles.dotsRow}>
             {dots.map((_, index) => {
               const isActive = index < pin.length;
@@ -265,25 +256,23 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
             })}
           </View>
 
-          {/* Premium Circular Keypad */}
           <View style={styles.keypad}>
             <View style={styles.keypadRow}>
-              <KeypadButton val="1" />
-              <KeypadButton val="2" />
-              <KeypadButton val="3" />
+              <KeypadButton val="1" onPress={handleKeyPress} />
+              <KeypadButton val="2" onPress={handleKeyPress} />
+              <KeypadButton val="3" onPress={handleKeyPress} />
             </View>
             <View style={styles.keypadRow}>
-              <KeypadButton val="4" />
-              <KeypadButton val="5" />
-              <KeypadButton val="6" />
+              <KeypadButton val="4" onPress={handleKeyPress} />
+              <KeypadButton val="5" onPress={handleKeyPress} />
+              <KeypadButton val="6" onPress={handleKeyPress} />
             </View>
             <View style={styles.keypadRow}>
-              <KeypadButton val="7" />
-              <KeypadButton val="8" />
-              <KeypadButton val="9" />
+              <KeypadButton val="7" onPress={handleKeyPress} />
+              <KeypadButton val="8" onPress={handleKeyPress} />
+              <KeypadButton val="9" onPress={handleKeyPress} />
             </View>
             <View style={styles.keypadRow}>
-              {/* Left action: Trigger biometrics again */}
               <TouchableOpacity
                 onPress={triggerBiometricUnlock}
                 disabled={checkingBiometrics}
@@ -297,22 +286,16 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
                 )}
               </TouchableOpacity>
 
-              <KeypadButton val="0" />
+              <KeypadButton val="0" onPress={handleKeyPress} />
 
-              {/* Right action: Delete digit */}
               <TouchableOpacity
                 onPress={handleBackspace}
                 activeOpacity={0.7}
                 style={[styles.keypadBtn, styles.actionBtn]}
               >
-                <X size={22} color="#94a3b8" />
+                <X size={24} color="#f8fafc" />
               </TouchableOpacity>
             </View>
-          </View>
-
-          <View style={styles.footer}>
-            <ShieldAlert size={14} color="#64748b" style={styles.footerIcon} />
-            <Text style={styles.footerText}>Biometric security activated</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -321,112 +304,28 @@ export default function AppLockGate({ children, sessionExists }: AppLockGateProp
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#05070c',
-  },
-  safeArea: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
+  container: { flex: 1, backgroundColor: '#000000' },
+  safeArea: { flex: 1 },
+  content: { flex: 1, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 24 },
+  header: { alignItems: 'center', marginTop: 12 },
   logoContainer: {
-    width: 68,
-    height: 68,
-    borderRadius: 20,
-    backgroundColor: 'rgba(238, 77, 45, 0.08)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(238, 77, 45, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: 'rgba(238, 77, 45, 0.12)', borderWidth: 1, borderColor: 'rgba(238, 77, 45, 0.3)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
-  title: {
-    fontSize: 20,
-    fontFamily: 'Outfit-Bold',
-    color: '#f8fafc',
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontFamily: 'Jakarta-Medium',
-    color: '#94a3b8',
-    textAlign: 'center',
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    marginVertical: 40,
-  },
-  dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  dotActive: {
-    backgroundColor: '#ee4d2d',
-    borderColor: '#ff7a59',
-  },
-  dotError: {
-    backgroundColor: '#ef4444',
-    borderColor: '#f87171',
-  },
-  keypad: {
-    width: '100%',
-    maxWidth: 280,
-    gap: 16,
-  },
-  keypadRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
+  title: { fontSize: 20, fontWeight: '900', color: '#f8fafc', letterSpacing: 2 },
+  subtitle: { fontSize: 13, color: '#94a3b8', marginTop: 6, textAlign: 'center' },
+  dotsRow: { flexDirection: 'row', gap: 16, marginVertical: 24 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: '#475569', backgroundColor: 'transparent' },
+  dotActive: { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' },
+  dotError: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+  keypad: { width: '100%', paddingHorizontal: 32, gap: 16 },
+  keypadRow: { flexDirection: 'row', justifyContent: 'space-around' },
   keypadBtn: {
-    width: keypadButtonSize,
-    height: keypadButtonSize,
-    borderRadius: keypadButtonSize / 2,
-    backgroundColor: '#161c2a',
-    borderColor: '#2d3748',
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: keypadButtonSize, height: keypadButtonSize, borderRadius: keypadButtonSize / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  keypadBtnText: {
-    fontSize: 26,
-    fontFamily: 'Outfit-Bold',
-    color: '#f8fafc',
-  },
-  actionBtn: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  footerIcon: {
-    marginRight: 6,
-  },
-  footerText: {
-    fontSize: 12,
-    fontFamily: 'Jakarta-Medium',
-    color: '#64748b',
-  },
+  keypadBtnText: { fontSize: 26, fontWeight: '700', color: '#f8fafc' },
+  actionBtn: { backgroundColor: 'transparent', borderColor: 'transparent' },
 });

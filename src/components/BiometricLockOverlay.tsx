@@ -29,6 +29,17 @@ interface BiometricLockOverlayProps {
 const { width } = Dimensions.get('window');
 const keypadButtonSize = width < 380 ? 60 : 68;
 
+// KeypadButton component extracted OUT of parent to prevent re-declaration crash
+const KeypadButton: React.FC<{ val: string; onPress: (val: string) => void }> = React.memo(({ val, onPress }) => (
+  <TouchableOpacity
+    onPress={() => onPress(val)}
+    activeOpacity={0.7}
+    style={styles.keypadBtn}
+  >
+    <Text style={styles.keypadBtnText}>{val}</Text>
+  </TouchableOpacity>
+));
+
 export function BiometricLockOverlay({ children, sessionExists }: BiometricLockOverlayProps) {
   const insets = useSafeAreaInsets();
   const { isSupported, isEnrolled, biometricType, authenticate } = useBiometrics();
@@ -87,11 +98,10 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
       setIsAuthenticating(false);
       setTimeout(() => {
         isPromptingRef.current = false;
-      }, 500);
+      }, 1000);
     }
   }, [isSupported, isEnrolled, authenticate]);
 
-  // Initial Lock Check
   useEffect(() => {
     if (!sessionExists) {
       setIsLocked(false);
@@ -107,13 +117,12 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
       setIsLocked(true);
       setTimeout(() => {
         void triggerBiometrics();
-      }, 300);
+      }, 400);
     } else {
       setIsLocked(false);
     }
   }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
 
-  // AppState Backgrounding Listener
   useEffect(() => {
     if (!sessionExists) return;
 
@@ -140,7 +149,7 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
             setPinError(false);
             setTimeout(() => {
               void triggerBiometrics();
-            }, 300);
+            }, 400);
           }
         }
       }
@@ -153,35 +162,39 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
     };
   }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
 
-  const handleKeyPress = async (num: string) => {
-    if (pin.length >= 6) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const handleKeyPress = useCallback(async (num: string) => {
+    setPin((prevPin) => {
+      if (prevPin.length >= 6) return prevPin;
+      const nextPin = prevPin + num;
+      setPinError(false);
 
-    const nextPin = pin + num;
-    setPin(nextPin);
-    setPinError(false);
-
-    if (nextPin.length === 6) {
-      const valid = await verifyPin(nextPin);
-      if (valid) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setIsLocked(false);
-        setPin('');
-      } else {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        triggerShake();
-        setPinError(true);
-        setPin('');
+      if (nextPin.length === 6) {
+        verifyPin(nextPin).then((valid) => {
+          if (valid) {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setIsLocked(false);
+            setPin('');
+          } else {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            triggerShake();
+            setPinError(true);
+            setPin('');
+          }
+        }).catch(() => {
+          setPinError(true);
+          setPin('');
+        });
       }
-    }
-  };
+      return nextPin;
+    });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [verifyPin]);
 
-  const handleBackspace = async () => {
-    if (pin.length === 0) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setPin(pin.slice(0, -1));
+  const handleBackspace = useCallback(async () => {
+    setPin((prev) => (prev.length > 0 ? prev.slice(0, -1) : ''));
     setPinError(false);
-  };
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   if (!isLocked) {
     return <>{children}</>;
@@ -189,124 +202,82 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
 
   const dots = Array(6).fill(0);
 
-  const KeypadButton = ({ val }: { val: string }) => (
-    <TouchableOpacity
-      onPress={() => handleKeyPress(val)}
-      activeOpacity={0.7}
-      style={styles.keypadBtn}
-    >
-      <Text style={styles.keypadBtnText}>{val}</Text>
-    </TouchableOpacity>
-  );
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 20) }]}>
-      <View style={styles.content}>
-        {/* Lock Header */}
-        <View style={styles.header}>
-          <View style={styles.logoBox}>
-            <Lock size={32} color="#ee4d2d" />
-          </View>
-          <Text style={styles.title}>S-PAY HARDWARE VAULT</Text>
-          <Text style={styles.subtitle}>
-            {pinError
-              ? 'Incorrect PIN. Please try again.'
-              : showPinPad
-              ? 'Enter your 6-digit security PIN to unlock.'
-              : `Authenticating with ${biometricType}...`}
-          </Text>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={styles.header}>
+        <View style={styles.logoContainer}>
+          <Lock size={28} color="#ee4d2d" strokeWidth={2} />
         </View>
+        <Text style={styles.title}>S-PAY VAULT</Text>
+        <Text style={styles.subtitle}>
+          {showPinPad
+            ? pinError
+              ? 'Incorrect Security PIN'
+              : 'Enter your 6-digit PIN to access'
+            : isAuthenticating
+            ? `Authenticating with ${biometricType}...`
+            : 'Biometric verification required'}
+        </Text>
+      </View>
 
-        {/* PIN Dots or Biometric Scanning View */}
-        {showPinPad || !isSupported ? (
-          <Animated.View style={[styles.dotsRow, shakeAnimatedStyle]}>
-            {dots.map((_, idx) => {
-              const isActive = idx < pin.length;
-              return (
-                <View
-                  key={idx}
-                  style={[
-                    styles.dot,
-                    isActive && styles.dotActive,
-                    pinError && styles.dotError,
-                  ]}
-                />
-              );
-            })}
-          </Animated.View>
-        ) : (
-          <TouchableOpacity
-            onPress={triggerBiometrics}
-            activeOpacity={0.8}
-            style={styles.biometricsCircle}
-          >
-            {isAuthenticating ? (
-              <ActivityIndicator size="large" color="#ee4d2d" />
-            ) : (
-              <Fingerprint size={56} color="#ee4d2d" />
-            )}
-          </TouchableOpacity>
-        )}
+      <Animated.View style={[styles.passcodeContainer, shakeAnimatedStyle]}>
+        <View style={styles.dotsRow}>
+          {dots.map((_, idx) => (
+            <View
+              key={idx}
+              style={[
+                styles.dot,
+                idx < pin.length && styles.dotFilled,
+                pinError && styles.dotError,
+              ]}
+            />
+          ))}
+        </View>
+      </Animated.View>
 
-        {/* Keypad or Fallback Buttons */}
-        {showPinPad || !isSupported ? (
-          <View style={styles.keypad}>
-            <View style={styles.keypadRow}>
-              <KeypadButton val="1" />
-              <KeypadButton val="2" />
-              <KeypadButton val="3" />
-            </View>
-            <View style={styles.keypadRow}>
-              <KeypadButton val="4" />
-              <KeypadButton val="5" />
-              <KeypadButton val="6" />
-            </View>
-            <View style={styles.keypadRow}>
-              <KeypadButton val="7" />
-              <KeypadButton val="8" />
-              <KeypadButton val="9" />
-            </View>
-            <View style={styles.keypadRow}>
-              {isSupported && isEnrolled ? (
-                <TouchableOpacity
-                  onPress={triggerBiometrics}
-                  activeOpacity={0.7}
-                  style={[styles.keypadBtn, styles.actionBtn]}
-                >
-                  <Fingerprint size={24} color="#f4f4f5" />
-                </TouchableOpacity>
+      <View style={styles.keypad}>
+        <View style={styles.keypadRow}>
+          <KeypadButton val="1" onPress={handleKeyPress} />
+          <KeypadButton val="2" onPress={handleKeyPress} />
+          <KeypadButton val="3" onPress={handleKeyPress} />
+        </View>
+        <View style={styles.keypadRow}>
+          <KeypadButton val="4" onPress={handleKeyPress} />
+          <KeypadButton val="5" onPress={handleKeyPress} />
+          <KeypadButton val="6" onPress={handleKeyPress} />
+        </View>
+        <View style={styles.keypadRow}>
+          <KeypadButton val="7" onPress={handleKeyPress} />
+          <KeypadButton val="8" onPress={handleKeyPress} />
+          <KeypadButton val="9" onPress={handleKeyPress} />
+        </View>
+        <View style={styles.keypadRow}>
+          {isSupported && isEnrolled ? (
+            <TouchableOpacity
+              onPress={triggerBiometrics}
+              disabled={isAuthenticating}
+              activeOpacity={0.7}
+              style={[styles.keypadBtn, styles.biometricsCircle]}
+            >
+              {isAuthenticating ? (
+                <ActivityIndicator color="#ee4d2d" size="small" />
               ) : (
-                <View style={[styles.keypadBtn, styles.actionBtn]} />
+                <Fingerprint size={26} color="#ee4d2d" />
               )}
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.keypadBtnPlaceholder} />
+          )}
 
-              <KeypadButton val="0" />
+          <KeypadButton val="0" onPress={handleKeyPress} />
 
-              <TouchableOpacity
-                onPress={handleBackspace}
-                activeOpacity={0.7}
-                style={[styles.keypadBtn, styles.actionBtn]}
-              >
-                <Delete size={22} color="#a1a1aa" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
           <TouchableOpacity
-            onPress={() => setShowPinPad(true)}
-            activeOpacity={0.85}
-            style={styles.fallbackButton}
+            onPress={handleBackspace}
+            activeOpacity={0.7}
+            style={styles.keypadBtn}
           >
-            <KeyRound size={18} color="#f4f4f5" style={{ marginRight: 8 }} />
-            <Text style={styles.fallbackButtonText}>
-              Unlock with Security PIN
-            </Text>
+            <Delete size={22} color="#f8fafc" />
           </TouchableOpacity>
-        )}
-
-        {/* Footer Security Badge */}
-        <View style={styles.footer}>
-          <ShieldAlert size={14} color="#71717a" style={{ marginRight: 6 }} />
-          <Text style={styles.footerText}>Hardware vault protection active</Text>
         </View>
       </View>
     </View>
@@ -314,138 +285,28 @@ export function BiometricLockOverlay({ children, sessionExists }: BiometricLockO
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000', // Pure OLED Black (#000000)
+  container: { flex: 1, backgroundColor: '#090A0F', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24 },
+  header: { alignItems: 'center', marginTop: 24 },
+  logoContainer: {
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(238, 77, 45, 0.12)', borderWidth: 1, borderColor: 'rgba(238, 77, 45, 0.3)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
-  safeArea: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  logoBox: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    backgroundColor: '#0d0d0d',
-    borderWidth: 1,
-    borderColor: '#1f1f1f',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 18,
-    fontFamily: 'Outfit-Bold',
-    color: '#ffffff',
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontFamily: 'Jakarta-Medium',
-    color: '#a1a1aa',
-    textAlign: 'center',
-    paddingHorizontal: 16,
-  },
-  biometricsCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#0d0d0d',
-    borderWidth: 1,
-    borderColor: '#1f1f1f',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 40,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    marginVertical: 36,
-  },
-  dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#0d0d0d',
-    borderWidth: 1.5,
-    borderColor: '#1f1f1f',
-  },
-  dotActive: {
-    backgroundColor: '#ee4d2d',
-    borderColor: '#ff7a59',
-  },
-  dotError: {
-    backgroundColor: '#ef4444',
-    borderColor: '#f87171',
-  },
-  fallbackButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0d0d0d',
-    borderWidth: 1,
-    borderColor: '#1f1f1f',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 30,
-  },
-  fallbackButtonText: {
-    fontSize: 14,
-    fontFamily: 'Jakarta-SemiBold',
-    color: '#ffffff',
-  },
-  keypad: {
-    width: '100%',
-    maxWidth: 280,
-    gap: 16,
-  },
-  keypadRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
+  title: { fontSize: 20, fontWeight: '900', color: '#f8fafc', letterSpacing: 2 },
+  subtitle: { fontSize: 13, color: '#94a3b8', marginTop: 6, textAlign: 'center' },
+  passcodeContainer: { marginVertical: 20 },
+  dotsRow: { flexDirection: 'row', gap: 16 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: '#475569', backgroundColor: 'transparent' },
+  dotFilled: { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' },
+  dotError: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+  keypad: { width: '100%', gap: 16, marginBottom: 32 },
+  keypadRow: { flexDirection: 'row', justifyContent: 'space-around' },
   keypadBtn: {
-    width: keypadButtonSize,
-    height: keypadButtonSize,
-    borderRadius: keypadButtonSize / 2,
-    backgroundColor: '#0d0d0d',
-    borderWidth: 1,
-    borderColor: '#1f1f1f',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: keypadButtonSize, height: keypadButtonSize, borderRadius: keypadButtonSize / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  keypadBtnText: {
-    fontSize: 26,
-    fontFamily: 'Outfit-Bold',
-    color: '#ffffff',
-  },
-  actionBtn: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  footerText: {
-    fontSize: 12,
-    fontFamily: 'Jakarta-Medium',
-    color: '#71717a',
-  },
+  keypadBtnText: { fontSize: 26, fontWeight: '700', color: '#f8fafc' },
+  keypadBtnPlaceholder: { width: keypadButtonSize, height: keypadButtonSize },
+  biometricsCircle: { backgroundColor: 'rgba(238, 77, 45, 0.15)', borderColor: 'rgba(238, 77, 45, 0.4)' },
 });
-
-export default BiometricLockOverlay;

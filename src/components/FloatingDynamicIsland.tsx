@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,15 +7,21 @@ import {
   Pressable,
   Dimensions,
   Platform,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
   FadeIn,
   FadeOut,
   runOnJS,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
@@ -24,27 +30,21 @@ import {
   CreditCard,
   RefreshCw,
   Users,
-  Flame,
   ChevronRight,
   Zap,
   Check,
   ShoppingBag,
-  Trophy,
-  Lightbulb,
-  Lock,
   WifiOff,
   AlertTriangle,
-  Gift,
-  TrendingUp,
   Download,
   ShieldAlert,
   Sparkles,
-  SunMedium,
   Tag,
+  User,
 } from 'lucide-react-native';
 
 import { ThemeContext } from '../navigation/navigationTypes';
-import { useDynamicIsland, DynamicIslandNotificationPayload } from '../context/DynamicIslandContext';
+import { useDynamicIsland } from '../context/DynamicIslandContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -53,19 +53,42 @@ const RED_ALERT = '#ef4444';
 
 const SPRING_PHYSICS = {
   damping: 24,
-  stiffness: 340,
-  mass: 0.4,
+  stiffness: 380,
+  mass: 0.35,
   overshootClamping: false,
 };
 
-// Animated 4-Bar Equalizer Waveform for Live Syncing
+const AnimatedEqBar: React.FC<{ color: string; minH: number; maxH: number; duration: number }> = ({ color, minH, maxH, duration }) => {
+  const height = useSharedValue(minH);
+
+  useEffect(() => {
+    height.value = withRepeat(
+      withSequence(
+        withTiming(maxH, { duration, easing: Easing.inOut(Easing.ease) }),
+        withTiming(minH, { duration: Math.round(duration * 0.9), easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+    return () => {
+      cancelAnimation(height);
+    };
+  }, [height, minH, maxH, duration]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    height: height.value,
+  }));
+
+  return <Animated.View style={[styles.eqBar, { backgroundColor: color }, animStyle]} />;
+};
+
 const EqualizerWaveform: React.FC<{ color?: string }> = ({ color = '#00F2FE' }) => {
   return (
     <View style={styles.eqContainer}>
-      <View style={[styles.eqBar, { backgroundColor: color, height: 12 }]} />
-      <View style={[styles.eqBar, { backgroundColor: color, height: 8 }]} />
-      <View style={[styles.eqBar, { backgroundColor: color, height: 10 }]} />
-      <View style={[styles.eqBar, { backgroundColor: color, height: 6 }]} />
+      <AnimatedEqBar color={color} minH={8} maxH={16} duration={1600} />
+      <AnimatedEqBar color={color} minH={14} maxH={8} duration={1400} />
+      <AnimatedEqBar color={color} minH={10} maxH={16} duration={1800} />
+      <AnimatedEqBar color={color} minH={15} maxH={9} duration={1500} />
     </View>
   );
 };
@@ -81,13 +104,18 @@ export const FloatingDynamicIsland: React.FC = () => {
     isExpanded,
     dismissIsland,
     toggleExpand,
+    triggerIsland,
   } = useDynamicIsland();
 
   const translateY = useSharedValue(0);
   const translateX = useSharedValue(0);
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle) => {
-    Haptics.impactAsync(style);
+    try {
+      void Haptics.impactAsync(style).catch(() => {});
+    } catch {
+      // Safe fallback
+    }
   };
 
   const panGesture = Gesture.Pan()
@@ -109,30 +137,26 @@ export const FloatingDynamicIsland: React.FC = () => {
       translateX.value = withSpring(0, SPRING_PHYSICS);
     });
 
-  // When no active notification exists, return null so zero stuck pills block the screen
-  if (!activeNotification) {
-    return null;
-  }
-
-  const islandData = activeNotification;
-
   const animatedContainerStyle = useAnimatedStyle(() => {
-    let targetHeight = 40;
+    'worklet';
+    const hasAction = !!activeNotification?.actionText;
+    const hasProgress = !!activeNotification?.hasProgress;
+    let targetHeight = 44;
     if (isExpanded) {
-      targetHeight = islandData.actionText ? (islandData.hasProgress ? 184 : 172) : 132;
+      targetHeight = hasAction ? (hasProgress ? 184 : 172) : 132;
     }
 
-    const isCompactMinimal = !!secondaryNotification && !isExpanded;
+    const showSecondary = !!secondaryNotification && !isExpanded && secondaryNotification.id !== activeNotification?.id;
     const targetWidth = isExpanded
       ? Math.min(SCREEN_WIDTH - 24, 380)
-      : isCompactMinimal
-      ? 160
-      : 220;
+      : showSecondary
+      ? 180
+      : 250;
 
     return {
       width: withSpring(targetWidth, SPRING_PHYSICS),
       height: withSpring(targetHeight, SPRING_PHYSICS),
-      borderRadius: withSpring(isExpanded ? 24 : 20, SPRING_PHYSICS),
+      borderRadius: withSpring(isExpanded ? 24 : 22, SPRING_PHYSICS),
       transform: [
         { translateY: translateY.value },
         { translateX: translateX.value },
@@ -140,13 +164,27 @@ export const FloatingDynamicIsland: React.FC = () => {
     };
   });
 
+  if (!activeNotification) {
+    return null;
+  }
+
+  const islandData = activeNotification;
+
+  const showSecondaryOrb =
+    !!secondaryNotification &&
+    !isExpanded &&
+    secondaryNotification.id !== islandData.id;
+
+  const isGreeting = islandData.id?.startsWith('greeting');
+  const showUserPhoto = isGreeting && !!islandData.avatarUrl;
+
   const renderIcon = (type: string) => {
     const iconColor =
       type === 'payment' || type === 'order_assigned' || type === 'biometric_auth'
         ? SPAY_PRIMARY
         : type === 'overdue_alert' || type === 'admin_risk_alert' || type === 'low_balance'
         ? RED_ALERT
-        : type === 'payment_success' || type === 'cashback' || type === 'debt_free' || type === 'admin_client_payment'
+        : type === 'payment_success' || type === 'debt_free' || type === 'admin_client_payment'
         ? '#10b981'
         : type === 'ota_update' || type === 'sync' || type === 'limit_increase' || type === 'offline_queue'
         ? '#00F2FE'
@@ -173,8 +211,6 @@ export const FloatingDynamicIsland: React.FC = () => {
         return <ShoppingBag size={13} color={iconColor} strokeWidth={2.0} />;
       case 'sync':
         return <RefreshCw size={13} color={iconColor} strokeWidth={2.0} />;
-      case 'cashback':
-        return <Gift size={13} color={iconColor} strokeWidth={2.0} />;
       case 'shared_payment':
         return <Users size={13} color={iconColor} strokeWidth={2.0} />;
       case 'offline_queue':
@@ -191,7 +227,7 @@ export const FloatingDynamicIsland: React.FC = () => {
   const textColor = isDarkMode ? '#FFFFFF' : '#0F172A';
   const subtitleColor = isDarkMode ? '#94A3B8' : '#64748B';
   const containerBg = isDarkMode ? 'rgba(8, 9, 12, 0.96)' : 'rgba(255, 255, 255, 0.96)';
-  const containerBorder = isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)';
+  const containerBorder = isDarkMode ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.12)';
   const boxBg = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)';
   const boxBorder = isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
 
@@ -207,23 +243,27 @@ export const FloatingDynamicIsland: React.FC = () => {
                 animatedContainerStyle,
               ]}
             >
-              {/* Top Specular Reflection Rim */}
               <View style={[styles.topSpecularRim, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.85)' }]} />
 
               <BlurView intensity={Platform.OS === 'ios' ? 85 : 100} tint={isDarkMode ? 'dark' : 'light'} style={styles.blurFill}>
                 {!isExpanded ? (
-                  // Compact View (Strict Zero Font Overlap)
-                  <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(100)} style={styles.compactContent}>
+                  <Animated.View entering={FadeIn.duration(90)} exiting={FadeOut.duration(60)} style={styles.compactContent}>
                     <View style={styles.compactLeft}>
                       <View style={styles.lineIconPod}>
-                        {renderIcon(islandData.type)}
+                        {showUserPhoto ? (
+                          <Image source={{ uri: islandData.avatarUrl }} style={styles.avatarImg} />
+                        ) : isGreeting ? (
+                          <User size={13} color="#00F2FE" strokeWidth={2.2} />
+                        ) : (
+                          renderIcon(islandData.type)
+                        )}
                       </View>
                       <Text style={[styles.compactTitleText, { color: textColor }]} numberOfLines={1} ellipsizeMode="tail">
                         {compactTextDisplay}
                       </Text>
                     </View>
                     <View style={styles.compactBadgeTag}>
-                      {islandData.type === 'sync' ? (
+                      {islandData.type === 'sync' && !isGreeting ? (
                         <EqualizerWaveform />
                       ) : (
                         <Text style={[styles.compactBadgeText, styles.tabularNum]} numberOfLines={1}>
@@ -233,12 +273,17 @@ export const FloatingDynamicIsland: React.FC = () => {
                     </View>
                   </Animated.View>
                 ) : (
-                  // Expanded View (Strict Zero Font Overlap)
-                  <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(100)} style={styles.expandedContent}>
+                  <Animated.View entering={FadeIn.duration(110)} exiting={FadeOut.duration(60)} style={styles.expandedContent}>
                     <View style={styles.expandedHeader}>
                       <View style={styles.expandedTitleRow}>
-                        <View style={styles.lineIconPod}>
-                          {renderIcon(islandData.type)}
+                        <View style={styles.lineIconPodLarge}>
+                          {showUserPhoto ? (
+                            <Image source={{ uri: islandData.avatarUrl }} style={styles.avatarImgLarge} />
+                          ) : isGreeting ? (
+                            <User size={16} color="#00F2FE" strokeWidth={2.2} />
+                          ) : (
+                            renderIcon(islandData.type)
+                          )}
                         </View>
                         <View style={styles.titleTextGroup}>
                           <Text style={[styles.expandedTitleText, { color: textColor }]} numberOfLines={1} ellipsizeMode="tail">
@@ -263,19 +308,31 @@ export const FloatingDynamicIsland: React.FC = () => {
                       <Text style={[styles.detailBoxLeft, { color: subtitleColor }]} numberOfLines={1} ellipsizeMode="tail">
                         {islandData.detailLeft || 'Detail'}
                       </Text>
-                      <Text style={[styles.detailBoxRight, styles.tabularNum]} numberOfLines={1} ellipsizeMode="tail">
-                        {islandData.detailRight || 'Status'}
-                      </Text>
+                      {islandData.detailRight && (
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+                            if (islandData.onAction) islandData.onAction();
+                            dismissIsland();
+                          }}
+                          style={styles.reviewBtn}
+                        >
+                          <Text style={[styles.detailBoxRight, styles.tabularNum]} numberOfLines={1} ellipsizeMode="tail">
+                            {islandData.detailRight}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
 
-                    {/* Progress Bar for Downloads/Sync */}
+                    {/* Progress Bar */}
                     {islandData.hasProgress && (
                       <View style={styles.progressTrack}>
                         <View style={[styles.progressFill, { width: `${islandData.progressPct || 68}%` }]} />
                       </View>
                     )}
 
-                    {/* Action Button (44pt WCAG AA Compliant) */}
+                    {/* Action Button */}
                     {islandData.actionText && (
                       <TouchableOpacity
                         activeOpacity={0.85}
@@ -298,13 +355,15 @@ export const FloatingDynamicIsland: React.FC = () => {
           </Pressable>
         </GestureDetector>
 
-        {/* Secondary Orb Badge (Dual Event Mode) */}
-        {secondaryNotification && !isExpanded && (
-          <Animated.View entering={FadeIn.duration(180)} style={[styles.secondaryOrb, { backgroundColor: containerBg, borderColor: containerBorder }]}>
-            <View style={styles.lineIconPod}>
-              {renderIcon(secondaryNotification.type)}
-            </View>
-          </Animated.View>
+        {/* Secondary Orb Badge */}
+        {showSecondaryOrb && secondaryNotification && (
+          <Pressable onPress={() => triggerIsland(secondaryNotification)}>
+            <Animated.View entering={FadeIn.duration(110)} style={[styles.secondaryOrb, { backgroundColor: containerBg, borderColor: containerBorder }]}>
+              <View style={styles.lineIconPod}>
+                {renderIcon(secondaryNotification.type)}
+              </View>
+            </Animated.View>
+          </Pressable>
         )}
       </View>
     </View>
@@ -319,7 +378,7 @@ const styles = StyleSheet.create({
     shadowColor: '#000000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 12, position: 'relative',
   },
   secondaryOrb: {
-    width: 40, height: 40, borderRadius: 20, borderWidth: 1,
+    width: 44, height: 44, borderRadius: 22, borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 8,
   },
@@ -330,10 +389,17 @@ const styles = StyleSheet.create({
   compactContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' },
   compactLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, marginRight: 8 },
   lineIconPod: {
-    width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.16)', flexShrink: 0,
+    width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.16)', flexShrink: 0, overflow: 'hidden',
   },
-  compactTitleText: { fontSize: 12, fontWeight: '600', letterSpacing: -0.1, flex: 1, minWidth: 0 },
+  lineIconPodLarge: {
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.16)', flexShrink: 0, overflow: 'hidden',
+  },
+  avatarImg: { width: 26, height: 26, borderRadius: 13 },
+  avatarImgLarge: { width: 32, height: 32, borderRadius: 16 },
+  
+  compactTitleText: { fontSize: 13, fontWeight: '700', letterSpacing: -0.1, flex: 1, minWidth: 0 },
   compactBadgeTag: {
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
     backgroundColor: 'rgba(238, 77, 45, 0.14)', borderWidth: 1, borderColor: 'rgba(238, 77, 45, 0.35)', flexShrink: 0,
@@ -350,7 +416,8 @@ const styles = StyleSheet.create({
   
   detailBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginTop: 6, borderWidth: 1 },
   detailBoxLeft: { fontSize: 11, flex: 1, minWidth: 0 },
-  detailBoxRight: { fontSize: 11, fontWeight: '700', color: '#10b981', flexShrink: 0, marginLeft: 6 },
+  reviewBtn: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.35)' },
+  detailBoxRight: { fontSize: 11, fontWeight: '700', color: '#10b981', flexShrink: 0 },
   
   progressTrack: { width: '100%', height: 4, backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 2, overflow: 'hidden', marginTop: 4 },
   progressFill: { height: '100%', backgroundColor: SPAY_PRIMARY, borderRadius: 2 },
@@ -358,8 +425,8 @@ const styles = StyleSheet.create({
   actionButton: { height: 44, backgroundColor: SPAY_PRIMARY, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 6, elevation: 4 },
   actionButtonText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
   
-  eqContainer: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 12 },
-  eqBar: { width: 2, borderRadius: 1 },
+  eqContainer: { flexDirection: 'row', alignItems: 'center', gap: 3.5, height: 16 },
+  eqBar: { width: 3, borderRadius: 1.5 },
 });
 
 export default FloatingDynamicIsland;

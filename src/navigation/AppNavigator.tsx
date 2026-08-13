@@ -913,7 +913,12 @@ export default function AppNavigator() {
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
         <NotificationProvider userId={effectiveUserId || undefined}>
-          <DynamicIslandProvider userId={effectiveUserId || undefined} userRole={activeRole || userRole || undefined}>
+          <DynamicIslandProvider
+            userId={effectiveUserId || undefined}
+            userRole={userRole || undefined}
+            activeRole={activeRole}
+            sessionExists={!!session}
+          >
             <TabBarProvider>
               <View style={{ flex: 1, backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }}>
                 <StatusBar
@@ -960,7 +965,9 @@ export default function AppNavigator() {
                   </BiometricLockOverlay>
                 )}
 
-                <FloatingDynamicIsland />
+                {!!session && !!activeRole && !showOverlay && (
+                  <FloatingDynamicIsland />
+                )}
 
                 {showOverlay && (
                   <Animated.View
