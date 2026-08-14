@@ -58,8 +58,12 @@ export const RoleContext = React.createContext<{
 
 export const ThemeContext = React.createContext<{
   isDarkMode: boolean;
+  themePreference: 'dark' | 'light' | 'auto';
   toggleTheme: () => void;
+  setTheme: (theme: 'dark' | 'light' | 'auto') => void;
 }>({
   isDarkMode: true,
+  themePreference: 'dark',
   toggleTheme: () => {},
+  setTheme: () => {},
 });

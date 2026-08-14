@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   AppState,
   AppStateStatus,
-  SafeAreaView,
   ActivityIndicator,
   Platform,
   Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -23,6 +23,7 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { Fingerprint, Lock, ShieldAlert, X } from 'lucide-react-native';
 import { useSecurityPin } from '../hooks/useSecurityPin';
+import { getKeypadBottomPadding } from '../utils/safeArea';
 
 const GRACE_PERIOD_MS = 30000; // 30 seconds
 
@@ -45,6 +46,7 @@ const KeypadButton: React.FC<{ val: string; onPress: (val: string) => void }> = 
 ));
 
 export default function BiometricLockOverlay({ children, sessionExists }: BiometricLockOverlayProps) {
+  const insets = useSafeAreaInsets();
   const [isLocked, setIsLocked] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -254,104 +256,111 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
         <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
       )}
 
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <Lock size={32} color="#ee4d2d" strokeWidth={1.8} />
-            </View>
-            <Text style={styles.title}>S-PAY BIOMETRICS</Text>
-            <Text style={styles.subtitle}>
-              {pinError ? 'Incorrect PIN. Try Again.' : `Enter 6-digit PIN or use ${biometricType}`}
-            </Text>
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: Math.max(insets.top, 24),
+            paddingBottom: getKeypadBottomPadding(insets.bottom),
+          },
+        ]}
+      >
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Lock size={32} color="#ee4d2d" strokeWidth={1.8} />
           </View>
+          <Text style={styles.title}>S-PAY BIOMETRICS</Text>
+          <Text style={styles.subtitle}>
+            {pinError ? 'Incorrect PIN. Try Again.' : `Enter 6-digit PIN or use ${biometricType}`}
+          </Text>
+        </View>
 
-          <Animated.View style={[styles.dotsRow, animatedShakeStyle]}>
-            {dots.map((_, index) => {
-              const isActive = index < pin.length;
-              return (
-                <View
-                  key={index}
-                  style={[
-                    styles.dot,
-                    isActive && styles.dotActive,
-                    pinError && styles.dotError,
-                  ]}
-                />
-              );
-            })}
-          </Animated.View>
+        <Animated.View style={[styles.dotsRow, animatedShakeStyle]}>
+          {dots.map((_, index) => {
+            const isActive = index < pin.length;
+            return (
+              <View
+                key={index}
+                style={[
+                  styles.dot,
+                  isActive && styles.dotActive,
+                  pinError && styles.dotError,
+                ]}
+              />
+            );
+          })}
+        </Animated.View>
 
-          <View style={styles.keypad}>
-            <View style={styles.keypadRow}>
-              <KeypadButton val="1" onPress={handleKeyPress} />
-              <KeypadButton val="2" onPress={handleKeyPress} />
-              <KeypadButton val="3" onPress={handleKeyPress} />
-            </View>
-            <View style={styles.keypadRow}>
-              <KeypadButton val="4" onPress={handleKeyPress} />
-              <KeypadButton val="5" onPress={handleKeyPress} />
-              <KeypadButton val="6" onPress={handleKeyPress} />
-            </View>
-            <View style={styles.keypadRow}>
-              <KeypadButton val="7" onPress={handleKeyPress} />
-              <KeypadButton val="8" onPress={handleKeyPress} />
-              <KeypadButton val="9" onPress={handleKeyPress} />
-            </View>
-            <View style={styles.keypadRow}>
-              <TouchableOpacity
-                onPress={triggerBiometrics}
-                disabled={checkingBiometrics || (!isSupported && !isEnrolled)}
-                activeOpacity={0.7}
-                style={[styles.keypadBtn, styles.actionBtn]}
-              >
-                {checkingBiometrics ? (
-                  <ActivityIndicator size="small" color="#ee4d2d" />
-                ) : (
-                  <Fingerprint size={24} color={isSupported && isEnrolled ? '#f8fafc' : '#475569'} />
-                )}
-              </TouchableOpacity>
+        <View style={styles.keypad}>
+          <View style={styles.keypadRow}>
+            <KeypadButton val="1" onPress={handleKeyPress} />
+            <KeypadButton val="2" onPress={handleKeyPress} />
+            <KeypadButton val="3" onPress={handleKeyPress} />
+          </View>
+          <View style={styles.keypadRow}>
+            <KeypadButton val="4" onPress={handleKeyPress} />
+            <KeypadButton val="5" onPress={handleKeyPress} />
+            <KeypadButton val="6" onPress={handleKeyPress} />
+          </View>
+          <View style={styles.keypadRow}>
+            <KeypadButton val="7" onPress={handleKeyPress} />
+            <KeypadButton val="8" onPress={handleKeyPress} />
+            <KeypadButton val="9" onPress={handleKeyPress} />
+          </View>
+          <View style={styles.keypadRow}>
+            <TouchableOpacity
+              onPress={triggerBiometrics}
+              disabled={checkingBiometrics || (!isSupported && !isEnrolled)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.keypadBtn, styles.actionBtn]}
+            >
+              {checkingBiometrics ? (
+                <ActivityIndicator size="small" color="#ee4d2d" />
+              ) : (
+                <Fingerprint size={24} color={isSupported && isEnrolled ? '#f8fafc' : '#475569'} />
+              )}
+            </TouchableOpacity>
 
-              <KeypadButton val="0" onPress={handleKeyPress} />
+            <KeypadButton val="0" onPress={handleKeyPress} />
 
-              <TouchableOpacity
-                onPress={handleBackspace}
-                activeOpacity={0.7}
-                style={[styles.keypadBtn, styles.actionBtn]}
-              >
-                <X size={24} color="#f8fafc" />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={handleBackspace}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={[styles.keypadBtn, styles.actionBtn]}
+            >
+              <X size={24} color="#f8fafc" />
+            </TouchableOpacity>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
-  safeArea: { flex: 1 },
-  content: { flex: 1, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 24 },
+  content: { flex: 1, justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24 },
   header: { alignItems: 'center', marginTop: 12 },
   logoContainer: {
     width: 64, height: 64, borderRadius: 32,
     backgroundColor: 'rgba(238, 77, 45, 0.12)', borderWidth: 1, borderColor: 'rgba(238, 77, 45, 0.3)',
     alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
-  title: { fontSize: 20, fontWeight: '900', color: '#f8fafc', letterSpacing: 2 },
-  subtitle: { fontSize: 13, color: '#94a3b8', marginTop: 6, textAlign: 'center' },
+  title: { fontSize: 20, fontFamily: 'Outfit-Bold', color: '#f8fafc', letterSpacing: 2 },
+  subtitle: { fontSize: 13, fontFamily: 'Jakarta-Medium', color: '#94a3b8', marginTop: 6, textAlign: 'center' },
   dotsRow: { flexDirection: 'row', gap: 16, marginVertical: 24 },
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5, borderColor: '#475569', backgroundColor: 'transparent' },
   dotActive: { backgroundColor: '#ee4d2d', borderColor: '#ee4d2d' },
   dotError: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
-  keypad: { width: '100%', paddingHorizontal: 32, gap: 16 },
+  keypad: { width: '100%', maxWidth: 320, paddingHorizontal: 16, gap: 16, alignSelf: 'center' },
   keypadRow: { flexDirection: 'row', justifyContent: 'space-around' },
   keypadBtn: {
     width: keypadButtonSize, height: keypadButtonSize, borderRadius: keypadButtonSize / 2,
     backgroundColor: 'rgba(255, 255, 255, 0.07)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  keypadBtnText: { fontSize: 26, fontWeight: '700', color: '#f8fafc' },
+  keypadBtnText: { fontSize: 26, fontFamily: 'Outfit-Bold', color: '#f8fafc' },
   actionBtn: { backgroundColor: 'transparent', borderColor: 'transparent' },
 });

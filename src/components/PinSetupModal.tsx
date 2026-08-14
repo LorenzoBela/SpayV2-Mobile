@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -16,6 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Lock, ShieldCheck, X, Delete } from 'lucide-react-native';
+import { getKeypadBottomPadding } from '../utils/safeArea';
 
 interface PinSetupModalProps {
   isVisible: boolean;
@@ -151,9 +152,10 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
       visible={isVisible}
       animationType="slide"
       transparent={false}
+      statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 20) }]}>
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 16), paddingBottom: getKeypadBottomPadding(insets.bottom) }]}>
         {/* Header Bar */}
         <View style={styles.headerBar}>
           <TouchableOpacity
@@ -233,6 +235,7 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
               <TouchableOpacity
                 onPress={handleBackspace}
                 activeOpacity={0.7}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={[styles.keypadBtn, styles.actionBtn]}
               >
                 <Delete size={24} color="#a1a1aa" />
@@ -288,7 +291,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingBottom: 8,
     paddingTop: 10,
   },
   titleSection: {
@@ -356,8 +359,9 @@ const styles = StyleSheet.create({
   },
   keypad: {
     width: '100%',
-    maxWidth: 290,
+    maxWidth: 320,
     gap: 16,
+    alignSelf: 'center',
   },
   keypadRow: {
     flexDirection: 'row',

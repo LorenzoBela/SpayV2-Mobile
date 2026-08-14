@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, type AppStateStatus } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -26,6 +26,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
 import { trpc } from '../utils/trpc';
 import { runIdlePrefetch } from '../utils/idlePrefetch';
+import { getPersistedTheme, savePersistedTheme, resolveIsDark, type ThemePreference } from '../utils/themeStorage';
 
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForUser } from '../utils/authProfile';
@@ -66,11 +67,14 @@ import AdminSalaryScreen from '../screens/admin/AdminSalaryScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
+  reportNotificationReceipt,
   setupAndroidNotificationChannels,
   subscribeToRealtimeNotifications,
 } from '../services/notificationService';
+import SamsungBatteryOptimizationModal from '../components/SamsungBatteryOptimizationModal';
 import {
   registerForFcmNotifications,
+  ensureDeviceRegistration,
   subscribeToFcmTokenRefresh,
   subscribeToForegroundFcmMessages,
 } from '../services/fcmNotificationService';
@@ -662,33 +666,47 @@ export default function AppNavigator() {
     prevImpersonatingRef.current = isImpersonating;
   }, [isImpersonating, activeRole]);
 
-  // Theme state — loads from MMKV cached profile or theme preference and defaults to dark mode
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (cachedProfile?.theme) {
-      return cachedProfile.theme === 'dark';
-    }
-    try {
-      const savedTheme = storage.getString('theme_preference');
-      if (savedTheme) {
-        return savedTheme === 'dark';
+  // ── Theme State & Resilient Persistence ──
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => getPersistedTheme());
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => resolveIsDark(getPersistedTheme()));
+
+  // Listen to system Appearance changes and app foregrounding when theme is set to 'auto'
+  useEffect(() => {
+    const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => {
+      if (themePreference === 'auto') {
+        setIsDarkMode(colorScheme === 'dark');
       }
-    } catch (e) {
-      console.warn('Failed to read theme from MMKV:', e);
-    }
-    return true;
-  });
+    });
+
+    const appStateSub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active' && themePreference === 'auto') {
+        setIsDarkMode(Appearance.getColorScheme() === 'dark');
+      }
+    });
+
+    return () => {
+      appearanceSub.remove();
+      appStateSub.remove();
+    };
+  }, [themePreference]);
+
+  const setTheme = useCallback((nextTheme: ThemePreference) => {
+    setThemePreference(nextTheme);
+    setIsDarkMode(resolveIsDark(nextTheme));
+    const targetUserId = linkedProfileId || session?.user?.id;
+    savePersistedTheme(nextTheme, targetUserId);
+  }, [linkedProfileId, session?.user?.id]);
 
   const toggleTheme = useCallback(() => {
     setIsDarkMode((prev) => {
       const next = !prev;
-      try {
-        storage.set('theme_preference', next ? 'dark' : 'light');
-      } catch (e) {
-        console.warn('Failed to save theme to MMKV:', e);
-      }
+      const nextTheme: ThemePreference = next ? 'dark' : 'light';
+      setThemePreference(nextTheme);
+      const targetUserId = linkedProfileId || session?.user?.id;
+      savePersistedTheme(nextTheme, targetUserId);
       return next;
     });
-  }, []);
+  }, [linkedProfileId, session?.user?.id]);
 
   const navigationTheme = React.useMemo(() => {
     const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
@@ -707,12 +725,18 @@ export default function AppNavigator() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
+      if (session?.user?.id) {
+        void registerForFcmNotifications(session.user.id);
+      }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setLoading(false);
+      if (session?.user?.id) {
+        void registerForFcmNotifications(session.user.id);
+      }
       if (event === 'SIGNED_OUT') {
         try {
           queryClient.clear();
@@ -746,22 +770,24 @@ export default function AppNavigator() {
       setLinkedProfileId(targetId);
 
       // Fetch theme preference to sync on startup
-      const { data: themeData } = await supabase
-        .from('profiles')
-        .select('theme')
-        .eq('id', targetId)
+      const { data: themeSetting } = await supabase
+        .from('user_settings')
+        .select('setting_value')
+        .eq('user_id', targetId)
+        .eq('setting_name', 'theme')
         .maybeSingle();
 
-      const resolvedTheme = themeData?.theme || (isDarkMode ? 'dark' : 'light');
-      if (themeData?.theme) {
-        const isProfileDark = themeData.theme === 'dark';
-        setIsDarkMode(isProfileDark);
-        try {
-          storage.set('theme_preference', themeData.theme);
-        } catch (e) {
-          console.warn('Failed to save theme to MMKV:', e);
-        }
-      }
+      const currentLocalTheme = getPersistedTheme();
+      const remoteTheme = themeSetting?.setting_value as ThemePreference | undefined;
+
+      const effectiveTheme: ThemePreference =
+        (remoteTheme === 'dark' || remoteTheme === 'light' || remoteTheme === 'auto')
+          ? remoteTheme
+          : currentLocalTheme;
+
+      setThemePreference(effectiveTheme);
+      setIsDarkMode(resolveIsDark(effectiveTheme));
+      savePersistedTheme(effectiveTheme, targetId);
 
       const role = data?.role === 'ADMIN' ? 'ADMIN' : 'CLIENT';
       setUserRole(role);
@@ -776,7 +802,7 @@ export default function AppNavigator() {
         storage.set('cached_user_profile', JSON.stringify({
           role,
           linkedProfileId: targetId,
-          theme: resolvedTheme,
+          theme: effectiveTheme,
         }));
       } catch (e) {
         console.warn('Failed to save cached_user_profile to MMKV:', e);
@@ -817,11 +843,12 @@ export default function AppNavigator() {
     void setupAndroidNotificationChannels();
   }, []);
 
+  const nativeFcmRegisteredRef = useRef(false);
+
   useEffect(() => {
     if (!effectiveUserId) return;
 
     let isMounted = true;
-    let nativeFcmRegistered = false;
     let unsubscribeFcmTokenRefresh: (() => void) | undefined;
 
     // Wrap notification registration to prevent PromiseLike catch method type error
@@ -829,7 +856,7 @@ export default function AppNavigator() {
       try {
         const fcmToken = await registerForFcmNotifications(effectiveUserId);
         if (!isMounted) return;
-        nativeFcmRegistered = Boolean(fcmToken);
+        nativeFcmRegisteredRef.current = Boolean(fcmToken);
         if (fcmToken) {
           const unsub = subscribeToFcmTokenRefresh(effectiveUserId);
           if (!isMounted) {
@@ -852,12 +879,26 @@ export default function AppNavigator() {
     })();
 
     const unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
-      if (nativeFcmRegistered) return;
+      if (nativeFcmRegisteredRef.current) return;
       void mirrorToLocalTray(notification);
     });
     const unsubscribeForegroundFcm = subscribeToForegroundFcmMessages();
 
+    const receivedSubscription = Notifications.addNotificationReceivedListener((event) => {
+      const notificationId = event.request.content.data?.notificationId;
+      if (typeof notificationId === 'string') {
+        void reportNotificationReceipt(notificationId, 'received');
+      }
+    });
+
     const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (response.actionIdentifier === (Notifications as any).DISMISS_NOTIFICATION_ACTION_IDENTIFIER || response.actionIdentifier === 'expo.modules.notifications.actions.DISMISS') {
+        return;
+      }
+      const notificationId = response.notification.request.content.data?.notificationId;
+      if (typeof notificationId === 'string') {
+        void reportNotificationReceipt(notificationId, 'opened');
+      }
       const screen = response.notification.request.content.data?.screen;
       if (screen === 'Budget') {
         navigationRef.current?.navigate('Main', { screen: 'Budget' });
@@ -875,12 +916,21 @@ export default function AppNavigator() {
       }
     });
 
+    // Re-verify and ensure device registration every time app returns to foreground
+    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active' && effectiveUserId) {
+        void ensureDeviceRegistration(effectiveUserId);
+      }
+    });
+
     return () => {
       isMounted = false;
       unsubscribeFcmTokenRefresh?.();
       unsubscribeForegroundFcm();
       unsubscribeRealtime();
+      receivedSubscription.remove();
       responseSubscription.remove();
+      appStateSub.remove();
     };
   }, [effectiveUserId]);
 
@@ -921,7 +971,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
+    <ThemeContext.Provider value={{ isDarkMode, themePreference, toggleTheme, setTheme }}>
       <RoleContext.Provider value={{ userRole, activeRole, setActiveRole }}>
         <NotificationProvider userId={effectiveUserId || undefined}>
           <DynamicIslandProvider
@@ -979,6 +1029,8 @@ export default function AppNavigator() {
                 {!!session && !!activeRole && !showOverlay && (
                   <FloatingDynamicIsland />
                 )}
+
+                {!showOverlay && <SamsungBatteryOptimizationModal />}
 
                 {showOverlay && (
                   <Animated.View

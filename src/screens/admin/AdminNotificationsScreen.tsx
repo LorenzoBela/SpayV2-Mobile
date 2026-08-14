@@ -1,5 +1,6 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import { clearAppBadge } from '../../services/fcmNotificationService';
 import { formatAmount } from '../../utils/money';
 import { generatePaymentRef } from '../../utils/id';
 import {
@@ -133,6 +134,10 @@ export default function AdminNotificationsScreen() {
   const { refreshUnreadCount } = useNotifications();
   const layout = useResponsiveLayout();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    void clearAppBadge();
+  }, []);
 
   const [activeCategory, setActiveCategory] = useState<NotificationCategory>('ALL');
 

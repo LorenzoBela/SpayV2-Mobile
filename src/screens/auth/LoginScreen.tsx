@@ -479,6 +479,7 @@ export default function LoginScreen() {
         visible={pinModalVisible}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={closePinModal}
       >
         <View style={styles.modalBackdrop}>

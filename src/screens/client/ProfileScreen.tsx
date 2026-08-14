@@ -393,6 +393,7 @@ export default function ProfileScreen() {
             visible={pinModalVisible}
             transparent
             animationType="fade"
+            statusBarTranslucent
             onRequestClose={closePinModal}
           >
             <View style={styles.modalBackdrop}>

@@ -18,3 +18,12 @@ export const getFooterPadding = (insetBottom: number): number =>
  */
 export const getSheetContentPadding = (insetBottom: number): number =>
   Math.max(insetBottom, 16) + 16;
+
+/**
+ * Bottom padding for PIN keypads, biometric overlays, and passcode screens.
+ * Ensures the bottom row of keypad buttons (0, backspace, biometric icon) has generous
+ * clearance above the Android system navigation bar (Home/Back/Recents ~48-56dp) and iOS home indicator.
+ */
+export const getKeypadBottomPadding = (insetBottom: number): number =>
+  Math.max(insetBottom, 28) + 16;
+

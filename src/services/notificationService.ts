@@ -148,6 +148,7 @@ export async function registerForTrayNotifications(userId: string) {
     return null;
   }
 
+  const deviceId = `${Platform.OS}-${Device.modelName || 'device'}`;
   const { error } = await supabase
     .from('notification_devices')
     .upsert(
@@ -155,12 +156,30 @@ export async function registerForTrayNotifications(userId: string) {
         user_id: userId,
         expo_push_token: expoPushToken,
         platform: Platform.OS,
-        device_id: `${Platform.OS}-${Device.modelName || 'device'}`,
+        device_id: deviceId,
         last_seen_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
         revoked_at: null,
       },
       { onConflict: 'expo_push_token' }
     );
+
+  // Dual-write to production backend
+  try {
+    const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
+    void fetch(`${serverUrl}/api/notifications/register-device`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        expoPushToken,
+        platform: Platform.OS,
+        deviceId,
+      }),
+    }).catch(() => undefined);
+  } catch {
+    // Non-blocking
+  }
 
   if (error) {
     console.warn('[Notifications] Failed to register device token:', error.message);
@@ -352,3 +371,27 @@ export function subscribeToRealtimeNotificationChanges(
     void supabase.removeChannel(channel);
   };
 }
+
+export async function reportNotificationReceipt(
+  notificationId?: string,
+  action: 'received' | 'opened' = 'received'
+) {
+  if (!notificationId) return;
+  try {
+    const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
+    void fetch(`${serverUrl}/api/notifications/receipt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notificationId,
+        action,
+        platform: Platform.OS,
+        deviceId: `${Platform.OS}-${Device.modelName || 'device'}`,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(() => undefined);
+  } catch {
+    // Non-blocking fire-and-forget
+  }
+}
+

@@ -16,9 +16,16 @@ export function buildDisplayNotificationInput(message: RemoteMessageLike) {
     : 'SYSTEM';
   const requestedChannelId = typeof data.channelId === 'string' ? data.channelId : undefined;
 
+  const title = message.notification?.title || (typeof data.title === 'string' ? data.title : '');
+  const body = message.notification?.body || (typeof data.body === 'string' ? data.body : '');
+
+  if (!title && !body) {
+    return null;
+  }
+
   return {
-    title: message.notification?.title || (typeof data.title === 'string' ? data.title : 'S-Pay'),
-    body: message.notification?.body || (typeof data.body === 'string' ? data.body : 'You have a new notification.'),
+    title: title || 'S-Pay',
+    body: body,
     channelId: normalizeAndroidChannelId(requestedChannelId, category),
     data,
   };

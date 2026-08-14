@@ -184,17 +184,12 @@ export const DynamicIslandProvider: React.FC<{
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('first_name, full_name, avatar_url')
+            .select('name')
             .eq('id', authData.user.id)
             .maybeSingle();
 
-          if (profile) {
-            if (profile.first_name || profile.full_name) {
-              userFirstName = extractFirstName(profile.first_name || profile.full_name, authData.user.email);
-            }
-            if (profile.avatar_url) {
-              avatar = profile.avatar_url;
-            }
+          if (profile?.name) {
+            userFirstName = extractFirstName(profile.name, authData.user.email);
           }
         } catch {
           // Fallback
@@ -230,19 +225,20 @@ export const DynamicIslandProvider: React.FC<{
       const [recentPaymentsRes, recentOverdueRes, unreadCountRes] = await Promise.allSettled([
         supabase
           .from('payments')
-          .select('id, amount_paid, payment_reference, created_at')
-          .gte('created_at', checkSince)
+          .select('id, amount_due, is_paid, payment_date, due_date')
+          .eq('is_paid', true)
+          .gte('payment_date', checkSince)
           .limit(10),
         supabase
-          .from('spay_billing_statements')
-          .select('id, total_amount_due, status, updated_at')
-          .eq('status', 'OVERDUE')
-          .gte('updated_at', checkSince)
+          .from('payments')
+          .select('id, amount_due, due_date, is_paid')
+          .eq('is_paid', false)
+          .lt('due_date', new Date().toISOString())
           .limit(10),
         supabase
           .from('notifications')
           .select('id', { count: 'exact', head: true })
-          .eq('read', false),
+          .is('read_at', null),
       ]);
 
       const paymentsList = recentPaymentsRes.status === 'fulfilled' ? (recentPaymentsRes.value.data as any[]) || [] : [];
@@ -279,8 +275,8 @@ export const DynamicIslandProvider: React.FC<{
         // Queue Catch-Up as secondary if missed items exist
         if (totalMissed > 0 || unreadTotal > 0) {
           const totalAmount =
-            paymentsList.reduce((acc: number, p: any) => acc + (Number(p.amount_paid) || 0), 0) +
-            overdueList.reduce((acc: number, s: any) => acc + (Number(s.total_amount_due) || 0), 0);
+            paymentsList.reduce((acc: number, p: any) => acc + (Number(p.amount_due || p.amountDue || p.amount_paid) || 0), 0) +
+            overdueList.reduce((acc: number, s: any) => acc + (Number(s.amount_due || s.amountDue || s.total_amount_due) || 0), 0);
 
           const lastActiveFormatted = new Date(checkSince).toLocaleTimeString('en-US', {
             hour: '2-digit',
@@ -309,8 +305,8 @@ export const DynamicIslandProvider: React.FC<{
         }
       } else if (totalMissed > 0 || unreadTotal > 0) {
         const totalAmount =
-          paymentsList.reduce((acc: number, p: any) => acc + (Number(p.amount_paid) || 0), 0) +
-          overdueList.reduce((acc: number, s: any) => acc + (Number(s.total_amount_due) || 0), 0);
+          paymentsList.reduce((acc: number, p: any) => acc + (Number(p.amount_due || p.amountDue || p.amount_paid) || 0), 0) +
+          overdueList.reduce((acc: number, s: any) => acc + (Number(s.amount_due || s.amountDue || s.total_amount_due) || 0), 0);
 
         const lastActiveFormatted = new Date(checkSince).toLocaleTimeString('en-US', {
           hour: '2-digit',

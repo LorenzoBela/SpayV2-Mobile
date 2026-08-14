@@ -71,7 +71,7 @@ const BIOMETRIC_PIN_KEY = 'biometric_pin';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { isDarkMode, toggleTheme, setTheme, themePreference } = useContext(ThemeContext);
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isImpersonating } = useImpersonation();
   const systemColorScheme = useColorScheme();
@@ -384,18 +384,8 @@ export default function SettingsScreen() {
 
   const handleThemeChange = (nextTheme: 'light' | 'dark' | 'auto') => {
     setDbTheme(nextTheme);
+    setTheme(nextTheme);
     saveSetting('theme', nextTheme);
-
-    if (nextTheme === 'dark') {
-      if (!isDarkMode) toggleTheme();
-    } else if (nextTheme === 'light') {
-      if (isDarkMode) toggleTheme();
-    } else if (nextTheme === 'auto') {
-      const isSystemDark = systemColorScheme === 'dark';
-      if (isSystemDark !== isDarkMode) {
-        toggleTheme();
-      }
-    }
   };
 
   // ── Biometrics handlers (merged from ProfileScreen) ──

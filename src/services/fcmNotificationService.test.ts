@@ -1,24 +1,24 @@
+import { describe, it, expect } from 'vitest';
 import { buildDisplayNotificationInput } from './fcmNotificationServiceConfig';
 
-function assertEqual(actual: unknown, expected: unknown) {
-  if (actual !== expected) {
-    throw new Error(`Expected ${String(expected)}, received ${String(actual)}`);
-  }
-}
+describe('fcmNotificationServiceConfig', () => {
+  it('builds display notification input with transformed channel ID and payload', () => {
+    const input = buildDisplayNotificationInput({
+      notification: {
+        title: 'Reminder',
+        body: 'Pay today.',
+      },
+      data: {
+        channelId: 'spay-payments-v1',
+        notificationId: 'notif-1',
+        screen: 'Payments',
+      },
+    });
 
-const input = buildDisplayNotificationInput({
-  notification: {
-    title: 'Reminder',
-    body: 'Pay today.',
-  },
-  data: {
-    channelId: 'spay-payments-v1',
-    notificationId: 'notif-1',
-    screen: 'Payments',
-  },
+    expect(input).not.toBeNull();
+    expect(input?.title).toBe('Reminder');
+    expect(input?.body).toBe('Pay today.');
+    expect(input?.channelId).toBe('spay-payments-v2');
+    expect(input?.data?.notificationId).toBe('notif-1');
+  });
 });
-
-assertEqual(input.title, 'Reminder');
-assertEqual(input.body, 'Pay today.');
-assertEqual(input.channelId, 'spay-payments-v2');
-assertEqual(input.data.notificationId, 'notif-1');

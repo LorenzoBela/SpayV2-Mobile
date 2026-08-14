@@ -49,6 +49,7 @@ import {
   NotificationCategory,
   subscribeToRealtimeNotifications,
 } from '../../services/notificationService';
+import { clearAppBadge, setAppBadgeCount } from '../../services/fcmNotificationService';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
@@ -216,6 +217,15 @@ export default function NotificationsScreen() {
       ),
     [items]
   );
+
+  useEffect(() => {
+    const totalUnread = Object.values(counts).reduce((a, b) => a + b, 0);
+    if (totalUnread === 0) {
+      void clearAppBadge();
+    } else {
+      void setAppBadgeCount(totalUnread);
+    }
+  }, [counts]);
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read_at).length, [items]);
   const visibleItems = useMemo(() => items.filter((item) => item.category === activeTab), [items, activeTab]);

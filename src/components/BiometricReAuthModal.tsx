@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { ShieldCheck, Fingerprint, Delete, KeyRound, X } from 'lucide-react-native';
 import useBiometrics from '../hooks/useBiometrics';
 import useSecurityPin from '../hooks/useSecurityPin';
+import { getKeypadBottomPadding } from '../utils/safeArea';
 
 export interface BiometricReAuthModalProps {
   visible: boolean;
@@ -199,8 +200,8 @@ export function BiometricReAuthModal({
         style={[
           styles.container,
           {
-            paddingTop: insets.top,
-            paddingBottom: Math.max(insets.bottom, 20),
+            paddingTop: Math.max(insets.top, 20),
+            paddingBottom: getKeypadBottomPadding(insets.bottom),
           },
         ]}
       >
@@ -309,6 +310,7 @@ export function BiometricReAuthModal({
                     onPress={handleBackspace}
                     activeOpacity={0.7}
                     disabled={isAuthenticating}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     style={[styles.keypadBtn, styles.actionBtn]}
                   >
                     <Delete size={22} color="#a1a1aa" />

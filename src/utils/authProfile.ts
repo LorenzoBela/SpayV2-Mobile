@@ -52,7 +52,7 @@ export function setCachedUserProfile(cached: CachedUserProfile): void {
   }
 }
 
-const PROFILE_SELECT = 'id, email, name, role, mobile_number, avatar_url';
+const PROFILE_SELECT = 'id, email, name, role, mobile_number';
 
 export async function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
   const { data: linkedProfile, error: rpcError } = await supabase

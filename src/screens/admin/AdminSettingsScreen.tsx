@@ -65,7 +65,7 @@ const BIOMETRIC_PIN_KEY = 'biometric_pin';
 
 export default function AdminSettingsScreen() {
   const navigation = useNavigation<any>();
-  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { isDarkMode, toggleTheme, setTheme, themePreference } = useContext(ThemeContext);
   const { userRole, setActiveRole } = useContext(RoleContext);
   const systemColorScheme = useColorScheme();
   const layout = useResponsiveLayout();
@@ -146,7 +146,7 @@ export default function AdminSettingsScreen() {
       // 1. Fetch Profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('name, email, mobile_number, role, avatar_url')
+        .select('name, email, mobile_number, role')
         .eq('id', user.id)
         .single();
 
@@ -163,7 +163,7 @@ export default function AdminSettingsScreen() {
           name: profileData.name || loadedProfile.name,
           email: profileData.email || loadedProfile.email,
           mobileNumber: profileData.mobile_number || loadedProfile.mobileNumber,
-          avatarUrl: profileData?.avatar_url ?? (profileData as { avatarUrl?: string })?.avatarUrl ?? loadedProfile.avatarUrl,
+          avatarUrl: (profileData as any)?.avatar_url ?? loadedProfile.avatarUrl,
           role: profileData.role || 'ADMIN',
         };
       }
@@ -285,23 +285,13 @@ export default function AdminSettingsScreen() {
 
   const handleThemeChange = async (nextTheme: 'light' | 'dark' | 'auto') => {
     setDbTheme(nextTheme);
+    setTheme(nextTheme);
 
     try {
       await callAdminApi('update-setting', {
         settingName: 'theme',
         settingValue: nextTheme,
       });
-
-      if (nextTheme === 'dark') {
-        if (!isDarkMode) toggleTheme();
-      } else if (nextTheme === 'light') {
-        if (isDarkMode) toggleTheme();
-      } else if (nextTheme === 'auto') {
-        const isSystemDark = systemColorScheme === 'dark';
-        if (isSystemDark !== isDarkMode) {
-          toggleTheme();
-        }
-      }
     } catch (e) {
       console.warn('Failed to sync theme settings:', e);
     }
@@ -487,6 +477,7 @@ export default function AdminSettingsScreen() {
       visible={pinModalVisible}
       transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={closePinModal}
     >
       <View style={styles.modalOverlay}>
