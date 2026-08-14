@@ -95,31 +95,46 @@ export default function AdminMoreScreen() {
     iconBg: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
   };
 
-  const gridItems = [
+  const featuredFinancialItems = [
     {
-      name: 'Salary & Cashflow',
-      icon: Banknote,
-      desc: 'Payday countdown & compensation',
-      action: () => navigation.navigate('AdminSalary'),
-    },
-    {
-      name: 'Expenses Master',
+      name: 'Expenses Master Tracker',
+      tag: 'MASTER TRACKER',
       icon: Wallet,
-      desc: 'SPay/Atome bills & daily shortcuts',
+      desc: 'SPay/Atome bills, cash on hand, countdown & shortcuts',
+      badge: '1:1 Web',
+      color: '#ee4d2d',
       action: () => navigation.navigate('AdminExpenses'),
     },
     {
       name: 'Ipon Savings Goals',
+      tag: 'SAVINGS & TARGETS',
       icon: PiggyBank,
-      desc: 'Visual jars, deposits & targets',
+      desc: '7 visual goal themes (Jar, Ring, Map, Battery, Mountain, Milestones, Bar)',
+      badge: '7 Themes',
+      color: '#10b981',
       action: () => navigation.navigate('AdminIpon'),
     },
     {
-      name: 'System Health',
+      name: 'Salary & Cashflow',
+      tag: 'PAYDAY INFLOW',
+      icon: Banknote,
+      desc: 'Payday countdown timer, compensation & cashflow forecast',
+      badge: 'Cashflow',
+      color: '#6366f1',
+      action: () => navigation.navigate('AdminSalary'),
+    },
+    {
+      name: 'System Health & Probes',
+      tag: 'OBSERVABILITY',
       icon: Activity,
-      desc: 'Live probes, latency & error logs',
+      desc: 'Live DB/Redis/Auth latency probes, memory gauge & log stream',
+      badge: 'Realtime',
+      color: '#06b6d4',
       action: () => navigation.navigate('AdminSystemHealth'),
     },
+  ];
+
+  const gridItems = [
     {
       name: 'Overview',
       icon: LayoutDashboard,
@@ -179,9 +194,9 @@ export default function AdminMoreScreen() {
 
   const systemItems = [
     {
-      name: 'System Health & Probes',
+      name: 'System Health & Observability',
       icon: Activity,
-      desc: 'Real-time telemetry, latency & error logs',
+      desc: 'Real-time telemetry, latency probes & live error logs',
       action: () => navigation.navigate('AdminSystemHealth'),
     },
     {
@@ -258,6 +273,46 @@ export default function AdminMoreScreen() {
               ) : null}
             </View>
           </View>
+        </View>
+
+        {/* 🌟 FEATURED FINANCIAL & SYSTEM MODULES (1:1 WEB PARITY) */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionSubtitle, { color: '#ee4d2d' }]}>CORE OPERATIONS</Text>
+          <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Financial & System Master Modules</Text>
+        </View>
+
+        <View style={styles.featuredContainer}>
+          {featuredFinancialItems.map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <TouchableOpacity
+                key={idx}
+                style={[
+                  styles.featuredCard,
+                  { backgroundColor: t.cardBg, borderColor: t.cardBorder },
+                ]}
+                onPress={item.action}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.featuredIconBox, { backgroundColor: `${item.color}18` }]}>
+                  <Icon size={22} color={item.color} />
+                </View>
+                <View style={styles.featuredTextCol}>
+                  <View style={styles.featuredHeaderRow}>
+                    <Text style={[styles.featuredTag, { color: item.color }]}>{item.tag}</Text>
+                    <View style={[styles.featuredBadgePill, { backgroundColor: `${item.color}15` }]}>
+                      <Text style={[styles.featuredBadgePillText, { color: item.color }]}>{item.badge}</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.featuredName, { color: t.textPrimary }]}>{item.name}</Text>
+                  <Text style={[styles.featuredDesc, { color: t.textSecondary }]} numberOfLines={2}>
+                    {item.desc}
+                  </Text>
+                </View>
+                <ChevronRight size={18} color={t.textMuted} />
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Explore Features Section */}
@@ -481,6 +536,60 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     marginTop: 1,
+  },
+  featuredContainer: {
+    marginBottom: 24,
+    gap: 10,
+  },
+  featuredCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 14,
+  },
+  featuredIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  featuredTextCol: {
+    flex: 1,
+    marginRight: 8,
+  },
+  featuredHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  featuredTag: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  featuredBadgePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  featuredBadgePillText: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  featuredName: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  featuredDesc: {
+    fontSize: 11,
+    lineHeight: 15,
   },
   gridLayout: {
     flexDirection: 'row',

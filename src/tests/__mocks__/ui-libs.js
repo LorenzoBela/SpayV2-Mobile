@@ -24,7 +24,11 @@ module.exports = {
   useSharedValue: (init) => ({ value: init }),
   useAnimatedStyle: () => ({}),
   withTiming: (val) => val,
-  withSpring: (val) => val,
+  interpolate: (v) => 0,
+  Calendar: 'Calendar',
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: 'SafeAreaView',
+  SafeAreaProvider: 'SafeAreaProvider',
   FadeIn: { duration: () => {} },
   FadeOut: { duration: () => {} },
 };

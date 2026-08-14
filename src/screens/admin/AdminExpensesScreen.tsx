@@ -474,10 +474,10 @@ export default function AdminExpensesScreen() {
   // Timer updater for hero countdown & next deadline
   useEffect(() => {
     if (!data) return;
-    const upcoming = (data.upcomingPlannedPayments || []).filter((p) => !p.isPaid);
+    const upcoming = (data.upcomingPlannedPayments || []).filter((p: any) => !p.isPaid);
     if (upcoming.length === 0) {
       // Fallback to Next Payday countdown
-      const nextPayday = new Date(data.payday.nextPaydayIso || Date.now());
+      const nextPayday = new Date(data.payday?.nextPaydayIso || Date.now());
       const updateFallbackTimer = () => {
         const now = new Date();
         const diffMs = nextPayday.getTime() - now.getTime();
@@ -552,7 +552,7 @@ export default function AdminExpensesScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const newCash = Math.max(0, data.balances.cashOnHand + delta);
     // Optimistic update
-    setData((prev) => {
+    setData((prev: any) => {
       if (!prev) return prev;
       const newTotalLiquid = newCash + prev.balances.bdoBalance + prev.balances.maribankBalance + prev.balances.gcashBalance;
       return {
@@ -838,9 +838,9 @@ export default function AdminExpensesScreen() {
   // Filtered History for Ledger
   const filteredHistory = useMemo(() => {
     if (!data?.paymentHistory) return [];
-    return data.paymentHistory.filter((item) => {
+    return (data.paymentHistory as any[]).filter((item: any) => {
       const q = searchQuery.toLowerCase();
-      const matchesSearch = !q || item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || (item.notes && item.notes.toLowerCase().includes(q));
+      const matchesSearch = !q || item.title?.toLowerCase().includes(q) || item.category?.toLowerCase().includes(q) || (item.notes && item.notes.toLowerCase().includes(q));
       const matchesSource = filterSource === 'ALL' || item.source === filterSource;
       const matchesStatus = ledgerStatusFilter === 'ALL' || (ledgerStatusFilter === 'PAID' && item.status !== 'UNPAID') || (ledgerStatusFilter === 'UNPAID' && item.status === 'UNPAID');
       return matchesSearch && matchesSource && matchesStatus;
@@ -850,15 +850,24 @@ export default function AdminExpensesScreen() {
   // Filtered Atome Orders
   const filteredAtomeOrders = useMemo(() => {
     if (!data?.atomeOrders) return [];
-    return data.atomeOrders.filter((order) => {
+    return (data.atomeOrders as any[]).filter((order: any) => {
       const q = atomeSearchQuery.toLowerCase();
-      const matchesSearch = !q || order.merchantName.toLowerCase().includes(q);
+      const matchesSearch = !q || order.merchantName?.toLowerCase().includes(q);
       const matchesTerm = atomeFilterTerm === 'all' || order.termType === atomeFilterTerm;
-      const isFullyPaid = order.payments.every((p) => p.isPaid);
+      const isFullyPaid = (order.payments || []).every((p: any) => p.isPaid);
       const matchesStatus = atomeFilterStatus === 'all' || (atomeFilterStatus === 'paid' && isFullyPaid) || (atomeFilterStatus === 'unpaid' && !isFullyPaid);
       return matchesSearch && matchesTerm && matchesStatus;
     });
   }, [data?.atomeOrders, atomeSearchQuery, atomeFilterTerm, atomeFilterStatus]);
+
+  // Memoized Tab Items
+  const tabItems = useMemo(() => [
+    { key: 'overview', label: 'Overview & Analytics', icon: PieIcon },
+    { key: 'reports', label: 'Expense Reports', icon: BarChart3 },
+    { key: 'atome', label: `Atome Plans (${(data?.atomeOrders || []).length})`, icon: CreditCard },
+    { key: 'timeline', label: `Timeline (${(data?.upcomingPlannedPayments || []).length})`, icon: Clock },
+    { key: 'ledger', label: `History Ledger (${(data?.paymentHistory || []).length})`, icon: Layers },
+  ], [data?.atomeOrders, data?.upcomingPlannedPayments, data?.paymentHistory]);
 
   if (isLoading && !data) {
     return (
@@ -1285,13 +1294,7 @@ export default function AdminExpensesScreen() {
 
         {/* 6. TAB SELECTOR */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBarContainer}>
-          {[
-            { key: 'overview', label: 'Overview & Analytics', icon: PieIcon },
-            { key: 'reports', label: 'Expense Reports', icon: BarChart3 },
-            { key: 'atome', label: `Atome Plans (${data.atomeOrders.length})`, icon: CreditCard },
-            { key: 'timeline', label: `Timeline (${data.upcomingPlannedPayments.length})`, icon: Clock },
-            { key: 'ledger', label: `History Ledger (${data.paymentHistory.length})`, icon: Layers },
-          ].map((tab) => {
+          {tabItems.map((tab) => {
             const isActive = activeTab === tab.key;
             const Icon = tab.icon;
             return (
@@ -1367,11 +1370,11 @@ export default function AdminExpensesScreen() {
 
               {/* Category Rows with Percentage Bars */}
               <View style={styles.categoryRowsList}>
-                {Object.entries(data.insights.categoryTotals || {}).map(([cat, amt], idx) => {
+                {Object.entries((data.insights?.categoryTotals || {}) as Record<string, number>).map(([cat, amt]: [string, any], idx) => {
                   const catColors = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#3b82f6'];
                   const color = catColors[idx % catColors.length];
-                  const totalExp = Object.values(data.insights.categoryTotals || {}).reduce((a, b) => a + b, 0) || 1;
-                  const pct = Math.round((amt / totalExp) * 100);
+                  const totalExp = Object.values((data.insights?.categoryTotals || {}) as Record<string, number>).reduce((a: number, b: any) => a + Number(b || 0), 0) || 1;
+                  const pct = Math.round((Number(amt || 0) / totalExp) * 100);
                   return (
                     <View key={cat} style={styles.categoryItemRow}>
                       <View style={styles.catLabelRow}>
@@ -1380,7 +1383,7 @@ export default function AdminExpensesScreen() {
                           <Text style={[styles.catName, { color: t.textPrimary }]}>{cat}</Text>
                         </View>
                         <Text style={[styles.catAmount, { color: t.textPrimary }]}>
-                          ₱{amt.toLocaleString('en-US', { minimumFractionDigits: 2 })} ({pct}%)
+                          ₱{Number(amt || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ({pct}%)
                         </Text>
                       </View>
                       <View style={[styles.catProgressBarBg, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
@@ -1397,10 +1400,10 @@ export default function AdminExpensesScreen() {
               <Text style={[styles.analyticsCardTitle, { color: t.textPrimary }]}>Spend by Payment Channel</Text>
               <Text style={[styles.analyticsCardSub, { color: t.textMuted }]}>Breakdown across BDO, MariBank, GCash, SPay & Cash</Text>
               <View style={styles.channelGrid}>
-                {Object.entries(data.insights.sourceTotals || {}).map(([src, amt]) => (
+                {Object.entries((data.insights?.sourceTotals || {}) as Record<string, number>).map(([src, amt]: [string, any]) => (
                   <View key={src} style={[styles.channelTile, { backgroundColor: isDarkMode ? '#141b2d' : '#f8fafc', borderColor: t.border }]}>
                     <Text style={styles.channelTileName}>{src}</Text>
-                    <Text style={[styles.channelTileAmt, { color: t.textPrimary }]}>₱{amt.toLocaleString()}</Text>
+                    <Text style={[styles.channelTileAmt, { color: t.textPrimary }]}>₱{Number(amt || 0).toLocaleString()}</Text>
                   </View>
                 ))}
               </View>
@@ -1434,7 +1437,7 @@ export default function AdminExpensesScreen() {
             <View style={[styles.analyticsCard, { backgroundColor: t.surface, borderColor: t.border }]}>
               <Text style={[styles.analyticsCardTitle, { color: t.textPrimary }]}>Monthly Inflows vs Outflows (6 Months)</Text>
               <View style={styles.monthlyFlowList}>
-                {(data.analytics?.monthlyCashFlow || []).map((m) => (
+                {(data.analytics?.monthlyCashFlow || []).map((m: any) => (
                   <View key={m.month} style={[styles.monthlyFlowRow, { borderBottomColor: t.border }]}>
                     <View>
                       <Text style={[styles.monthlyFlowMonth, { color: t.textPrimary }]}>{m.month}</Text>
@@ -1495,9 +1498,9 @@ export default function AdminExpensesScreen() {
                   style={styles.bulkPaySubmitBtn}
                   onPress={() => {
                     let total = 0;
-                    data.atomeOrders.forEach((o) => {
-                      o.payments.forEach((p) => {
-                        if (selectedAtomePaymentIds.includes(p.id)) total += p.amountDue;
+                    (data.atomeOrders || []).forEach((o: any) => {
+                      (o.payments || []).forEach((p: any) => {
+                        if (selectedAtomePaymentIds.includes(p.id)) total += Number(p.amountDue || 0);
                       });
                     });
                     setBulkPayAtomeModal({
@@ -1519,11 +1522,11 @@ export default function AdminExpensesScreen() {
                 <Text style={[styles.emptyBoxText, { color: t.textMuted }]}>No matching Atome installment plans found.</Text>
               </View>
             ) : (
-              filteredAtomeOrders.map((order) => {
-                const unpaidPayments = order.payments.filter((p) => !p.isPaid);
+              filteredAtomeOrders.map((order: any) => {
+                const unpaidPayments = (order.payments || []).filter((p: any) => !p.isPaid);
                 const nextUnpaid = unpaidPayments[0];
-                const paidCount = order.payments.filter((p) => p.isPaid).length;
-                const totalCount = order.payments.length;
+                const paidCount = (order.payments || []).filter((p: any) => p.isPaid).length;
+                const totalCount = (order.payments || []).length;
                 const isCompleted = unpaidPayments.length === 0;
 
                 return (
@@ -1615,7 +1618,7 @@ export default function AdminExpensesScreen() {
             {/* Monthly Dues Deadlines Bento Cards */}
             <View style={styles.monthlyDeadlinesSection}>
               <Text style={[styles.sectionHeaderTitle, { color: t.textPrimary }]}>Monthly Dues Deadlines</Text>
-              {(data.billsSummary.unpaidBillsMonthlyBreakdown || []).map((b) => {
+              {(data.billsSummary?.unpaidBillsMonthlyBreakdown || []).map((b: any) => {
                 const isFullyPaid = b.isFullyPaid || b.totalUnpaid === 0;
                 const isExpanded = !!expandedMonthCards[b.month];
                 return (
@@ -1625,7 +1628,7 @@ export default function AdminExpensesScreen() {
                       styles.monthDeadlineCard,
                       { backgroundColor: t.surface, borderColor: isFullyPaid ? '#10b981' : t.border },
                     ]}
-                    onPress={() => setExpandedMonthCards((prev) => ({ ...prev, [b.month]: !prev[b.month] }))}
+                    onPress={() => setExpandedMonthCards((prev: any) => ({ ...prev, [b.month]: !prev[b.month] }))}
                     activeOpacity={0.8}
                   >
                     <View style={styles.monthCardHeader}>
@@ -1634,13 +1637,13 @@ export default function AdminExpensesScreen() {
                         <Text style={[styles.monthCardTitle, { color: t.textPrimary }]}>{b.month}</Text>
                       </View>
                       <Text style={[styles.monthCardTotal, { color: isFullyPaid ? '#10b981' : '#ef4444' }]}>
-                        {isFullyPaid ? '✓ PAID' : `₱${(b.totalUnpaid || b.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                        {isFullyPaid ? '✓ PAID' : `₱${Number(b.totalUnpaid || b.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                       </Text>
                     </View>
 
                     <View style={styles.monthCardSubRow}>
                       <Text style={[styles.monthCardSubText, { color: t.textSecondary }]}>
-                        SPay: ₱{b.spay.toLocaleString()} • Atome: ₱{b.atome.toLocaleString()}
+                        SPay: ₱{Number(b.spay || 0).toLocaleString()} • Atome: ₱{Number(b.atome || 0).toLocaleString()}
                       </Text>
                       <Text style={[styles.monthCardDetailsToggle, { color: '#ee4d2d' }]}>
                         {isExpanded ? 'Hide Details ▲' : 'View Items ▼'}
@@ -1650,11 +1653,11 @@ export default function AdminExpensesScreen() {
                     {/* Expandable items breakdown */}
                     {isExpanded && b.items && b.items.length > 0 && (
                       <View style={[styles.monthItemsList, { borderTopColor: t.border }]}>
-                        {b.items.map((it, idx) => (
+                        {b.items.map((it: any, idx: number) => (
                           <View key={idx} style={styles.monthItemRow}>
                             <Text style={[styles.monthItemName, { color: t.textPrimary }]} numberOfLines={1}>{it.name}</Text>
                             <Text style={[styles.monthItemAmt, { color: it.isPaid ? '#10b981' : t.textPrimary }]}>
-                              {it.isPaid ? '✓ ' : ''}₱{it.amount.toLocaleString()}
+                              {it.isPaid ? '✓ ' : ''}₱{Number(it.amount || 0).toLocaleString()}
                             </Text>
                           </View>
                         ))}
@@ -1668,7 +1671,7 @@ export default function AdminExpensesScreen() {
             {/* Chronological Timeline */}
             <View style={styles.chronologicalSection}>
               <Text style={[styles.sectionHeaderTitle, { color: t.textPrimary }]}>Chronological Timeline</Text>
-              {(data.upcomingPlannedPayments || []).map((p) => (
+              {(data.upcomingPlannedPayments || []).map((p: any) => (
                 <View key={p.id} style={[styles.timelineRowCard, { backgroundColor: t.surface, borderColor: t.border }]}>
                   <View style={[styles.timelineSourceBadge, { backgroundColor: p.source === 'SPAY' ? '#ee4d2d' : '#FF4F00' }]}>
                     <Text style={styles.timelineSourceText}>{p.source}</Text>
@@ -1681,7 +1684,7 @@ export default function AdminExpensesScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={[styles.timelineAmount, { color: p.isPaid ? '#10b981' : '#ef4444' }]}>
-                      ₱{p.amountDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      ₱{Number(p.amountDue || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </Text>
                     <Text style={[styles.timelineStatusBadge, { color: p.isPaid ? '#10b981' : p.daysRemaining < 0 ? '#ef4444' : '#f59e0b' }]}>
                       {p.isPaid ? 'PAID' : p.daysRemaining < 0 ? `OVERDUE ${Math.abs(p.daysRemaining)}d` : `${p.daysRemaining}d left`}
@@ -1716,7 +1719,7 @@ export default function AdminExpensesScreen() {
                 <Text style={[styles.emptyBoxText, { color: t.textMuted }]}>No matching transactions found in history.</Text>
               </View>
             ) : (
-              filteredHistory.map((item) => (
+              filteredHistory.map((item: any) => (
                 <View key={item.id} style={[styles.ledgerItemCard, { backgroundColor: t.surface, borderColor: t.border }]}>
                   <View style={styles.ledgerCardLeft}>
                     <Text style={[styles.ledgerItemTitle, { color: t.textPrimary }]}>{item.title}</Text>
@@ -1726,7 +1729,7 @@ export default function AdminExpensesScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={[styles.ledgerItemAmount, { color: t.textPrimary }]}>
-                      ₱{item.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      ₱{Number(item.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </Text>
                     <Text style={[styles.ledgerStatusPill, { color: item.status === 'UNPAID' ? '#f59e0b' : '#10b981' }]}>
                       {item.status}

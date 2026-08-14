@@ -1080,6 +1080,10 @@ export default function AppNavigator() {
                           ) : (
                             <>
                               <Stack.Screen name="Main" component={MainNavigator} />
+                              <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
+                              <Stack.Screen name="AdminExpenses" component={AdminExpensesScreen} />
+                              <Stack.Screen name="AdminIpon" component={AdminIponScreen} />
+                              <Stack.Screen name="AdminSystemHealth" component={AdminSystemHealthScreen} />
                             </>
                           )
                         ) : (
