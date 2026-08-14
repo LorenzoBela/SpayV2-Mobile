@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, type AppStateStatus } from 'react-native';
+import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, useColorScheme, type AppStateStatus } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -22,6 +22,7 @@ import {
 import type { LucideIcon } from 'lucide-react-native';
 import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
+import * as SystemUI from 'expo-system-ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
 import { trpc } from '../utils/trpc';
@@ -667,20 +668,31 @@ export default function AppNavigator() {
   }, [isImpersonating, activeRole]);
 
   // ── Theme State & Resilient Persistence ──
+  const systemColorScheme = useColorScheme();
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => getPersistedTheme());
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => resolveIsDark(getPersistedTheme()));
+
+  // Derive active dark mode reactively from themePreference and native OS systemColorScheme
+  const isDarkMode = React.useMemo(() => {
+    if (themePreference === 'dark') return true;
+    if (themePreference === 'light') return false;
+    // Auto (follow system): reactive hook with static fallback
+    if (systemColorScheme === 'dark') return true;
+    if (systemColorScheme === 'light') return false;
+    return Appearance?.getColorScheme ? Appearance.getColorScheme() === 'dark' : true;
+  }, [themePreference, systemColorScheme]);
 
   // Listen to system Appearance changes and app foregrounding when theme is set to 'auto'
   useEffect(() => {
-    const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => {
+    const appearanceSub = Appearance.addChangeListener(() => {
+      // Trigger re-render if in auto mode
       if (themePreference === 'auto') {
-        setIsDarkMode(colorScheme === 'dark');
+        setThemePreference('auto');
       }
     });
 
     const appStateSub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active' && themePreference === 'auto') {
-        setIsDarkMode(Appearance.getColorScheme() === 'dark');
+        setThemePreference('auto');
       }
     });
 
@@ -690,23 +702,29 @@ export default function AppNavigator() {
     };
   }, [themePreference]);
 
+  // Paint native Android root decor view to prevent navigation white flashes (OTA-safe)
+  useEffect(() => {
+    try {
+      if (SystemUI && typeof SystemUI.setBackgroundColorAsync === 'function') {
+        SystemUI.setBackgroundColorAsync(isDarkMode ? '#000000' : '#f1f5f9').catch(() => {});
+      }
+    } catch {
+      // Graceful fallback for legacy native binaries receiving OTA updates
+    }
+  }, [isDarkMode]);
+
   const setTheme = useCallback((nextTheme: ThemePreference) => {
     setThemePreference(nextTheme);
-    setIsDarkMode(resolveIsDark(nextTheme));
     const targetUserId = linkedProfileId || session?.user?.id;
     savePersistedTheme(nextTheme, targetUserId);
   }, [linkedProfileId, session?.user?.id]);
 
   const toggleTheme = useCallback(() => {
-    setIsDarkMode((prev) => {
-      const next = !prev;
-      const nextTheme: ThemePreference = next ? 'dark' : 'light';
-      setThemePreference(nextTheme);
-      const targetUserId = linkedProfileId || session?.user?.id;
-      savePersistedTheme(nextTheme, targetUserId);
-      return next;
-    });
-  }, [linkedProfileId, session?.user?.id]);
+    const nextPref: ThemePreference = isDarkMode ? 'light' : 'dark';
+    setThemePreference(nextPref);
+    const targetUserId = linkedProfileId || session?.user?.id;
+    savePersistedTheme(nextPref, targetUserId);
+  }, [isDarkMode, linkedProfileId, session?.user?.id]);
 
   const navigationTheme = React.useMemo(() => {
     const baseTheme = isDarkMode ? DarkTheme : DefaultTheme;
@@ -780,13 +798,14 @@ export default function AppNavigator() {
       const currentLocalTheme = getPersistedTheme();
       const remoteTheme = themeSetting?.setting_value as ThemePreference | undefined;
 
-      const effectiveTheme: ThemePreference =
-        (remoteTheme === 'dark' || remoteTheme === 'light' || remoteTheme === 'auto')
-          ? remoteTheme
-          : currentLocalTheme;
+      let effectiveTheme: ThemePreference = 'auto';
+      if (currentLocalTheme === 'dark' || currentLocalTheme === 'light') {
+        effectiveTheme = currentLocalTheme;
+      } else if (remoteTheme === 'dark' || remoteTheme === 'light' || remoteTheme === 'auto') {
+        effectiveTheme = remoteTheme;
+      }
 
       setThemePreference(effectiveTheme);
-      setIsDarkMode(resolveIsDark(effectiveTheme));
       savePersistedTheme(effectiveTheme, targetId);
 
       const role = data?.role === 'ADMIN' ? 'ADMIN' : 'CLIENT';

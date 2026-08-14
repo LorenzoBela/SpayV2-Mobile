@@ -13,12 +13,11 @@ import { Wallet } from 'lucide-react-native';
 interface AnimatedSplashScreenProps {
   onAnimationComplete: () => void;
 }
-
 export default function AnimatedSplashScreen({
   onAnimationComplete,
 }: AnimatedSplashScreenProps) {
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = colorScheme ? colorScheme === 'dark' : true;
   
   const [text, setText] = useState('');
   const fullText = 'S-Pay V2';
