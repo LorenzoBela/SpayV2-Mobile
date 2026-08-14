@@ -12,6 +12,8 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { clientPersister } from './src/utils/queryPersister';
 import { ProgressProvider } from './src/context/ProgressContext';
 import { ImpersonationProvider } from './src/context/ImpersonationContext';
+import { PostHogProvider } from 'posthog-react-native';
+import { posthog } from './src/utils/posthog';
 import AppNavigator from './src/navigation/AppNavigator';
 import AppUpdateGate from './src/components/AppUpdateGate';
 import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
@@ -100,31 +102,33 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ImpersonationProvider>
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{
-            persister: clientPersister,
-            maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
-            dehydrateOptions: {
-              shouldDehydrateQuery: () => true, // Persist all queries
-            },
-          }}
-        >
-          <trpc.Provider client={trpcClient} queryClient={queryClient}>
-            <PaperProvider theme={darkTheme}>
-              <ProgressProvider>
-                <SafeAreaProvider>
-                  <AppUpdateGate />
-                  <AppNavigator />
-                  <GlobalPremiumAlert />
-                  <GlobalProgressBar />
-                </SafeAreaProvider>
-              </ProgressProvider>
-            </PaperProvider>
-          </trpc.Provider>
-        </PersistQueryClientProvider>
-      </ImpersonationProvider>
+      <PostHogProvider client={posthog}>
+        <ImpersonationProvider>
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{
+              persister: clientPersister,
+              maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
+              dehydrateOptions: {
+                shouldDehydrateQuery: () => true, // Persist all queries
+              },
+            }}
+          >
+            <trpc.Provider client={trpcClient} queryClient={queryClient}>
+              <PaperProvider theme={darkTheme}>
+                <ProgressProvider>
+                  <SafeAreaProvider>
+                    <AppUpdateGate />
+                    <AppNavigator />
+                    <GlobalPremiumAlert />
+                    <GlobalProgressBar />
+                  </SafeAreaProvider>
+                </ProgressProvider>
+              </PaperProvider>
+            </trpc.Provider>
+          </PersistQueryClientProvider>
+        </ImpersonationProvider>
+      </PostHogProvider>
     </GestureHandlerRootView>
   );
 }

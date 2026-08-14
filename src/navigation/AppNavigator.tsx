@@ -30,6 +30,7 @@ import { runIdlePrefetch } from '../utils/idlePrefetch';
 import { getPersistedTheme, savePersistedTheme, resolveIsDark, type ThemePreference } from '../utils/themeStorage';
 
 import { supabase } from '../utils/supabase';
+import { posthog } from '../utils/posthog';
 import { getLinkedProfileForUser } from '../utils/authProfile';
 import { useImpersonation } from '../context/ImpersonationContext';
 import { DynamicIslandProvider } from '../context/DynamicIslandContext';
@@ -745,6 +746,10 @@ export default function AppNavigator() {
       setLoading(false);
       if (session?.user?.id) {
         void registerForFcmNotifications(session.user.id);
+        posthog.identify(session.user.id, {
+          email: session.user.email ?? '',
+          platform: 'mobile',
+        });
       }
     });
 
@@ -754,8 +759,13 @@ export default function AppNavigator() {
       setLoading(false);
       if (session?.user?.id) {
         void registerForFcmNotifications(session.user.id);
+        posthog.identify(session.user.id, {
+          email: session.user.email ?? '',
+          platform: 'mobile',
+        });
       }
       if (event === 'SIGNED_OUT') {
+        posthog.reset();
         try {
           queryClient.clear();
           storage.clearAll();
