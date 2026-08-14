@@ -125,10 +125,7 @@ export async function incrementAppBadge() {
 }
 
 export async function displayFcmRemoteMessage(remoteMessage: FirebaseMessagingTypes.RemoteMessage) {
-  if (remoteMessage.notification) {
-    return;
-  }
-
+  // Data-only FCM: title/body are in remoteMessage.data, not remoteMessage.notification
   const input = buildDisplayNotificationInput(remoteMessage);
   if (!input) return;
 

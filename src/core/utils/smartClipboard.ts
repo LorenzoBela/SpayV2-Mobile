@@ -197,7 +197,7 @@ export const scanClipboard = async (
   }
 };
 
-let expiryTimer: ReturnType<typeof setTimeout> | null = null;
+let expiryTimer: any = null;
 
 /**
  * Copies sensitive text (e.g., account numbers, OTPs) to system clipboard

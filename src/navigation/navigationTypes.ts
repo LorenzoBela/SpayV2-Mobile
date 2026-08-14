@@ -11,6 +11,9 @@ export type RootStackParamList = {
   Settings: undefined;
   Wishlist: undefined;
   AdminSalary: undefined;
+  AdminExpenses: undefined;
+  AdminIpon: undefined;
+  AdminSystemHealth: undefined;
 };
 
 export type AuthStackParamList = {
@@ -44,6 +47,9 @@ export type AdminTabParamList = {
   AdminNotifications: undefined;
   AdminMilestones: undefined;
   AdminSalary: undefined;
+  AdminExpenses: undefined;
+  AdminIpon: undefined;
+  AdminSystemHealth: undefined;
 };
 
 export const RoleContext = React.createContext<{

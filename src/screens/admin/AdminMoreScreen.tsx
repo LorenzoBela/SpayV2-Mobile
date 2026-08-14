@@ -33,6 +33,9 @@ import {
   Trophy,
   UserCheck,
   Banknote,
+  Wallet,
+  PiggyBank,
+  Activity,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
@@ -94,6 +97,30 @@ export default function AdminMoreScreen() {
 
   const gridItems = [
     {
+      name: 'Salary & Cashflow',
+      icon: Banknote,
+      desc: 'Payday countdown & compensation',
+      action: () => navigation.navigate('AdminSalary'),
+    },
+    {
+      name: 'Expenses Master',
+      icon: Wallet,
+      desc: 'SPay/Atome bills & daily shortcuts',
+      action: () => navigation.navigate('AdminExpenses'),
+    },
+    {
+      name: 'Ipon Savings Goals',
+      icon: PiggyBank,
+      desc: 'Visual jars, deposits & targets',
+      action: () => navigation.navigate('AdminIpon'),
+    },
+    {
+      name: 'System Health',
+      icon: Activity,
+      desc: 'Live probes, latency & error logs',
+      action: () => navigation.navigate('AdminSystemHealth'),
+    },
+    {
       name: 'Overview',
       icon: LayoutDashboard,
       desc: 'System metrics & stats',
@@ -143,12 +170,6 @@ export default function AdminMoreScreen() {
       action: () => navigation.navigate('AdminMilestones'),
     },
     {
-      name: 'Salary & Cashflow',
-      icon: Banknote,
-      desc: 'Payday countdown & compensation',
-      action: () => navigation.navigate('AdminSalary'),
-    },
-    {
       name: 'Impersonate Client',
       icon: UserCheck,
       desc: 'View portal as client user',
@@ -157,6 +178,12 @@ export default function AdminMoreScreen() {
   ];
 
   const systemItems = [
+    {
+      name: 'System Health & Probes',
+      icon: Activity,
+      desc: 'Real-time telemetry, latency & error logs',
+      action: () => navigation.navigate('AdminSystemHealth'),
+    },
     {
       name: 'System Settings',
       icon: Settings,

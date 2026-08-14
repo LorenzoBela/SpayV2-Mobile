@@ -37,9 +37,9 @@ function getOrCreateEncryptionKey(): string {
   }
 }
 
-let mmkvInstance: ReturnType<typeof createMMKV> | null = null;
+let mmkvInstance: any = null;
 
-function getStorageInstance(): ReturnType<typeof createMMKV> {
+function getStorageInstance(): any {
   if (!mmkvInstance) {
     const encryptionKey = getOrCreateEncryptionKey();
     try {
@@ -70,7 +70,7 @@ function getStorageInstance(): ReturnType<typeof createMMKV> {
  * Exported MMKV storage proxy that lazily instantiates the underlying MMKV client
  * and encryption key on first access rather than module load time.
  */
-export const storage = new Proxy({} as ReturnType<typeof createMMKV>, {
+export const storage = new Proxy({} as any, {
   get(_target, prop, receiver) {
     const instance = getStorageInstance();
     const value = Reflect.get(instance, prop, instance);

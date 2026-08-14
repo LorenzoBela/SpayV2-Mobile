@@ -28,13 +28,14 @@ export interface AppNotification {
 const ENABLE_REMOTE_PUSH_NOTIFICATIONS =
   shouldAttemptRemotePushRegistration(process.env.EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS);
 
+// Disable expo-notifications auto-alert to prevent duplication with Notifee / Native FCM
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldShowAlert: false,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: false,
+    shouldShowList: false,
   }),
 });
 

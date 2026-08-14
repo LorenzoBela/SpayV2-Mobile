@@ -17,4 +17,12 @@ module.exports = {
   getItem: () => null,
   setItem: () => {},
   deleteItemAsync: () => Promise.resolve(),
+  Image: 'Image',
+  hasHardwareAsync: () => Promise.resolve(false),
+  isEnrolledAsync: () => Promise.resolve(false),
+  supportedAuthenticationTypesAsync: () => Promise.resolve([]),
+  authenticateAsync: () => Promise.resolve({ success: true }),
+  notificationAsync: () => Promise.resolve(),
+  impactAsync: () => Promise.resolve(),
+  selectionAsync: () => Promise.resolve(),
 };

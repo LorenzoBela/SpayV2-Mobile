@@ -17,6 +17,22 @@ vi.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: any) => children,
 }));
 
+vi.mock('../hooks/useBiometrics', () => ({
+  default: () => ({
+    isSupported: false,
+    isEnrolled: false,
+    biometricType: 'NONE',
+    authenticate: vi.fn().mockResolvedValue({ success: true }),
+  }),
+}));
+
+vi.mock('../hooks/useSecurityPin', () => ({
+  default: () => ({
+    hasPin: true,
+    verifyPin: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({
     data: { clients: [{ id: 'client-1', name: 'Test Client', email: 'test@example.com' }] },
@@ -41,10 +57,14 @@ describe('Admin Impersonation Suite', () => {
   });
 
   it('renders AdminImpersonationModal component tree', () => {
-    const vnode = React.createElement(AdminImpersonationModal, {
-      visible: true,
-      onClose: () => {},
-    });
+    const vnode = React.createElement(
+      ImpersonationProvider,
+      null,
+      React.createElement(AdminImpersonationModal, {
+        visible: false,
+        onClose: () => {},
+      })
+    );
     expect(vnode).toBeDefined();
   });
 });

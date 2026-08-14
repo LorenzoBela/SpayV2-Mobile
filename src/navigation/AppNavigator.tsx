@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, useColorScheme, type AppStateStatus } from 'react-native';
+import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, useColorScheme, Platform, type AppStateStatus } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -66,6 +66,9 @@ import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen'; /
 import WishlistScreen from '../screens/client/WishlistScreen';
 import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen'; // refresh cache
 import AdminSalaryScreen from '../screens/admin/AdminSalaryScreen';
+import AdminExpensesScreen from '../screens/admin/AdminExpensesScreen';
+import AdminIponScreen from '../screens/admin/AdminIponScreen';
+import AdminSystemHealthScreen from '../screens/admin/AdminSystemHealthScreen';
 import {
   mirrorToLocalTray,
   registerForTrayNotifications,
@@ -178,7 +181,8 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
   let activeIndex = visibleRoutes.findIndex((r: any) => {
     const activeRouteName = state.routes[state.index].name;
     const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones', 'Wishlist',
-                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones', 'AdminSalary'].includes(activeRouteName);
+                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones', 'AdminSalary',
+                         'AdminExpenses', 'AdminIpon', 'AdminSystemHealth'].includes(activeRouteName);
     if (isSubScreen) {
       return r.name === 'More' || r.name === 'AdminMore';
     }
@@ -606,6 +610,33 @@ const AdminNavigator = () => {
           unmountOnBlur: true,
         } as any}
       />
+      <AdminTab.Screen
+        name="AdminExpenses"
+        component={AdminExpensesScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
+      <AdminTab.Screen
+        name="AdminIpon"
+        component={AdminIponScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
+      <AdminTab.Screen
+        name="AdminSystemHealth"
+        component={AdminSystemHealthScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
     </AdminTab.Navigator>
   );
 };
@@ -908,7 +939,8 @@ export default function AppNavigator() {
     })();
 
     const unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
-      if (nativeFcmRegisteredRef.current) return;
+      // Firebase / Notifee handles 100% of native push delivery. Skip local tray duplication on native platforms.
+      if (Platform.OS === 'android' || nativeFcmRegisteredRef.current) return;
       void mirrorToLocalTray(notification);
     });
     const unsubscribeForegroundFcm = subscribeToForegroundFcmMessages();
@@ -1041,6 +1073,9 @@ export default function AppNavigator() {
                             <>
                               <Stack.Screen name="Admin" component={AdminNavigator} />
                               <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
+                              <Stack.Screen name="AdminExpenses" component={AdminExpensesScreen} />
+                              <Stack.Screen name="AdminIpon" component={AdminIponScreen} />
+                              <Stack.Screen name="AdminSystemHealth" component={AdminSystemHealthScreen} />
                             </>
                           ) : (
                             <>

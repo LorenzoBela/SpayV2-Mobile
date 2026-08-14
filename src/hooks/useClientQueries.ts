@@ -171,7 +171,7 @@ export function useOptimisticRescheduleMutation() {
   });
 }
 
-export function prefetchClientQueries(trpcUtils: ReturnType<typeof trpc.useUtils>) {
+export function prefetchClientQueries(trpcUtils: any) {
   try {
     trpcUtils.orders.list.prefetch();
     trpcUtils.payments.listClient.prefetch();

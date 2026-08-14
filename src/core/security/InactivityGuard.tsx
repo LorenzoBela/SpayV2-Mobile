@@ -50,8 +50,8 @@ export const InactivityGuard: React.FC<InactivityGuardProps> = ({
   const [isSessionLocked, setIsSessionLocked] = useState<boolean>(false);
 
   const backgroundTimestampRef = useRef<number | null>(null);
-  const backgroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundTimerRef = useRef<any>(null);
+  const activeIdleTimerRef = useRef<any>(null);
 
   /**
    * Executes privacy & memory cleanup routines when idle or locked.

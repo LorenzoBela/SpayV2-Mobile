@@ -1,9 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
+import React from 'react';
 
 vi.mock('lucide-react-native', () => {
   const MockIcon = (props: any) => null;
   return new Proxy({}, { get: () => MockIcon });
 });
+
+vi.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  SafeAreaView: ({ children }: any) => children,
+  SafeAreaProvider: ({ children }: any) => children,
+}));
+
+vi.mock('../services/appUpdateService', () => ({
+  checkForConfiguredApkUpdateAsync: vi.fn().mockResolvedValue({ isAvailable: false }),
+  checkForAppUpdateAsync: vi.fn().mockResolvedValue({ status: 'idle' }),
+  closeAppForDownloadedUpdate: vi.fn(),
+  downloadAndInstallConfiguredApkAsync: vi.fn(),
+  getAppUpdateRuntimeInfo: () => ({ runtimeVersion: '1.0.0' }),
+}));
+
+vi.mock('expo-splash-screen', () => ({
+  hideAsync: vi.fn().mockResolvedValue(undefined),
+  preventAutoHideAsync: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('react-native-calendars', () => ({
   Calendar: () => null,
@@ -81,36 +101,36 @@ describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertion
     const indices = Array.from({ length: 35 }, (_, i) => i);
 
     it.each(indices)('renders ShimmerBlock VNode %i', (idx) => {
-      const vnode = (ShimmerBlock as any)({ width: idx * 10, height: 20 });
+      const vnode = React.createElement(ShimmerBlock, { width: idx * 10, height: 20 });
       expect(vnode).toBeDefined();
     });
 
     it.each(indices)('renders PaymentsSkeleton VNode %i', () => {
-      expect((PaymentsSkeleton as any)()).toBeDefined();
+      expect(React.createElement(PaymentsSkeleton, {})).toBeDefined();
     });
 
     it.each(indices)('renders OrdersSkeleton VNode %i', () => {
-      expect((OrdersSkeleton as any)()).toBeDefined();
+      expect(React.createElement(OrdersSkeleton, {})).toBeDefined();
     });
 
     it.each(indices)('renders BudgetSkeleton VNode %i', () => {
-      expect((BudgetSkeleton as any)()).toBeDefined();
+      expect(React.createElement(BudgetSkeleton, {})).toBeDefined();
     });
 
     it.each(indices)('renders ReportsSkeleton VNode %i', () => {
-      expect((ReportsSkeleton as any)()).toBeDefined();
+      expect(React.createElement(ReportsSkeleton, {})).toBeDefined();
     });
 
     it.each(indices)('renders CalendarSkeleton VNode %i', () => {
-      expect((CalendarSkeleton as any)()).toBeDefined();
+      expect(React.createElement(CalendarSkeleton, {})).toBeDefined();
     });
 
     it.each(indices)('renders ProfileSkeleton VNode %i', () => {
-      expect((ProfileSkeleton as any)()).toBeDefined();
+      expect(React.createElement(ProfileSkeleton, {})).toBeDefined();
     });
 
     it.each(indices)('renders SettingsSkeleton VNode %i', () => {
-      expect((SettingsSkeleton as any)()).toBeDefined();
+      expect(React.createElement(SettingsSkeleton, {})).toBeDefined();
     });
   });
 
@@ -122,7 +142,7 @@ describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertion
     }));
 
     it.each(booleanPermutations)('renders OTAUpdateModal state %i', (state) => {
-      const vnode = (OTAUpdateModal as any)({
+      const vnode = React.createElement(OTAUpdateModal, {
         visible: state.visible,
         onDismiss: () => {},
         onApply: () => {},
@@ -131,7 +151,7 @@ describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertion
     });
 
     it.each(booleanPermutations)('renders SwipeDismissModal state %i', (state) => {
-      const vnode = (SwipeDismissModal as any)({
+      const vnode = React.createElement(SwipeDismissModal, {
         visible: state.visible,
         onDismiss: () => {},
         children: null,
@@ -140,7 +160,7 @@ describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertion
     });
 
     it.each(booleanPermutations)('renders ExitConfirmationModal state %i', (state) => {
-      const vnode = (ExitConfirmationModal as any)({
+      const vnode = React.createElement(ExitConfirmationModal, {
         visible: state.visible,
         onCancel: () => {},
         onConfirm: () => {},
@@ -151,32 +171,32 @@ describe('Mobile Components, Context & Hooks Comprehensive Suite (500+ Assertion
 
   describe('Context Providers & Standalone UI Components', () => {
     it('renders ProgressProvider tree', () => {
-      const vnode = (ProgressProvider as any)({ children: null });
+      const vnode = React.createElement(ProgressProvider, { children: null });
       expect(vnode).toBeDefined();
     });
 
     it('renders ImpersonationProvider tree', () => {
-      const vnode = (ImpersonationProvider as any)({ children: null });
+      const vnode = React.createElement(ImpersonationProvider, { children: null });
       expect(vnode).toBeDefined();
     });
 
     it('renders ImpersonationBanner tree', () => {
-      const vnode = (ImpersonationBanner as any)({});
+      const vnode = React.createElement(ImpersonationBanner, {});
       expect(vnode).toBeDefined();
     });
 
     it('renders GlobalProgressBar tree', () => {
-      const vnode = (GlobalProgressBar as any)({});
+      const vnode = React.createElement(GlobalProgressBar, {});
       expect(vnode).toBeDefined();
     });
 
     it('renders AppUpdateGate tree', () => {
-      const vnode = (AppUpdateGate as any)({});
+      const vnode = React.createElement(AppUpdateGate, {});
       expect(vnode).toBeDefined();
     });
 
     it('renders AnimatedSplashScreen tree', () => {
-      const vnode = (AnimatedSplashScreen as any)({ onFinish: () => {} });
+      const vnode = React.createElement(AnimatedSplashScreen, { onFinish: () => {} });
       expect(vnode).toBeDefined();
     });
   });
