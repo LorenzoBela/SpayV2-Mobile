@@ -36,6 +36,7 @@ import {
   Wallet,
   PiggyBank,
   Activity,
+  Sparkles,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
@@ -140,6 +141,12 @@ export default function AdminMoreScreen() {
       icon: LayoutDashboard,
       desc: 'System metrics & stats',
       action: () => navigation.navigate('AdminDashboard'),
+    },
+    {
+      name: 'NootAI Copilot',
+      icon: Sparkles,
+      desc: 'AI credit, limit & budget analyst',
+      action: () => navigation.navigate('NootAi'),
     },
     {
       name: 'Reports & Analytics',

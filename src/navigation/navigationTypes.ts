@@ -50,6 +50,7 @@ export type AdminTabParamList = {
   AdminExpenses: undefined;
   AdminIpon: undefined;
   AdminSystemHealth: undefined;
+  NootAi: undefined;
 };
 
 export const RoleContext = React.createContext<{

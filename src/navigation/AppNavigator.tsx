@@ -637,6 +637,15 @@ const AdminNavigator = () => {
           unmountOnBlur: true,
         } as any}
       />
+      <AdminTab.Screen
+        name="NootAi"
+        component={NootAiScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
     </AdminTab.Navigator>
   );
 };
