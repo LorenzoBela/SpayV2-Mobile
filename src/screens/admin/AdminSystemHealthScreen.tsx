@@ -871,51 +871,58 @@ export default function AdminSystemHealthScreen() {
             {/* Entry: App Edge Server */}
             <View style={styles.flowNode}>
               <View style={[styles.nodeIconBox, { backgroundColor: 'rgba(238, 77, 45, 0.12)' }]}>
-                <Text style={[styles.nodeIconText, { color: t.accent }]}>App</Text>
+                <Server size={14} color={t.accent} />
               </View>
-              <View>
-                <Text style={[styles.nodeName, { color: t.textPrimary }]}>Next.js Edge</Text>
-                <Text style={[styles.nodeSub, { color: t.textMuted }]}>tRPC Gateway</Text>
-              </View>
+              <Text style={[styles.nodeName, { color: t.textPrimary }]} numberOfLines={1}>Next.js</Text>
+              <Text style={[styles.nodeSub, { color: t.textMuted }]} numberOfLines={1}>Edge API</Text>
             </View>
 
-            <View style={[styles.flowConnector, { backgroundColor: t.divider }]} />
+            <View style={styles.connectorWrapper}>
+              <View style={[styles.flowConnector, { backgroundColor: t.divider }]} />
+              <ChevronRight size={10} color={t.textMuted} style={styles.connectorArrow} />
+            </View>
 
             {/* DB Node */}
             <View style={styles.flowNode}>
-              <Database size={15} color={t.emerald} />
-              <View>
-                <Text style={[styles.nodeName, { color: t.textPrimary }]}>PostgreSQL</Text>
-                <Text style={[styles.nodeLatency, { color: t.emerald }]}>
-                  {metrics?.services.database.latencyMs ?? '--'}ms
-                </Text>
+              <View style={[styles.nodeIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
+                <Database size={14} color={t.emerald} />
               </View>
+              <Text style={[styles.nodeName, { color: t.textPrimary }]} numberOfLines={1}>Postgres</Text>
+              <Text style={[styles.nodeLatency, { color: t.emerald }]} numberOfLines={1}>
+                {metrics?.services.database.latencyMs ?? '--'}ms
+              </Text>
             </View>
 
-            <View style={[styles.flowConnector, { backgroundColor: t.divider }]} />
+            <View style={styles.connectorWrapper}>
+              <View style={[styles.flowConnector, { backgroundColor: t.divider }]} />
+              <ChevronRight size={10} color={t.textMuted} style={styles.connectorArrow} />
+            </View>
 
             {/* Redis Node */}
             <View style={styles.flowNode}>
-              <Zap size={15} color={t.amber} />
-              <View>
-                <Text style={[styles.nodeName, { color: t.textPrimary }]}>Redis</Text>
-                <Text style={[styles.nodeLatency, { color: t.amber }]}>
-                  {metrics?.services.redis.latencyMs ?? '--'}ms
-                </Text>
+              <View style={[styles.nodeIconBox, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}>
+                <Zap size={14} color={t.amber} />
               </View>
+              <Text style={[styles.nodeName, { color: t.textPrimary }]} numberOfLines={1}>Redis</Text>
+              <Text style={[styles.nodeLatency, { color: t.amber }]} numberOfLines={1}>
+                {metrics?.services.redis.latencyMs ?? '--'}ms
+              </Text>
             </View>
 
-            <View style={[styles.flowConnector, { backgroundColor: t.divider }]} />
+            <View style={styles.connectorWrapper}>
+              <View style={[styles.flowConnector, { backgroundColor: t.divider }]} />
+              <ChevronRight size={10} color={t.textMuted} style={styles.connectorArrow} />
+            </View>
 
             {/* Auth Node */}
             <View style={styles.flowNode}>
-              <ShieldCheck size={15} color="#6366f1" />
-              <View>
-                <Text style={[styles.nodeName, { color: t.textPrimary }]}>Auth</Text>
-                <Text style={[styles.nodeLatency, { color: '#6366f1' }]}>
-                  {metrics?.services.supabaseAuth.latencyMs ?? '--'}ms
-                </Text>
+              <View style={[styles.nodeIconBox, { backgroundColor: 'rgba(99, 102, 241, 0.12)' }]}>
+                <ShieldCheck size={14} color="#6366f1" />
               </View>
+              <Text style={[styles.nodeName, { color: t.textPrimary }]} numberOfLines={1}>Auth</Text>
+              <Text style={[styles.nodeLatency, { color: '#6366f1' }]} numberOfLines={1}>
+                {metrics?.services.supabaseAuth.latencyMs ?? '--'}ms
+              </Text>
             </View>
           </View>
         </View>
@@ -926,29 +933,33 @@ export default function AdminSystemHealthScreen() {
             RUNTIME ENVIRONMENT TELEMETRY
           </Text>
           <View style={styles.runtimeGrid}>
-            <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
-              <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>Node Version</Text>
-              <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
-                {metrics?.process.nodeVersion || 'v20.x'}
-              </Text>
+            <View style={styles.runtimeRow}>
+              <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
+                <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>Node Version</Text>
+                <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
+                  {metrics?.process.nodeVersion || 'v20.x'}
+                </Text>
+              </View>
+              <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
+                <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>Platform / Arch</Text>
+                <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
+                  {metrics?.process.platform || 'linux'} ({metrics?.process.arch || 'x64'})
+                </Text>
+              </View>
             </View>
-            <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
-              <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>Platform / Arch</Text>
-              <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
-                {metrics?.process.platform || 'linux'} ({metrics?.process.arch || 'x64'})
-              </Text>
-            </View>
-            <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
-              <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>RSS Resident Memory</Text>
-              <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
-                {metrics?.process.rssMb ?? '--'} MB
-              </Text>
-            </View>
-            <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
-              <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>L1 Cache Keys</Text>
-              <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
-                {metrics?.l1CacheSize ?? 0} Keys
-              </Text>
+            <View style={styles.runtimeRow}>
+              <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
+                <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>RSS Resident Memory</Text>
+                <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
+                  {metrics?.process.rssMb ?? '--'} MB
+                </Text>
+              </View>
+              <View style={[styles.runtimeTile, { backgroundColor: t.drawerBg, borderColor: t.divider }]}>
+                <Text style={[styles.runtimeLabel, { color: t.textMuted }]}>L1 Cache Keys</Text>
+                <Text style={[styles.runtimeValue, { color: t.textPrimary }]}>
+                  {metrics?.l1CacheSize ?? 0} Keys
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -1676,42 +1687,57 @@ const styles = StyleSheet.create({
   flowPipeline: {
     borderRadius: 14,
     borderWidth: 1,
-    padding: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   flowNode: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    flex: 1,
+    minWidth: 0,
   },
   nodeIconBox: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  nodeIconText: {
-    fontSize: 9.5,
-    fontFamily: 'Jakarta-Bold',
+    marginBottom: 5,
   },
   nodeName: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontFamily: 'Jakarta-Bold',
+    textAlign: 'center',
   },
   nodeSub: {
     fontSize: 8.5,
-    fontFamily: 'Jakarta-Regular',
+    fontFamily: 'Jakarta-Medium',
+    textAlign: 'center',
+    marginTop: 1.5,
   },
   nodeLatency: {
-    fontSize: 9.5,
+    fontSize: 9,
     fontFamily: 'Jakarta-Bold',
+    textAlign: 'center',
+    marginTop: 1.5,
+    fontVariant: ['tabular-nums'],
+  },
+  connectorWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 14,
+    flexDirection: 'row',
   },
   flowConnector: {
-    width: 12,
+    position: 'absolute',
+    width: 14,
     height: 1,
+  },
+  connectorArrow: {
+    opacity: 0.4,
   },
   runtimeCard: {
     borderRadius: 18,
@@ -1725,15 +1751,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   runtimeGrid: {
+    gap: 8,
+  },
+  runtimeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
   },
   runtimeTile: {
-    width: (SCREEN_WIDTH - 48) / 2,
+    flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    padding: 10,
+    padding: 12,
+    minHeight: 56,
+    justifyContent: 'center',
   },
   runtimeLabel: {
     fontSize: 9.5,
@@ -1743,6 +1774,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Jakarta-Bold',
     marginTop: 3,
+    fontVariant: ['tabular-nums'],
   },
   logsConsoleCard: {
     borderRadius: 20,

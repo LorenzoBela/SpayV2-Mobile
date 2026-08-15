@@ -61,6 +61,8 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { formatAmount } from '../../utils/money';
+import { parseUtcDate } from '../../utils/date';
+import { CountdownTimer } from '../../components/CountdownTimer';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import {
   getExpensesDashboardData,
@@ -75,21 +77,20 @@ import Svg, { Circle, Path, G, Rect, Text as SvgText, Defs, LinearGradient, Stop
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// 3D Flip Card Configuration for Timers
-const FLIP_PHASE_MS = 280;
+interface FlipCardProps {
+  value: number;
+  label: string;
+}
+
+const FLIP_PHASE_MS = 330;
 const FLIP_TOTAL_MS = FLIP_PHASE_MS * 2;
 const flipEaseIn = Easing.bezier(0.42, 0, 1, 1);
 const flipEaseOut = Easing.bezier(0, 0, 0.58, 1);
 
-interface ExpenseFlipCardProps {
-  value: number | string;
-  label?: string;
-  isSecs?: boolean;
-}
-
-const ExpenseFlipCard = React.memo(function ExpenseFlipCard({ value, label, isSecs }: ExpenseFlipCardProps) {
-  const format = (val: number | string) => String(val).padStart(2, '0');
+const FlipCard = React.memo(function FlipCard({ value, label }: FlipCardProps) {
+  const format = (val: number) => String(val).padStart(2, '0');
   const newValue = format(value);
+
   const { isDarkMode } = useContext(ThemeContext);
 
   const [current, setCurrent] = useState(newValue);
@@ -100,8 +101,6 @@ const ExpenseFlipCard = React.memo(function ExpenseFlipCard({ value, label, isSe
   const topFlipProgress = useRef(new RNAnimated.Value(1)).current;
   const bottomFlipProgress = useRef(new RNAnimated.Value(1)).current;
   const lastValueRef = useRef(newValue);
-  const animTimerRef = useRef<any>(null);
-  const revealTimerRef = useRef<any>(null);
 
   useEffect(() => {
     if (newValue !== lastValueRef.current) {
@@ -130,131 +129,117 @@ const ExpenseFlipCard = React.memo(function ExpenseFlipCard({ value, label, isSe
             useNativeDriver: true,
           }),
         ]),
-      ]).start();
-
-      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-      revealTimerRef.current = setTimeout(() => {
-        setTopRevealed(true);
-      }, FLIP_PHASE_MS);
-
-      if (animTimerRef.current) clearTimeout(animTimerRef.current);
-      animTimerRef.current = setTimeout(() => {
+      ]).start(() => {
         setIsAnimating(false);
         setTopRevealed(false);
-      }, FLIP_TOTAL_MS);
+      });
+
+      setTimeout(() => {
+        setTopRevealed(true);
+      }, FLIP_PHASE_MS);
 
       lastValueRef.current = newValue;
     }
   }, [newValue]);
 
-  useEffect(() => {
-    return () => {
-      if (animTimerRef.current) clearTimeout(animTimerRef.current);
-      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-      topFlipProgress.stopAnimation();
-      bottomFlipProgress.stopAnimation();
-    };
-  }, []);
+  const cardBgTop = isDarkMode ? '#1e293b' : '#e2e8f0';
+  const cardBgBottom = isDarkMode ? '#161c2a' : '#cbd5e1';
+  const textColorTop = isDarkMode ? '#f8fafc' : '#0f172a';
+  const textColorBottom = isDarkMode ? '#cbd5e1' : '#334155';
+  const cardBorderColor = isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const labelColor = isDarkMode ? '#64748b' : '#475569';
+
+  const rotateTop = topFlipProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '-90deg'],
+  });
+
+  const rotateBottom = bottomFlipProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['90deg', '0deg'],
+  });
+
+  const opacityTop = topFlipProgress.interpolate({
+    inputRange: [0, 0.98, 1],
+    outputRange: [1, 1, 0],
+  });
+
+  const opacityBottom = bottomFlipProgress.interpolate({
+    inputRange: [0, 0.02, 1],
+    outputRange: [0, 1, 1],
+  });
 
   const showFlip = previous !== current;
   const activeFlip = showFlip && isAnimating;
   const topStaticValue = isAnimating && !topRevealed ? previous : current;
   const bottomStaticValue = isAnimating ? previous : current;
 
-  const cardBgTop = isSecs
-    ? (isDarkMode ? '#2c1810' : '#ffe4e6')
-    : (isDarkMode ? '#1e2538' : '#f1f5f9');
-  const cardBgBottom = isSecs
-    ? (isDarkMode ? '#22120a' : '#fecdd3')
-    : (isDarkMode ? '#171d2c' : '#e2e8f0');
-  const textColor = isSecs ? '#ff4f00' : (isDarkMode ? '#ffffff' : '#0f172a');
-  const cardBorder = isSecs
-    ? (isDarkMode ? 'rgba(255, 79, 0, 0.4)' : 'rgba(238, 77, 45, 0.4)')
-    : (isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
-
-  const rotateTop = topFlipProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '-90deg'],
-  });
-  const rotateBottom = bottomFlipProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['90deg', '0deg'],
-  });
-  const opacityTop = topFlipProgress.interpolate({
-    inputRange: [0, 0.98, 1],
-    outputRange: [1, 1, 0],
-  });
-  const opacityBottom = bottomFlipProgress.interpolate({
-    inputRange: [0, 0.02, 1],
-    outputRange: [0, 1, 1],
-  });
-
   return (
-    <View style={styles.flipCardWrapper}>
-      <View style={[styles.flipCardContainer, { borderColor: cardBorder }]}>
-        {/* Top static background */}
-        <View style={[styles.flipHalf, styles.flipHalfTop, { backgroundColor: cardBgTop }]}>
-          <Text style={[styles.flipDigitText, styles.flipDigitTop, { color: textColor }]}>
-            {topStaticValue}
-          </Text>
+    <View style={styles.flipCardCol}>
+      <View style={styles.flipCard}>
+        <View style={[styles.flipCardOuter, { backgroundColor: cardBgTop, borderColor: cardBorderColor }]}>
+          {/* 1. Top Static */}
+          <View style={[styles.topHalfContainer, { backgroundColor: cardBgTop }]}>
+            <Text style={[styles.topText, { color: textColorTop }]}>{topStaticValue}</Text>
+          </View>
+
+          {/* 2. Bottom Static */}
+          <View style={[styles.bottomHalfContainer, { backgroundColor: cardBgBottom }]}>
+            <Text style={[styles.bottomText, { color: textColorBottom }]}>{bottomStaticValue}</Text>
+          </View>
+
+          {/* 3. Animated Top Flap */}
+          {activeFlip && (
+            <RNAnimated.View
+              style={[
+                styles.flapAnimated,
+                {
+                  top: 0,
+                  opacity: opacityTop,
+                  transform: [
+                    { perspective: 400 },
+                    { translateY: 13 },
+                    { rotateX: rotateTop },
+                    { translateY: -13 },
+                  ],
+                  zIndex: 3,
+                },
+              ]}
+            >
+              <View style={[styles.topHalfContainer, { backgroundColor: cardBgTop }]}>
+                <Text style={[styles.topText, { color: textColorTop }]}>{previous}</Text>
+              </View>
+            </RNAnimated.View>
+          )}
+
+          {/* 4. Animated Bottom Flap */}
+          {activeFlip && (
+            <RNAnimated.View
+              style={[
+                styles.flapAnimated,
+                {
+                  top: 26,
+                  opacity: opacityBottom,
+                  transform: [
+                    { perspective: 400 },
+                    { translateY: -13 },
+                    { rotateX: rotateBottom },
+                    { translateY: 13 },
+                  ],
+                  zIndex: 2,
+                },
+              ]}
+            >
+              <View style={[styles.bottomHalfContainer, { backgroundColor: cardBgBottom }]}>
+                <Text style={[styles.bottomText, { color: textColorBottom }]}>{current}</Text>
+              </View>
+            </RNAnimated.View>
+          )}
+
+          <View style={styles.flipCardDivider} />
         </View>
-
-        {/* Bottom static background */}
-        <View style={[styles.flipHalf, styles.flipHalfBottom, { backgroundColor: cardBgBottom }]}>
-          <Text style={[styles.flipDigitText, styles.flipDigitBottom, { color: textColor }]}>
-            {bottomStaticValue}
-          </Text>
-        </View>
-
-        {/* Top animated flap */}
-        {activeFlip && (
-          <RNAnimated.View
-            style={[
-              styles.flipHalf,
-              styles.flipHalfTop,
-              styles.flipFlap,
-              {
-                backgroundColor: cardBgTop,
-                transform: [{ perspective: 400 }, { rotateX: rotateTop }],
-                opacity: opacityTop,
-              },
-            ]}
-          >
-            <Text style={[styles.flipDigitText, styles.flipDigitTop, { color: textColor }]}>
-              {previous}
-            </Text>
-          </RNAnimated.View>
-        )}
-
-        {/* Bottom animated flap */}
-        {activeFlip && (
-          <RNAnimated.View
-            style={[
-              styles.flipHalf,
-              styles.flipHalfBottom,
-              styles.flipFlap,
-              {
-                backgroundColor: cardBgBottom,
-                transform: [{ perspective: 400 }, { rotateX: rotateBottom }],
-                opacity: opacityBottom,
-              },
-            ]}
-          >
-            <Text style={[styles.flipDigitText, styles.flipDigitBottom, { color: textColor }]}>
-              {current}
-            </Text>
-          </RNAnimated.View>
-        )}
-
-        {/* Middle crease divider */}
-        <View style={styles.flipDividerLine} />
       </View>
-
-      {label ? (
-        <Text style={[styles.flipLabelText, { color: isSecs ? '#ff4f00' : (isDarkMode ? '#94a3b8' : '#64748b') }]}>
-          {label}
-        </Text>
-      ) : null}
+      <Text style={[styles.flipCardLabel, { color: labelColor }]}>{label}</Text>
     </View>
   );
 });
@@ -297,18 +282,6 @@ export default function AdminExpensesScreen() {
   // Month filter mode & countdowns
   const [monthFilterMode, setMonthFilterMode] = useState<'CURRENT_FUTURE' | 'ALL' | 'UNPAID_ONLY' | 'PAID_ONLY'>('CURRENT_FUTURE');
   const [expandedMonthCards, setExpandedMonthCards] = useState<Record<string, boolean>>({});
-
-  // Hero Countdown timer
-  const [heroCountdown, setHeroCountdown] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
-    hasTarget: false,
-    isOverdue: false,
-    title: '',
-    dueDateStr: '',
-  });
 
   // Atome Tab Filter & Multi-Select
   const [atomeViewMode, setAtomeViewMode] = useState<'cards' | 'list'>('cards');
@@ -438,21 +411,25 @@ export default function AdminExpensesScreen() {
     try {
       const res = await getExpensesDashboardData(force);
       setData(res);
-      setShortcutsList(res.quickShortcuts || []);
-      setCashForm({
-        cashOnHand: res.balances.cashOnHand,
-        bdoBalance: res.balances.bdoBalance || res.balances.bankBalance,
-        maribankBalance: res.balances.maribankBalance || 0,
-        gcashBalance: res.balances.gcashBalance,
-      });
-      setConfigForm({
-        spayCutoffDay: res.billsSummary.spayCutoffDay || 25,
-        spayDueDay: res.billsSummary.spayDueDay || 15,
-        spayCreditLimit: res.billsSummary.spayCreditLimit || 50000,
-        atomeCutoffDay: res.billsSummary.atomeCutoffDay || 25,
-        atomeDueDay: res.billsSummary.atomeDueDay || 12,
-        atomeCreditLimit: res.billsSummary.atomeCreditLimit || 30000,
-      });
+      setShortcutsList(res?.quickShortcuts || res?.shortcuts || []);
+      if (res?.balances) {
+        setCashForm({
+          cashOnHand: res.balances.cashOnHand ?? 0,
+          bdoBalance: res.balances.bdoBalance || res.balances.bankBalance || 0,
+          maribankBalance: res.balances.maribankBalance || 0,
+          gcashBalance: res.balances.gcashBalance ?? 0,
+        });
+      }
+      if (res?.billsSummary) {
+        setConfigForm({
+          spayCutoffDay: res.billsSummary.spayCutoffDay || 25,
+          spayDueDay: res.billsSummary.spayDueDay || 15,
+          spayCreditLimit: res.billsSummary.spayCreditLimit || 50000,
+          atomeCutoffDay: res.billsSummary.atomeCutoffDay || 25,
+          atomeDueDay: res.billsSummary.atomeDueDay || 12,
+          atomeCreditLimit: res.billsSummary.atomeCreditLimit || 30000,
+        });
+      }
     } catch (e) {
       console.error('Error loading expenses data:', e);
     } finally {
@@ -471,79 +448,61 @@ export default function AdminExpensesScreen() {
     loadData(true);
   }, [loadData]);
 
-  // Timer updater for hero countdown & next deadline
-  useEffect(() => {
-    if (!data) return;
-    const upcoming = (data.upcomingPlannedPayments || []).filter((p: any) => !p.isPaid);
-    if (upcoming.length === 0) {
-      // Fallback to Next Payday countdown
-      const nextPayday = new Date(data.payday?.nextPaydayIso || Date.now());
-      const updateFallbackTimer = () => {
-        const now = new Date();
-        const diffMs = nextPayday.getTime() - now.getTime();
-        if (diffMs <= 0) {
-          setHeroCountdown({
-            days: 0,
-            hours: 0,
-            minutes: 0,
-            seconds: 0,
-            hasTarget: true,
-            isOverdue: false,
-            title: 'Payday is Today!',
-            dueDateStr: nextPayday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          });
-        } else {
-          setHeroCountdown({
-            days: Math.floor(diffMs / (1000 * 60 * 60 * 24)),
-            hours: Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-            minutes: Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)),
-            seconds: Math.floor((diffMs % (1000 * 60)) / 1000),
-            hasTarget: true,
-            isOverdue: false,
-            title: 'Next Payday Inflow',
-            dueDateStr: nextPayday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          });
-        }
+  // Next target deadline resolver for countdown timer
+  const nextTarget = useMemo(() => {
+    if (!data) {
+      return {
+        date: null,
+        title: 'Billing Cycle Overview',
+        formattedDate: '',
       };
-      updateFallbackTimer();
-      const timer = setInterval(updateFallbackTimer, 1000);
-      return () => clearInterval(timer);
     }
 
-    const nextPayment = upcoming[0];
-    const targetDate = new Date(nextPayment.dueDate);
+    const upcoming = (data.upcomingPlannedPayments || []).filter((p: any) => !p.isPaid);
+    const sortedUpcoming = [...upcoming].sort((a: any, b: any) => {
+      const ta = parseUtcDate(a.dueDate).getTime() || 0;
+      const tb = parseUtcDate(b.dueDate).getTime() || 0;
+      return ta - tb;
+    });
 
-    const updateTimer = () => {
-      const now = new Date();
-      const diffMs = targetDate.getTime() - now.getTime();
-      if (diffMs <= 0) {
-        setHeroCountdown({
-          days: 0,
-          hours: 0,
-          minutes: 0,
-          seconds: 0,
-          hasTarget: true,
-          isOverdue: true,
-          title: nextPayment.title,
-          dueDateStr: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        });
-      } else {
-        setHeroCountdown({
-          days: Math.floor(diffMs / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-          minutes: Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)),
-          seconds: Math.floor((diffMs % (1000 * 60)) / 1000),
-          hasTarget: true,
-          isOverdue: false,
-          title: nextPayment.title,
-          dueDateStr: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        });
-      }
+    const now = new Date();
+    const activeUpcoming = sortedUpcoming.find((p: any) => {
+      const t = parseUtcDate(p.dueDate);
+      return t && t.getTime() > now.getTime();
+    });
+
+    if (activeUpcoming) {
+      const d = parseUtcDate(activeUpcoming.dueDate);
+      return {
+        date: d,
+        title: activeUpcoming.title || 'Next Billing Deadline',
+        formattedDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      };
+    }
+
+    if (data.payday?.nextPaydayIso) {
+      const d = parseUtcDate(data.payday.nextPaydayIso);
+      return {
+        date: d,
+        title: 'Next Payday Inflow',
+        formattedDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      };
+    }
+
+    if (sortedUpcoming.length > 0) {
+      const d = parseUtcDate(sortedUpcoming[0].dueDate);
+      return {
+        date: d,
+        title: sortedUpcoming[0].title || 'Upcoming Deadline',
+        formattedDate: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      };
+    }
+
+    return {
+      date: null,
+      title: 'Billing Cycle Overview',
+      formattedDate: '',
     };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
   }, [data]);
 
   // Micro adjustments on Cash on Hand
@@ -794,10 +753,10 @@ export default function AdminExpensesScreen() {
         id: 'spay',
         code: 'SPAY',
         name: 'SHOPEE SPAYLATER',
-        accountMask: `LIMIT ₱${data.billsSummary.spayCreditLimit.toLocaleString()}`,
-        balance: Math.max(0, data.billsSummary.spayCreditLimit - data.billsSummary.spayUsedCredit),
-        usedCredit: data.billsSummary.spayUsedCredit,
-        totalLimit: data.billsSummary.spayCreditLimit,
+        accountMask: `LIMIT ₱${(data.billsSummary?.spayCreditLimit ?? 50000).toLocaleString()}`,
+        balance: Math.max(0, (data.billsSummary?.spayCreditLimit ?? 50000) - (data.billsSummary?.spayUsedCredit ?? 0)),
+        usedCredit: data.billsSummary?.spayUsedCredit ?? 0,
+        totalLimit: data.billsSummary?.spayCreditLimit ?? 50000,
         bgColor: '#EE4D2D',
         textColor: '#ffffff',
         accentColor: '#FDE047',
@@ -808,10 +767,10 @@ export default function AdminExpensesScreen() {
         id: 'atome',
         code: 'ATOME',
         name: 'ATOME CARD PAYLATER',
-        accountMask: `LIMIT ₱${data.billsSummary.atomeCreditLimit.toLocaleString()}`,
-        balance: Math.max(0, data.billsSummary.atomeCreditLimit - data.billsSummary.atomeUsedCredit),
-        usedCredit: data.billsSummary.atomeUsedCredit,
-        totalLimit: data.billsSummary.atomeCreditLimit,
+        accountMask: `LIMIT ₱${(data.billsSummary?.atomeCreditLimit ?? 30000).toLocaleString()}`,
+        balance: Math.max(0, (data.billsSummary?.atomeCreditLimit ?? 30000) - (data.billsSummary?.atomeUsedCredit ?? 0)),
+        usedCredit: data.billsSummary?.atomeUsedCredit ?? 0,
+        totalLimit: data.billsSummary?.atomeCreditLimit ?? 30000,
         bgColor: '#181818',
         textColor: '#ffffff',
         accentColor: '#FDD835',
@@ -823,9 +782,9 @@ export default function AdminExpensesScreen() {
         code: 'CASH',
         name: 'PHYSICAL CASH ON HAND',
         accountMask: 'WALLETS & SAFE (PHYSICAL)',
-        balance: data.balances.totalPhysicalCash ?? data.balances.cashOnHand,
-        liquidAmount: data.balances.cashOnHand,
-        savingsAmount: data.balances.iponSavingsBySource?.CASH || 0,
+        balance: data.balances?.totalPhysicalCash ?? data.balances?.cashOnHand ?? 0,
+        liquidAmount: data.balances?.cashOnHand ?? 0,
+        savingsAmount: data.balances?.iponSavingsBySource?.CASH || 0,
         bgColor: '#059669',
         textColor: '#ffffff',
         accentColor: '#34D399',
@@ -879,10 +838,32 @@ export default function AdminExpensesScreen() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+        <AlertTriangle size={40} color="#ee4d2d" style={{ marginBottom: 12 }} />
+        <Text style={[styles.loadingText, { color: t.textPrimary, fontWeight: 'bold', fontSize: 16 }]}>
+          Unable to Load Expenses Data
+        </Text>
+        <Text style={{ color: t.textSecondary, fontSize: 12, textAlign: 'center', marginHorizontal: 32, marginTop: 4, marginBottom: 16 }}>
+          Please check your connection and tap below to retry.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: '#ee4d2d', paddingHorizontal: 22, paddingVertical: 10, borderRadius: 10 }}
+          onPress={() => {
+            setIsLoading(true);
+            loadData(true);
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Retry Loading</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   const currentWallet = walletCards[activeWalletCardIndex] || walletCards[0];
-  const nextMonthDues = data.billsSummary.unpaidBillsMonthlyBreakdown?.[0];
+  const nextMonthDues = data.billsSummary?.unpaidBillsMonthlyBreakdown?.[0];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
@@ -895,15 +876,20 @@ export default function AdminExpensesScreen() {
             onPress={() => navigation.goBack()}
             style={[styles.backBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            activeOpacity={0.7}
           >
             <ChevronLeft size={20} color={t.textPrimary} />
           </TouchableOpacity>
-          <View>
+          <View style={styles.headerTitleContainer}>
             <View style={styles.badgeRow}>
               <View style={styles.pulseDot} />
               <Text style={styles.badgeText}>S-PAY ADMIN</Text>
             </View>
-            <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Expenses & Cash Master</Text>
+            <Text style={[styles.headerTitle, { color: t.textPrimary }]} numberOfLines={1}>
+              Expenses & Cash Master
+            </Text>
           </View>
         </View>
 
@@ -912,6 +898,8 @@ export default function AdminExpensesScreen() {
             style={[styles.headerActionBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
             onPress={() => setShowExportCsvModal(true)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Export CSV"
           >
             <FileSpreadsheet size={16} color={t.textPrimary} />
           </TouchableOpacity>
@@ -919,6 +907,8 @@ export default function AdminExpensesScreen() {
             style={[styles.headerActionBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
             onPress={() => setShowConfig(true)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
           >
             <Settings size={16} color={t.textPrimary} />
           </TouchableOpacity>
@@ -926,6 +916,8 @@ export default function AdminExpensesScreen() {
             style={[styles.headerActionBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
             onPress={onRefresh}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
           >
             <RefreshCw size={16} color={t.textPrimary} />
           </TouchableOpacity>
@@ -933,6 +925,8 @@ export default function AdminExpensesScreen() {
             style={[styles.headerActionBtn, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}
             onPress={toggleTheme}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle Theme"
           >
             <Sparkles size={16} color="#fbbf24" />
           </TouchableOpacity>
@@ -963,10 +957,10 @@ export default function AdminExpensesScreen() {
               <Wallet size={14} color="#10b981" />
             </View>
             <Text style={[styles.statCapsuleValue, { color: t.textPrimary }]}>
-              ₱{data.balances.totalLiquidCash.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₱{(data.balances?.totalLiquidCash ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.statCapsuleSub, { color: t.textSecondary }]}>
-              BDO: ₱{(data.balances.bdoBalance || data.balances.bankBalance).toLocaleString()} • MariBank: ₱{(data.balances.maribankBalance || 0).toLocaleString()}
+              BDO: ₱{(data.balances?.bdoBalance || data.balances?.bankBalance || 0).toLocaleString()} • MariBank: ₱{(data.balances?.maribankBalance || 0).toLocaleString()}
             </Text>
           </View>
 
@@ -977,10 +971,10 @@ export default function AdminExpensesScreen() {
               <CreditCard size={14} color="#ee4d2d" />
             </View>
             <Text style={[styles.statCapsuleValue, { color: '#ee4d2d' }]}>
-              ₱{data.billsSummary.spayTotalUnpaid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₱{(data.billsSummary?.spayTotalUnpaid ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.statCapsuleSub, { color: t.textSecondary }]}>
-              {data.billsSummary.spayCreditUtilizationPct}% of ₱{data.billsSummary.spayCreditLimit.toLocaleString()} Limit
+              {data.billsSummary?.spayCreditUtilizationPct ?? 0}% of ₱{(data.billsSummary?.spayCreditLimit ?? 50000).toLocaleString()} Limit
             </Text>
           </View>
 
@@ -991,10 +985,10 @@ export default function AdminExpensesScreen() {
               <CreditCard size={14} color="#f59e0b" />
             </View>
             <Text style={[styles.statCapsuleValue, { color: '#f59e0b' }]}>
-              ₱{data.billsSummary.atomeTotalUnpaid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₱{(data.billsSummary?.atomeTotalUnpaid ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.statCapsuleSub, { color: t.textSecondary }]}>
-              {data.billsSummary.creditUtilizationPct}% of ₱{data.billsSummary.atomeCreditLimit.toLocaleString()} Limit
+              {data.billsSummary?.creditUtilizationPct ?? 0}% of ₱{(data.billsSummary?.atomeCreditLimit ?? 30000).toLocaleString()} Limit
             </Text>
           </View>
 
@@ -1021,50 +1015,82 @@ export default function AdminExpensesScreen() {
               <PiggyBank size={14} color="#10b981" />
             </View>
             <Text style={[styles.statCapsuleValue, { color: '#10b981' }]}>
-              ₱{data.balances.totalIponSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              ₱{(data.balances?.totalIponSavings ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.statCapsuleSub, { color: t.textSecondary }]}>
-              Safe Cash: ₱{(data.balances.iponSavingsBySource?.CASH || 0).toLocaleString()} • Vault: ₱{(data.balances.iponSavingsBySource?.MARIBANK || 0).toLocaleString()}
+              Safe Cash: ₱{(data.balances?.iponSavingsBySource?.CASH || 0).toLocaleString()} • Vault: ₱{(data.balances?.iponSavingsBySource?.MARIBANK || 0).toLocaleString()}
             </Text>
           </View>
         </ScrollView>
 
-        {/* 2. 3D FLIP CARD COUNTDOWN TIMER */}
-        <View style={[styles.heroCountdownCard, { backgroundColor: t.surface, borderColor: t.border }]}>
-          <View style={styles.countdownTitleRow}>
-            <Clock size={16} color={heroCountdown.isOverdue ? '#ef4444' : '#ee4d2d'} />
-            <Text style={[styles.countdownHeaderLabel, { color: heroCountdown.isOverdue ? '#ef4444' : t.textSecondary }]}>
-              {heroCountdown.isOverdue ? 'PAYMENT DEADLINE OVERDUE' : (heroCountdown.title || 'PAYDAY COUNTDOWN')}
-            </Text>
+        {/* 2. COUNTDOWN TIMER */}
+        <View style={[styles.scheduleCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+          <View style={styles.scheduleHeader}>
+            <View style={[styles.scheduleTitleRow, { flex: 1 }]}>
+              <Calendar size={18} color={t.primary} />
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text style={[styles.scheduleTitle, { color: t.textPrimary, flexShrink: 1 }]} numberOfLines={1}>
+                    {nextTarget.title || 'Billing Cycle Overview'}
+                  </Text>
+                </View>
+                <Text style={styles.scheduleSubtitleText} numberOfLines={1}>
+                  {nextTarget.formattedDate ? `Earliest due on ${nextTarget.formattedDate}` : 'No Billing Target'}
+                </Text>
+              </View>
+            </View>
           </View>
 
-          <View style={styles.flipCardsRow}>
-            <ExpenseFlipCard value={heroCountdown.days} label="DAYS" />
-            <View style={styles.colonSeparator}>
-              <View style={[styles.colonDot, { backgroundColor: t.textMuted }]} />
-              <View style={[styles.colonDot, { backgroundColor: t.textMuted }]} />
+          {/* Countdown timer layout */}
+          <View style={[
+            styles.countdownCardBody,
+            {
+              backgroundColor: isDarkMode ? 'rgba(22, 28, 42, 0.35)' : 'rgba(148, 163, 184, 0.12)',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+            }
+          ]}>
+            {/* Left section: Countdown Clock */}
+            <View style={styles.countdownLeftSection}>
+              <CountdownTimer targetDate={nextTarget.date} parseDateFn={parseUtcDate}>
+                {(tLeft) => (
+                  <>
+                    <View style={styles.flipClockRow}>
+                      {tLeft.hasTarget ? (
+                        <>
+                          <FlipCard value={tLeft.days} label="Days" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={tLeft.hours} label="Hours" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={tLeft.minutes} label="Min" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={tLeft.seconds} label="Sec" />
+                        </>
+                      ) : (
+                        <>
+                          <FlipCard value={0} label="Days" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={0} label="Hours" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={0} label="Min" />
+                          <Text style={[styles.countdownSeparator, { color: t.textSecondary }]}>:</Text>
+                          <FlipCard value={0} label="Sec" />
+                        </>
+                      )}
+                    </View>
+                    <View style={styles.countdownStatusRow}>
+                      <Clock size={12} color={t.primary} />
+                      <Text style={[styles.countdownStatusText, { color: t.primary }]}>
+                        {!tLeft.hasTarget
+                          ? 'No payments scheduled'
+                          : tLeft.isOverdue
+                            ? 'DEADLINE HAS PASSED'
+                            : `Time Remaining Until ${nextTarget.formattedDate ? nextTarget.formattedDate : ''}`}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </CountdownTimer>
             </View>
-            <ExpenseFlipCard value={heroCountdown.hours} label="HOURS" />
-            <View style={styles.colonSeparator}>
-              <View style={[styles.colonDot, { backgroundColor: t.textMuted }]} />
-              <View style={[styles.colonDot, { backgroundColor: t.textMuted }]} />
-            </View>
-            <ExpenseFlipCard value={heroCountdown.minutes} label="MINS" />
-            <View style={styles.colonSeparator}>
-              <View style={[styles.colonDot, { backgroundColor: t.textMuted }]} />
-              <View style={[styles.colonDot, { backgroundColor: t.textMuted }]} />
-            </View>
-            <ExpenseFlipCard value={heroCountdown.seconds} label="SECS" isSecs />
-          </View>
-
-          <View style={styles.countdownFooterRow}>
-            <View style={[styles.inflowPill, { backgroundColor: isDarkMode ? '#1a2920' : '#e6f4ea' }]}>
-              <Sparkles size={12} color="#10b981" />
-              <Text style={styles.inflowPillText}>+₱{data.payday.expectedPaydayIncome.toLocaleString()} Salary Inflow</Text>
-            </View>
-            <Text style={[styles.runwayText, { color: t.textMuted }]}>
-              Runway: <Text style={{ color: t.textPrimary, fontFamily: 'Jakarta-Bold' }}>{data.insights.cashRunwayDays} Days</Text>
-            </Text>
           </View>
         </View>
 
@@ -1074,7 +1100,7 @@ export default function AdminExpensesScreen() {
             <View>
               <Text style={[styles.cashBannerSub, { color: t.textMuted }]}>LIQUID CASH ON HAND</Text>
               <Text style={[styles.cashBannerMain, { color: t.textPrimary }]}>
-                ₱{data.balances.cashOnHand.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                ₱{(data.balances?.cashOnHand ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </Text>
             </View>
             <View style={styles.cashBannerActions}>
@@ -1125,7 +1151,7 @@ export default function AdminExpensesScreen() {
         {/* 4. DIGITAL WALLET CARDS CAROUSEL / DECK */}
         <View style={[styles.walletDeckContainer, { backgroundColor: t.surface, borderColor: t.border }]}>
           <View style={styles.deckHeader}>
-            <View>
+            <View style={{ flex: 1, marginRight: 8 }}>
               <Text style={[styles.deckTitle, { color: t.textPrimary }]}>Digital Wallet Collection</Text>
               <Text style={[styles.deckSubtitle, { color: t.textMuted }]}>Interactive holding cards & payment channels</Text>
             </View>
@@ -1146,11 +1172,14 @@ export default function AdminExpensesScreen() {
           {/* Swipeable Card Carousel */}
           <ScrollView
             horizontal
-            pagingEnabled
             showsHorizontalScrollIndicator={false}
+            snapToInterval={SCREEN_WIDTH - 64 + 12}
+            decelerationRate="fast"
+            snapToAlignment="center"
             onMomentumScrollEnd={(e) => {
-              const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48));
-              setActiveWalletCardIndex(idx);
+              const cardFullWidth = SCREEN_WIDTH - 64 + 12;
+              const idx = Math.round(e.nativeEvent.contentOffset.x / cardFullWidth);
+              setActiveWalletCardIndex(Math.max(0, Math.min(idx, walletCards.length - 1)));
             }}
             contentContainerStyle={styles.cardsScrollView}
           >
@@ -1159,7 +1188,7 @@ export default function AdminExpensesScreen() {
                 key={c.id}
                 style={[
                   styles.walletCardFrame,
-                  { backgroundColor: c.bgColor, width: SCREEN_WIDTH - 56 },
+                  { backgroundColor: c.bgColor, width: SCREEN_WIDTH - 64 },
                 ]}
               >
                 {/* Chip & Role Badge */}
@@ -2391,13 +2420,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
   },
   headerLeft: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    minWidth: 0,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    minWidth: 0,
   },
   backBtn: {
     width: 36,
@@ -2405,11 +2441,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginBottom: 2,
   },
   pulseDot: {
     width: 6,
@@ -2421,10 +2459,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'Jakarta-Bold',
     color: '#ee4d2d',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: 'Jakarta-Bold',
     letterSpacing: -0.2,
   },
@@ -2432,6 +2470,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
   },
   headerActionBtn: {
     width: 34,
@@ -2439,6 +2478,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   scroll: {
     flex: 1,
@@ -2453,9 +2493,9 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   statCapsule: {
-    width: 170,
+    width: 175,
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
   },
   statCapsuleHeader: {
@@ -2473,132 +2513,146 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Jakarta-Bold',
     marginBottom: 4,
+    fontVariant: ['tabular-nums'],
   },
   statCapsuleSub: {
     fontSize: 10,
     fontFamily: 'Jakarta-Medium',
   },
-  // 2. 3D Flip Card Hero
-  heroCountdownCard: {
+  // 2. Countdown Card & Flip Digits (Identical to Admin Dashboard)
+  scheduleCard: {
+    borderRadius: 20,
+    borderWidth: 1.5,
     padding: 16,
-    borderRadius: 24,
-    borderWidth: 1,
+    gap: 16,
+  },
+  scheduleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  countdownTitleRow: {
+  scheduleTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 14,
+    gap: 12,
   },
-  countdownHeaderLabel: {
+  scheduleTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  scheduleSubtitleText: {
     fontSize: 11,
-    fontFamily: 'Jakarta-Bold',
-    letterSpacing: 1,
+    color: '#ee4d2d',
+    fontWeight: '600',
+    marginTop: 1,
   },
-  flipCardsRow: {
-    flexDirection: 'row',
+  countdownCardBody: {
+    backgroundColor: 'rgba(22, 28, 42, 0.35)',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+  },
+  countdownLeftSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 12,
   },
-  flipCardWrapper: {
+  flipClockRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
-  flipCardContainer: {
+  countdownSeparator: {
+    fontSize: 20,
+    fontFamily: 'Outfit-Bold',
+    paddingBottom: 15,
+  },
+  flipCardCol: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  flipCard: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  flipCardOuter: {
     width: 48,
-    height: 60,
+    height: 52,
     borderRadius: 10,
-    overflow: 'hidden',
     borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  flipHalf: {
+  topHalfContainer: {
+    height: 26,
+    overflow: 'hidden',
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    justifyContent: 'flex-start',
+  },
+  bottomHalfContainer: {
+    height: 26,
+    overflow: 'hidden',
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    justifyContent: 'flex-end',
+  },
+  topText: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    textAlign: 'center',
+    height: 52,
+    lineHeight: 52,
+  },
+  bottomText: {
+    fontSize: 22,
+    fontFamily: 'Outfit-Bold',
+    textAlign: 'center',
+    height: 52,
+    lineHeight: 52,
+    marginTop: -26,
+  },
+  flapAnimated: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 30,
-    overflow: 'hidden',
-    alignItems: 'center',
+    height: 26,
+    backfaceVisibility: 'hidden',
   },
-  flipHalfTop: {
-    top: 0,
-    justifyContent: 'flex-end',
-  },
-  flipHalfBottom: {
-    bottom: 0,
-    justifyContent: 'flex-start',
-  },
-  flipFlap: {
-    zIndex: 10,
-  },
-  flipDigitText: {
-    fontSize: 26,
-    fontFamily: 'Jakarta-Bold',
-    lineHeight: 30,
-  },
-  flipDigitTop: {
-    transform: [{ translateY: 15 }],
-  },
-  flipDigitBottom: {
-    transform: [{ translateY: -15 }],
-  },
-  flipDividerLine: {
+  flipCardDivider: {
     position: 'absolute',
-    top: 29.5,
+    top: 26,
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 20,
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  flipLabelText: {
-    fontSize: 8,
-    fontFamily: 'Jakarta-Bold',
+  flipCardLabel: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  countdownStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  countdownStatusText: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
     letterSpacing: 1,
-  },
-  colonSeparator: {
-    height: 60,
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 2,
-  },
-  colonDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-  },
-  countdownFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(150,150,150,0.15)',
-  },
-  inflowPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  inflowPillText: {
-    fontSize: 10,
-    fontFamily: 'Jakarta-Bold',
-    color: '#10b981',
-  },
-  runwayText: {
-    fontSize: 11,
-    fontFamily: 'Jakarta-Medium',
   },
   // 3. Cash on Hand Banner & Micro Adjust
   cashOnHandBanner: {
     padding: 16,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
   },
   cashBannerTopRow: {
@@ -2617,6 +2671,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Bold',
     letterSpacing: -0.5,
     marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
   cashBannerActions: {
     flexDirection: 'row',

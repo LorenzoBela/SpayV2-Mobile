@@ -15,8 +15,9 @@ import {
   Animated as RNAnimated,
   Easing,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
@@ -280,6 +281,8 @@ export default function AdminSalaryScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
+  const scrollHandler = useTabBarScroll();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -458,24 +461,20 @@ export default function AdminSalaryScreen() {
 
   const theme = {
     bg: isDarkMode ? '#000000' : '#f8fafc',
-    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
-    cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
+    cardBg: isDarkMode ? '#0f172a' : '#ffffff',
+    cardBorder: isDarkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
     headerBg: isDarkMode ? '#000000' : '#ffffff',
-    headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
+    headerBorder: isDarkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0',
+    surfaceSubtle: isDarkMode ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+    neutralIconBox: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     textMuted: isDarkMode ? '#64748b' : '#94a3b8',
     accent: '#ee4d2d',
-    accentLight: 'rgba(238, 77, 45, 0.08)',
+    accentLight: 'rgba(238, 77, 45, 0.12)',
     emerald: '#10b981',
-    emeraldLight: 'rgba(16, 185, 129, 0.1)',
-    blue: '#3b82f6',
-    blueLight: 'rgba(59, 130, 246, 0.1)',
-    amber: '#f59e0b',
-    amberLight: 'rgba(245, 158, 11, 0.1)',
-    purple: '#8b5cf6',
-    purpleLight: 'rgba(139, 92, 246, 0.1)',
-    modalOverlay: 'rgba(0, 0, 0, 0.65)',
+    emeraldLight: 'rgba(16, 185, 129, 0.12)',
+    modalOverlay: 'rgba(0, 0, 0, 0.7)',
   };
 
   if (loading) {
@@ -527,7 +526,13 @@ export default function AdminSalaryScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          layout.scrollContentStyle,
+          { paddingBottom: insets.bottom + 110 },
+        ]}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -639,68 +644,68 @@ export default function AdminSalaryScreen() {
         <View style={styles.summaryPillRow}>
           {/* Card 1: Total Net Received */}
           <View style={[styles.pillCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <View style={[styles.pillIconBox, { backgroundColor: theme.emeraldLight }]}>
-              <PiggyBank size={18} color={theme.emerald} />
+            <View style={[styles.pillIconBox, { backgroundColor: theme.neutralIconBox }]}>
+              <PiggyBank size={16} color={theme.emerald} />
             </View>
             <Text style={[styles.pillLabel, { color: theme.textSecondary }]}>Total Net Received</Text>
-            <Text style={[styles.pillValue, { color: theme.emerald }]}>
+            <Text style={[styles.pillValue, { color: theme.textPrimary }]}>
               {formatCurrency(salaryData?.totalEarnedLifetime || 0)}
             </Text>
             <Text style={[styles.pillSubtext, { color: theme.textMuted }]}>
-              {salaryData?.confirmedPaychecks?.length || 0} Confirmed Paychecks
+              {salaryData?.confirmedPaychecks?.length || 0} Confirmed
             </Text>
           </View>
 
           {/* Card 2: BIR Tax Paid */}
           <View style={[styles.pillCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <View style={[styles.pillIconBox, { backgroundColor: theme.amberLight }]}>
-              <FileText size={18} color={theme.amber} />
+            <View style={[styles.pillIconBox, { backgroundColor: theme.neutralIconBox }]}>
+              <FileText size={16} color={theme.textSecondary} />
             </View>
             <Text style={[styles.pillLabel, { color: theme.textSecondary }]}>BIR Tax Paid</Text>
-            <Text style={[styles.pillValue, { color: theme.amber }]}>
+            <Text style={[styles.pillValue, { color: theme.textPrimary }]}>
               {formatCurrency(salaryData?.totalTaxPaidLifetime || 0)}
             </Text>
             <Text style={[styles.pillSubtext, { color: theme.textMuted }]}>
-              TRAIN Law Withholding
+              TRAIN Law
             </Text>
           </View>
 
           {/* Card 3: Statutory Paid */}
           <View style={[styles.pillCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            <View style={[styles.pillIconBox, { backgroundColor: theme.purpleLight }]}>
-              <ShieldCheck size={18} color={theme.purple} />
+            <View style={[styles.pillIconBox, { backgroundColor: theme.neutralIconBox }]}>
+              <ShieldCheck size={16} color={theme.textSecondary} />
             </View>
             <Text style={[styles.pillLabel, { color: theme.textSecondary }]}>Statutory Paid</Text>
-            <Text style={[styles.pillValue, { color: theme.purple }]}>
+            <Text style={[styles.pillValue, { color: theme.textPrimary }]}>
               {formatCurrency(salaryData?.totalStatutoryPaidLifetime || 0)}
             </Text>
             <Text style={[styles.pillSubtext, { color: theme.textMuted }]}>
-              SSS, PhilHealth, Pag-IBIG
+              SSS, PhilH, Pag-IBIG
             </Text>
           </View>
         </View>
 
         {/* 3. PENDING PAYCHECK CONFIRMATION CARD / MODAL */}
         {salaryData?.pendingPaychecks && salaryData.pendingPaychecks.length > 0 && (
-          <View style={[styles.sectionCard, styles.pendingAlertCard, { backgroundColor: theme.cardBg, borderColor: '#f59e0b' }]}>
+          <View style={[styles.sectionCard, styles.pendingAlertCard, { backgroundColor: theme.cardBg, borderColor: theme.accent }]}>
             <View style={styles.sectionHeaderRow}>
               <View style={styles.titleWithIcon}>
-                <View style={[styles.sectionIconBox, { backgroundColor: theme.amberLight }]}>
-                  <AlertCircle size={20} color={theme.amber} />
+                <View style={[styles.sectionIconBox, { backgroundColor: theme.neutralIconBox }]}>
+                  <AlertCircle size={18} color={theme.accent} />
                 </View>
                 <View>
                   <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
                     Pending Paycheck Confirmation ({salaryData.pendingPaychecks.length})
                   </Text>
                   <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>
-                    Confirm received salary and enter any absence/late deductions
+                    Confirm received salary and enter any deductions
                   </Text>
                 </View>
               </View>
             </View>
 
             {salaryData.pendingPaychecks.map((check: SalaryPaycheckRecord) => (
-              <View key={check.id} style={[styles.pendingCheckItem, { backgroundColor: isDarkMode ? '#1e293b' : '#fffbe6', borderColor: '#fde68a' }]}>
+              <View key={check.id} style={[styles.pendingCheckItem, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
                 <View style={styles.pendingCheckLeft}>
                   <Text style={[styles.pendingPeriodLabel, { color: theme.textPrimary }]}>
                     {check.periodLabel}
@@ -731,8 +736,8 @@ export default function AdminSalaryScreen() {
         <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.titleWithIcon}>
-              <View style={[styles.sectionIconBox, { backgroundColor: theme.blueLight }]}>
-                <Briefcase size={20} color={theme.blue} />
+              <View style={[styles.sectionIconBox, { backgroundColor: theme.neutralIconBox }]}>
+                <Briefcase size={18} color={theme.textPrimary} />
               </View>
               <View style={{ flex: 1, marginRight: 6 }}>
                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -744,12 +749,12 @@ export default function AdminSalaryScreen() {
               </View>
             </View>
             <TouchableOpacity
-              style={[styles.smallAddBtn, { backgroundColor: theme.accentLight }]}
+              style={[styles.smallAddBtn, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}
               onPress={handleOpenJobModal}
               activeOpacity={0.7}
             >
-              <PlusCircle size={14} color={theme.accent} />
-              <Text style={[styles.smallAddBtnText, { color: theme.accent }]}>Log Role</Text>
+              <PlusCircle size={14} color={theme.textPrimary} />
+              <Text style={[styles.smallAddBtnText, { color: theme.textPrimary }]}>Log Role</Text>
             </TouchableOpacity>
           </View>
 
@@ -771,12 +776,12 @@ export default function AdminSalaryScreen() {
                         <View style={[styles.timelineLine, { backgroundColor: theme.cardBorder }]} />
                       )}
                     </View>
-                    <View style={[styles.timelineContentCard, { backgroundColor: isDarkMode ? '#1a2234' : '#f8fafc', borderColor: theme.cardBorder }]}>
+                    <View style={[styles.timelineContentCard, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
                       <View style={styles.timelineHeaderRow}>
                         <Text style={[styles.timelineJobTitle, { color: theme.textPrimary }]}>
                           {item.jobTitle}
                         </Text>
-                        <View style={[styles.timelineBadge, { backgroundColor: isPresent ? theme.accentLight : 'rgba(148, 163, 184, 0.15)' }]}>
+                        <View style={[styles.timelineBadge, { backgroundColor: theme.neutralIconBox }]}>
                           <Text style={[styles.timelineBadgeText, { color: isPresent ? theme.accent : theme.textMuted }]}>
                             {isPresent ? 'ACTIVE POSITION' : 'PAST POSITION'}
                           </Text>
@@ -787,7 +792,7 @@ export default function AdminSalaryScreen() {
                       </Text>
                       <View style={styles.timelineSalaryRow}>
                         <Text style={[styles.timelineSalaryLabel, { color: theme.textMuted }]}>Base Salary:</Text>
-                        <Text style={[styles.timelineSalaryVal, { color: theme.emerald }]}>
+                        <Text style={[styles.timelineSalaryVal, { color: theme.textPrimary }]}>
                           {formatCurrency(item.baseSalary)} / mo
                         </Text>
                       </View>
@@ -798,9 +803,9 @@ export default function AdminSalaryScreen() {
                         </Text>
                       </View>
                       {item.promotionNote ? (
-                        <View style={[styles.promotionNoteBox, { backgroundColor: theme.blueLight }]}>
-                          <Award size={12} color={theme.blue} />
-                          <Text style={[styles.promotionNoteText, { color: theme.blue }]}>
+                        <View style={[styles.promotionNoteBox, { backgroundColor: theme.neutralIconBox }]}>
+                          <Award size={12} color={theme.textSecondary} />
+                          <Text style={[styles.promotionNoteText, { color: theme.textSecondary }]}>
                             "{item.promotionNote}"
                           </Text>
                         </View>
@@ -819,8 +824,8 @@ export default function AdminSalaryScreen() {
         <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.titleWithIcon}>
-              <View style={[styles.sectionIconBox, { backgroundColor: theme.purpleLight }]}>
-                <Calculator size={20} color={theme.purple} />
+              <View style={[styles.sectionIconBox, { backgroundColor: theme.neutralIconBox }]}>
+                <Calculator size={18} color={theme.textPrimary} />
               </View>
               <View style={{ flex: 1, marginRight: 6 }}>
                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -831,14 +836,14 @@ export default function AdminSalaryScreen() {
                 </Text>
               </View>
             </View>
-            <View style={[styles.taxRateBadge, { backgroundColor: theme.purpleLight }]}>
-              <Text style={[styles.taxRateBadgeText, { color: theme.purple }]}>
+            <View style={[styles.taxRateBadge, { backgroundColor: theme.neutralIconBox }]}>
+              <Text style={[styles.taxRateBadgeText, { color: theme.textSecondary }]}>
                 Eff. {tax?.effectiveTaxRate || 0}%
               </Text>
             </View>
           </View>
 
-          <View style={[styles.grossHeaderBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+          <View style={[styles.grossHeaderBox, { backgroundColor: theme.surfaceSubtle }]}>
             <Text style={[styles.grossHeaderLabel, { color: theme.textSecondary }]}>Base Monthly Gross Salary</Text>
             <Text style={[styles.grossHeaderVal, { color: theme.textPrimary }]}>
               {formatCurrency(tax?.grossMonthly || 0)}
@@ -860,8 +865,8 @@ export default function AdminSalaryScreen() {
               <Text style={[styles.tableVal, { color: theme.textPrimary }]}>-{formatCurrency(tax?.pagibig || 0)}</Text>
             </View>
             <View style={[styles.tableRow, styles.subtotalRow, { borderTopColor: theme.cardBorder }]}>
-              <Text style={[styles.subtotalLabel, { color: theme.purple }]}>Total Statutory Deductions</Text>
-              <Text style={[styles.subtotalVal, { color: theme.purple }]}>-{formatCurrency(tax?.totalStatutory || 0)}</Text>
+              <Text style={[styles.subtotalLabel, { color: theme.textPrimary }]}>Total Statutory Deductions</Text>
+              <Text style={[styles.subtotalVal, { color: theme.textPrimary }]}>-{formatCurrency(tax?.totalStatutory || 0)}</Text>
             </View>
 
             <View style={styles.tableRow}>
@@ -870,7 +875,7 @@ export default function AdminSalaryScreen() {
             </View>
             <View style={styles.tableRow}>
               <Text style={[styles.tableLabel, { color: theme.textSecondary }]}>BIR TRAIN Law Withholding Tax</Text>
-              <Text style={[styles.tableVal, { color: theme.amber }]}>-{formatCurrency(tax?.withholdingTax || 0)}</Text>
+              <Text style={[styles.tableVal, { color: theme.textPrimary }]}>-{formatCurrency(tax?.withholdingTax || 0)}</Text>
             </View>
 
             <View style={[styles.tableRow, styles.totalRow, { borderTopColor: theme.cardBorder }]}>
@@ -886,16 +891,16 @@ export default function AdminSalaryScreen() {
             </View>
 
             <View style={styles.paycheckPairRow}>
-              <View style={[styles.paycheckPairBox, { backgroundColor: theme.emeraldLight }]}>
-                <Text style={[styles.paycheckPairLabel, { color: theme.emerald }]}>
+              <View style={[styles.paycheckPairBox, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
+                <Text style={[styles.paycheckPairLabel, { color: theme.textSecondary }]}>
                   {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '15th Paycheck' : '10th Paycheck'}
                 </Text>
                 <Text style={[styles.paycheckPairVal, { color: theme.emerald }]}>
                   {formatCurrency(tax?.paycheck10th || 0)}
                 </Text>
               </View>
-              <View style={[styles.paycheckPairBox, { backgroundColor: theme.emeraldLight }]}>
-                <Text style={[styles.paycheckPairLabel, { color: theme.emerald }]}>
+              <View style={[styles.paycheckPairBox, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
+                <Text style={[styles.paycheckPairLabel, { color: theme.textSecondary }]}>
                   {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '30th Paycheck' : '25th Paycheck'}
                 </Text>
                 <Text style={[styles.paycheckPairVal, { color: theme.emerald }]}>
@@ -910,8 +915,8 @@ export default function AdminSalaryScreen() {
         <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.titleWithIcon}>
-              <View style={[styles.sectionIconBox, { backgroundColor: theme.amberLight }]}>
-                <Award size={20} color={theme.amber} />
+              <View style={[styles.sectionIconBox, { backgroundColor: theme.neutralIconBox }]}>
+                <Award size={18} color={theme.textPrimary} />
               </View>
               <View style={{ flex: 1, marginRight: 6 }}>
                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -922,16 +927,16 @@ export default function AdminSalaryScreen() {
                 </Text>
               </View>
             </View>
-            <View style={[styles.taxExemptBadge, { backgroundColor: theme.amberLight }]}>
-              <Percent size={12} color={theme.amber} />
-              <Text style={[styles.taxExemptBadgeText, { color: theme.amber }]}>
+            <View style={[styles.taxExemptBadge, { backgroundColor: theme.neutralIconBox }]}>
+              <Percent size={12} color={theme.textSecondary} />
+              <Text style={[styles.taxExemptBadgeText, { color: theme.textSecondary }]}>
                 {bonus?.proratedPercentage || 0}% Rate
               </Text>
             </View>
           </View>
 
           <View style={styles.bonusGrid}>
-            <View style={[styles.bonusGridBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' }]}>
+            <View style={[styles.bonusGridBox, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
               <Text style={[styles.bonusGridLabel, { color: theme.textMuted }]}>Tenure Window</Text>
               <Text style={[styles.bonusGridVal, { color: theme.textPrimary }]}>
                 {bonus?.monthsWorked || 0} Mos ({bonus?.daysWorked || 0} Days)
@@ -940,7 +945,7 @@ export default function AdminSalaryScreen() {
                 Earned: {formatCurrency(bonus?.totalEarnedInYear || 0)}
               </Text>
             </View>
-            <View style={[styles.bonusGridBox, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc' }]}>
+            <View style={[styles.bonusGridBox, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
               <Text style={[styles.bonusGridLabel, { color: theme.textMuted }]}>Gross 13th Month</Text>
               <Text style={[styles.bonusGridVal, { color: theme.emerald }]}>
                 {formatCurrency(bonus?.gross13thMonthPay || 0)}
@@ -950,13 +955,9 @@ export default function AdminSalaryScreen() {
           </View>
 
           {/* Tax Exemption Banner */}
-          <View style={[styles.bonusNoteBox, { backgroundColor: bonus?.isFullyTaxExempt ? theme.emeraldLight : theme.amberLight, borderColor: bonus?.isFullyTaxExempt ? theme.emerald : theme.amber }]}>
-            {bonus?.isFullyTaxExempt ? (
-              <ShieldCheck size={16} color={theme.emerald} />
-            ) : (
-              <AlertCircle size={16} color={theme.amber} />
-            )}
-            <Text style={[styles.bonusNoteText, { color: bonus?.isFullyTaxExempt ? theme.emerald : theme.amber }]}>
+          <View style={[styles.bonusNoteBox, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
+            <ShieldCheck size={16} color={bonus?.isFullyTaxExempt ? theme.emerald : theme.accent} />
+            <Text style={[styles.bonusNoteText, { color: theme.textPrimary }]}>
               {bonus?.isFullyTaxExempt
                 ? '100% Tax Exempt (Below ₱90,000 Cap)'
                 : `₱${(bonus?.taxable13thMonthAmount || 0).toLocaleString()} Taxable over ₱90k (Est. Tax: -${formatCurrency(bonus?.estimated13thMonthTax || 0)})`}
@@ -964,10 +965,10 @@ export default function AdminSalaryScreen() {
           </View>
 
           {/* Final Net 13th Month Bonus */}
-          <View style={[styles.net13thMonthBox, { backgroundColor: theme.accentLight }]}>
+          <View style={[styles.net13thMonthBox, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
             <View>
-              <Text style={[styles.net13thMonthLabel, { color: theme.accent }]}>Net 13th Month Bonus Payout</Text>
-              <Text style={[styles.net13thMonthVal, { color: theme.accent }]}>
+              <Text style={[styles.net13thMonthLabel, { color: theme.textSecondary }]}>Net 13th Month Bonus Payout</Text>
+              <Text style={[styles.net13thMonthVal, { color: theme.textPrimary }]}>
                 {formatCurrency(bonus?.net13thMonthPay || 0)}
               </Text>
             </View>
@@ -985,8 +986,8 @@ export default function AdminSalaryScreen() {
         <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.titleWithIcon}>
-              <View style={[styles.sectionIconBox, { backgroundColor: theme.blueLight }]}>
-                <CalendarClock size={20} color={theme.blue} />
+              <View style={[styles.sectionIconBox, { backgroundColor: theme.neutralIconBox }]}>
+                <CalendarClock size={18} color={theme.textPrimary} />
               </View>
               <View style={{ flex: 1, marginRight: 6 }}>
                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -997,8 +998,8 @@ export default function AdminSalaryScreen() {
                 </Text>
               </View>
             </View>
-            <View style={[styles.scheduleBadge, { backgroundColor: theme.accentLight }]}>
-              <Text style={[styles.scheduleBadgeText, { color: theme.accent }]}>
+            <View style={[styles.scheduleBadge, { backgroundColor: theme.neutralIconBox }]}>
+              <Text style={[styles.scheduleBadgeText, { color: theme.textSecondary }]}>
                 {salaryData?.frequency === 'SEMI_MONTHLY_15_30' ? '15th & 30th Payroll' : '10th & 25th Payroll'}
               </Text>
             </View>
@@ -1011,7 +1012,7 @@ export default function AdminSalaryScreen() {
             </View>
             <View style={styles.cutoffRow}>
               <Text style={[styles.cutoffLabel, { color: theme.textSecondary }]}>First Payday Date</Text>
-              <Text style={[styles.cutoffVal, { color: theme.blue }]}>{cutoff?.firstPaydayLabel || 'N/A'}</Text>
+              <Text style={[styles.cutoffVal, { color: theme.textPrimary }]}>{cutoff?.firstPaydayLabel || 'N/A'}</Text>
             </View>
             <View style={styles.cutoffRow}>
               <Text style={[styles.cutoffLabel, { color: theme.textSecondary }]}>Cut-Off Period Worked</Text>
@@ -1019,11 +1020,11 @@ export default function AdminSalaryScreen() {
             </View>
             <View style={styles.cutoffRow}>
               <Text style={[styles.cutoffLabel, { color: theme.textSecondary }]}>First Paycheck Status</Text>
-              <Text style={[styles.cutoffVal, { color: cutoff?.isFirstPaydayProrated ? theme.amber : theme.emerald }]}>
+              <Text style={[styles.cutoffVal, { color: cutoff?.isFirstPaydayProrated ? theme.accent : theme.emerald }]}>
                 {cutoff?.isFirstPaydayProrated ? 'Pro-Rated (Started Mid-Cutoff)' : 'Full Semi-Monthly Cut-Off'}
               </Text>
             </View>
-            <View style={[styles.cutoffRow, styles.cutoffHighlightRow, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
+            <View style={[styles.cutoffRow, styles.cutoffHighlightRow, { backgroundColor: theme.surfaceSubtle, borderColor: theme.cardBorder }]}>
               <Text style={[styles.cutoffLabel, { color: theme.textPrimary, fontWeight: 'bold' }]}>Est. First Net Paycheck</Text>
               <Text style={[styles.cutoffVal, { color: theme.emerald, fontSize: 14 }]}>
                 {formatCurrency(cutoff?.proratedFirstPaycheck || 0)}
@@ -1041,8 +1042,8 @@ export default function AdminSalaryScreen() {
         <View style={[styles.sectionCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }, styles.marginBottom]}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.titleWithIcon}>
-              <View style={[styles.sectionIconBox, { backgroundColor: theme.emeraldLight }]}>
-                <Receipt size={20} color={theme.emerald} />
+              <View style={[styles.sectionIconBox, { backgroundColor: theme.neutralIconBox }]}>
+                <Receipt size={18} color={theme.textPrimary} />
               </View>
               <View style={{ flex: 1, marginRight: 6 }}>
                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]} numberOfLines={1}>
@@ -1513,7 +1514,7 @@ export default function AdminSalaryScreen() {
 
                 <View style={styles.payslipLineRow}>
                   <Text style={[styles.payslipLineLabel, { color: theme.textSecondary }]}>BIR Withholding Tax</Text>
-                  <Text style={[styles.payslipLineVal, { color: theme.amber }]}>
+                  <Text style={[styles.payslipLineVal, { color: theme.textPrimary }]}>
                     -{formatCurrency(selectedPayslip.taxDeducted || (tax?.withholdingTax ? tax.withholdingTax / 2 : 0))}
                   </Text>
                 </View>
@@ -1613,10 +1614,10 @@ const styles = StyleSheet.create({
 
   /* Hero Card & Flip Digits */
   heroCard: {
-    borderRadius: 22,
-    borderWidth: 1.5,
+    borderRadius: 20,
+    borderWidth: 1,
     padding: 18,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   heroHeaderRow: {
     flexDirection: 'row',
@@ -1627,14 +1628,14 @@ const styles = StyleSheet.create({
   heroBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     gap: 4,
   },
   heroBadgeText: {
-    color: '#fbbf24',
+    color: '#ee4d2d',
     fontSize: 9,
     fontWeight: 'bold',
     letterSpacing: 0.5,
@@ -1744,11 +1745,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroTargetProgressBox: {
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     marginBottom: 14,
   },
   heroTargetHeaderRow: {
@@ -1763,13 +1764,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   heroTargetPercent: {
-    color: '#ff6b4a',
+    color: '#ee4d2d',
     fontSize: 12,
     fontWeight: 'bold',
   },
   progressTrack: {
     height: 6,
-    backgroundColor: '#1e293b',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -1783,7 +1784,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
     paddingTop: 12,
   },
   heroFooterItem: {
@@ -1801,12 +1802,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   pillCard: {
     flex: 1,
     borderRadius: 16,
-    borderWidth: 1.5,
+    borderWidth: 1,
     padding: 12,
   },
   pillIconBox: {
@@ -1825,6 +1826,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
   pillSubtext: {
     fontSize: 9,
@@ -1834,12 +1836,12 @@ const styles = StyleSheet.create({
   /* Sections */
   sectionCard: {
     borderRadius: 20,
-    borderWidth: 1.5,
+    borderWidth: 1,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   pendingAlertCard: {
-    borderWidth: 2,
+    borderWidth: 1,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -1853,9 +1855,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -1896,6 +1898,7 @@ const styles = StyleSheet.create({
   pendingEstText: {
     fontSize: 12,
     fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
   },
   confirmActionBtn: {
     flexDirection: 'row',
@@ -1919,6 +1922,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
+    borderWidth: 1,
   },
   smallAddBtnText: {
     fontSize: 11,
@@ -1989,6 +1993,7 @@ const styles = StyleSheet.create({
   timelineSalaryVal: {
     fontSize: 12,
     fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
   },
   timelineDateRow: {
     flexDirection: 'row',
@@ -2004,8 +2009,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginTop: 8,
-    padding: 6,
-    borderRadius: 6,
+    padding: 8,
+    borderRadius: 8,
   },
   promotionNoteText: {
     fontSize: 10,
@@ -2037,6 +2042,7 @@ const styles = StyleSheet.create({
   grossHeaderVal: {
     fontSize: 16,
     fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
   },
   breakdownTable: {
     gap: 8,
@@ -2052,6 +2058,7 @@ const styles = StyleSheet.create({
   tableVal: {
     fontSize: 12,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   subtotalRow: {
     paddingTop: 8,
@@ -2065,10 +2072,11 @@ const styles = StyleSheet.create({
   subtotalVal: {
     fontSize: 12,
     fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
   },
   totalRow: {
     paddingTop: 10,
-    borderTopWidth: 1.5,
+    borderTopWidth: 1,
     marginTop: 6,
   },
   totalLabel: {
@@ -2081,6 +2089,7 @@ const styles = StyleSheet.create({
   totalVal: {
     fontSize: 16,
     fontWeight: 'bold',
+    fontVariant: ['tabular-nums'],
   },
   paycheckPairRow: {
     flexDirection: 'row',
@@ -2092,6 +2101,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     alignItems: 'center',
+    borderWidth: 1,
   },
   paycheckPairLabel: {
     fontSize: 10,
@@ -2101,6 +2111,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
 
   /* Bonus Grid */
@@ -2125,6 +2136,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     padding: 12,
+    borderWidth: 1,
   },
   bonusGridLabel: {
     fontSize: 10,
@@ -2133,6 +2145,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
   bonusGridSub: {
     fontSize: 10,
@@ -2158,6 +2171,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderRadius: 12,
+    borderWidth: 1,
     marginBottom: 10,
   },
   net13thMonthLabel: {
@@ -2170,6 +2184,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
   doleDeadlineBanner: {
     alignItems: 'center',

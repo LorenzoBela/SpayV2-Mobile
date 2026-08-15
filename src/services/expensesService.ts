@@ -269,37 +269,38 @@ export async function getExpensesDashboardData(forceRefresh = false): Promise<Ad
     }
   }
 
-  // 2. Fetch fresh data via tRPC / REST dispatch
+  // 2. Fetch fresh data via direct GET /api/admin/expenses with callAdminApi fallback
   try {
-    const res = await callAdminApi('fetch-admin-expenses');
-    if (res && res.success !== false && (res.balances || res.data?.balances)) {
-      const data: AdminExpensesDashboardData = res.balances ? res : res.data;
+    const headers = await getAuthHeaders();
+    const apiUrl = getApiUrl();
+    const res = await fetch(`${apiUrl}/api/admin/expenses`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      const payload: AdminExpensesDashboardData = json.data || json;
+      if (payload && payload.balances) {
+        try {
+          storage.set(EXPENSES_CACHE_KEY, JSON.stringify(payload));
+        } catch (e) {
+          console.warn('[expensesService] Failed to set MMKV cache:', e);
+        }
+        return payload;
+      }
+    }
+
+    // Secondary fallback via callAdminApi action
+    const actionRes = await callAdminApi('fetch-admin-expenses');
+    if (actionRes && actionRes.success !== false && (actionRes.balances || actionRes.data?.balances)) {
+      const data: AdminExpensesDashboardData = actionRes.balances ? actionRes : actionRes.data;
       try {
         storage.set(EXPENSES_CACHE_KEY, JSON.stringify(data));
       } catch (e) {
         console.warn('[expensesService] Failed to set MMKV cache:', e);
       }
       return data;
-    }
-
-    // Direct fetch fallback if callAdminApi returned error
-    const headers = await getAuthHeaders();
-    const apiUrl = getApiUrl();
-    const fallbackRes = await fetch(`${apiUrl}/api/admin/actions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ action: 'fetch-admin-expenses' }),
-    });
-
-    if (fallbackRes.ok) {
-      const json = await fallbackRes.json();
-      const payload: AdminExpensesDashboardData = json.data || json;
-      try {
-        storage.set(EXPENSES_CACHE_KEY, JSON.stringify(payload));
-      } catch (e) {
-        console.warn('[expensesService] Failed to set MMKV cache on REST fallback:', e);
-      }
-      return payload;
     }
   } catch (error) {
     console.error('[expensesService] Error fetching expenses dashboard data:', error);
@@ -309,15 +310,25 @@ export async function getExpensesDashboardData(forceRefresh = false): Promise<Ad
   try {
     const fallbackCached = storage.getString(EXPENSES_CACHE_KEY);
     if (fallbackCached) {
-      return JSON.parse(fallbackCached);
+      const parsed = JSON.parse(fallbackCached);
+      if (parsed && parsed.balances) {
+        return parsed;
+      }
     }
   } catch {
     // ignore
   }
 
-  // Default fallback mock
+  // Default robust fallback mock
   const fallbackLiquid = 0;
   return {
+    userProfile: {
+      id: 'admin',
+      name: 'Admin',
+      email: 'admin@spay.ph',
+      role: 'ADMIN',
+      mobileNumber: '',
+    },
     balances: {
       cashOnHand: 0,
       bdoBalance: 0,
@@ -327,7 +338,7 @@ export async function getExpensesDashboardData(forceRefresh = false): Promise<Ad
       totalLiquidCash: fallbackLiquid,
       totalIponSavings: 0,
       grandTotalCash: 0,
-      iponSavingsBySource: {},
+      iponSavingsBySource: { CASH: 0, MARIBANK: 0, BDO: 0, GCASH: 0 },
       totalPhysicalCash: 0,
       totalMariBank: 0,
       totalBDO: 0,
@@ -337,9 +348,26 @@ export async function getExpensesDashboardData(forceRefresh = false): Promise<Ad
       nextPaydayIso: new Date().toISOString(),
       daysTilPayday: 0,
       monthlyIncome: 0,
-      expectedPaydayIncome: 0,
+      expectedPaydayIncome: 15000,
+    },
+    billsSummary: {
+      spayTotalUnpaid: 0,
+      atomeTotalUnpaid: 0,
+      totalPendingBills: 0,
+      spayCreditLimit: 50000,
+      spayUsedCredit: 0,
+      spayCreditUtilizationPct: 0,
+      spayCutoffDay: 25,
+      spayDueDay: 15,
+      atomeCreditLimit: 30000,
+      atomeUsedCredit: 0,
+      creditUtilizationPct: 0,
+      atomeCutoffDay: 25,
+      atomeDueDay: 12,
+      unpaidBillsMonthlyBreakdown: [],
     },
     shortcuts: DEFAULT_QUICK_SHORTCUTS,
+    quickShortcuts: DEFAULT_QUICK_SHORTCUTS,
     recentExpenses: [],
     paymentHistory: [],
     monthlyCashFlow: [],
@@ -351,10 +379,30 @@ export async function getExpensesDashboardData(forceRefresh = false): Promise<Ad
     creditUtilizationPct: 0,
     spayCreditUtilizationPct: 0,
     monthlyBurnRate: 0,
-    runwayMonths: 0,
+    runwayMonths: 999,
     needsTotal: 0,
     wantsTotal: 0,
     subsTotal: 0,
+    insights: {
+      dailyAverageSpend: 0,
+      cashRunwayDays: 999,
+      healthGauge: 'GREEN',
+      needsTotal: 0,
+      wantsTotal: 0,
+      subsTotal: 0,
+      categoryTotals: {},
+      sourceTotals: { BDO: 0, MARIBANK: 0, GCASH: 0, CASH: 0, SPAY: 0, ATOME: 0 },
+    },
+    analytics: {
+      monthlyCashFlow: [],
+      debtPayoffTrajectory: [],
+      dailySpendTrend: [],
+    },
+    upcomingPlannedPayments: [],
+    atomeOrders: [],
+    spayOrders: [],
+    iponGoals: [],
+    billCardConfigs: [],
   };
 }
 

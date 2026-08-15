@@ -1,18 +1,15 @@
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useContext, useEffect, useState } from 'react';
-import { formatAmount } from '../../utils/money';
-import { generatePaymentRef } from '../../utils/id';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
-  Alert,
   StatusBar,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -23,7 +20,6 @@ import {
   Settings,
   Bell,
   BellRing,
-  User,
   Shield,
   LogOut,
   ChevronRight,
@@ -45,6 +41,14 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import { useNotifications } from '../../hooks/useNotifications';
 import AdminImpersonationModal from '../../components/AdminImpersonationModal';
 
+interface MenuItem {
+  name: string;
+  icon: any;
+  desc: string;
+  action: () => void;
+  badge?: number;
+  isDestructive?: boolean;
+}
 
 export default function AdminMoreScreen() {
   const navigation = useNavigation<any>();
@@ -52,6 +56,7 @@ export default function AdminMoreScreen() {
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { unreadCount } = useNotifications();
   const layout = useResponsiveLayout();
+  const insets = useSafeAreaInsets();
   const scrollHandler = useTabBarScroll();
 
   const [adminName, setAdminName] = useState('Administrator');
@@ -85,168 +90,162 @@ export default function AdminMoreScreen() {
     bg: isDarkMode ? '#000000' : '#f8fafc',
     headerBg: isDarkMode ? '#000000' : '#ffffff',
     headerBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
-    cardBg: isDarkMode ? '#161c2a' : '#ffffff',
-    cardBorder: isDarkMode ? '#223049' : '#e2e8f0',
+    cardBg: isDarkMode ? '#121826' : '#ffffff',
+    cardBorder: isDarkMode ? '#1e293b' : '#e2e8f0',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     textMuted: isDarkMode ? '#64748b' : '#94a3b8',
-    divider: isDarkMode ? '#1e293b' : '#f1f5f9',
+    divider: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
     accent: '#ee4d2d',
-    accentLight: 'rgba(238, 77, 45, 0.08)',
-    iconBg: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
+    accentLight: isDarkMode ? 'rgba(238, 77, 45, 0.14)' : 'rgba(238, 77, 45, 0.08)',
   };
 
-  const overviewItems = [
-    {
-      name: 'Overview',
-      icon: LayoutDashboard,
-      desc: 'System metrics & stats',
-      color: '#3b82f6',
-      action: () => navigation.navigate('AdminDashboard'),
-    },
-    {
-      name: 'NootAI Copilot',
-      icon: Sparkles,
-      desc: 'AI credit, limit & analyst',
-      color: '#8b5cf6',
-      action: () => navigation.navigate('NootAi'),
-    },
-    {
-      name: 'Reports & Analytics',
-      icon: TrendingUp,
-      desc: 'Collection rates & stats',
-      color: '#10b981',
-      action: () => navigation.navigate('AdminReports'),
-    },
-    {
-      name: 'Achievements',
-      icon: Trophy,
-      desc: 'System-wide milestones',
-      color: '#f59e0b',
-      action: () => navigation.navigate('AdminMilestones'),
-    },
-  ];
-
-  const operationItems = [
+  // Section 1: Financial & Cash Operations
+  const financeItems: MenuItem[] = [
     {
       name: 'Expenses Tracker',
       icon: Wallet,
-      desc: 'SPay/Atome bills & tracking',
-      color: '#ee4d2d',
+      desc: 'SPay/Atome bills, liquid balances & tracking',
       action: () => navigation.navigate('AdminExpenses'),
     },
     {
       name: 'Salary & Cashflow',
       icon: Banknote,
-      desc: 'Payday timer & forecast',
-      color: '#6366f1',
+      desc: 'Payday countdown timer, income & trajectory',
       action: () => navigation.navigate('AdminSalary'),
     },
     {
       name: 'Ipon / Savings',
       icon: PiggyBank,
-      desc: '7 visual goal themes',
-      color: '#059669',
+      desc: 'Visual savings goals & target tracking',
       action: () => navigation.navigate('AdminIpon'),
-    },
-    {
-      name: 'Clients Directory',
-      icon: Users,
-      desc: 'Manage users & limits',
-      color: '#0284c7',
-      action: () => navigation.navigate('AdminClients'),
-    },
-    {
-      name: 'Orders & Limits',
-      icon: Receipt,
-      desc: 'Create & schedule plans',
-      color: '#ea580c',
-      action: () => navigation.navigate('AdminOrders'),
     },
     {
       name: 'Payments Ledger',
       icon: CreditCard,
-      desc: 'Approve payments & proof',
-      color: '#16a34a',
+      desc: 'Proof review, mark paid & settlements',
       action: () => navigation.navigate('AdminPayments'),
+    },
+    {
+      name: 'Orders & Limits',
+      icon: Receipt,
+      desc: 'Create, schedule & edit installment plans',
+      action: () => navigation.navigate('AdminOrders'),
+    },
+  ];
+
+  // Section 2: Intelligence & Insights
+  const intelligenceItems: MenuItem[] = [
+    {
+      name: 'Overview Dashboard',
+      icon: LayoutDashboard,
+      desc: 'Real-time metrics, collection rate & KPIs',
+      action: () => navigation.navigate('AdminDashboard'),
+    },
+    {
+      name: 'NootAI Copilot',
+      icon: Sparkles,
+      desc: 'Financial AI assistant & portfolio insights',
+      action: () => navigation.navigate('NootAi'),
+    },
+    {
+      name: 'Reports & Analytics',
+      icon: TrendingUp,
+      desc: 'Collection rates, summaries & data export',
+      action: () => navigation.navigate('AdminReports'),
+    },
+    {
+      name: 'System Achievements',
+      icon: Trophy,
+      desc: 'Milestones & portfolio progress achievements',
+      action: () => navigation.navigate('AdminMilestones'),
+    },
+  ];
+
+  // Section 3: Operations & Management
+  const operationItems: MenuItem[] = [
+    {
+      name: 'Clients Directory',
+      icon: Users,
+      desc: 'Manage client accounts & credit limits',
+      action: () => navigation.navigate('AdminClients'),
     },
     {
       name: 'Payment Reminders',
       icon: Bell,
-      desc: 'Manual & bulk alerts',
-      color: '#d97706',
+      desc: 'Automated & manual SMS/Push alerts',
       action: () => navigation.navigate('AdminReminders'),
     },
     {
-      name: 'Notifications',
+      name: 'Notifications Inbox',
       icon: BellRing,
-      desc: unreadCount > 0 ? `${unreadCount > 99 ? '99+' : unreadCount} unread alerts` : 'System alerts & inbox',
+      desc: unreadCount > 0 ? `${unreadCount > 99 ? '99+' : unreadCount} unread system notices` : 'System notices & event logs',
       badge: unreadCount,
-      color: '#ef4444',
       action: () => navigation.navigate('AdminNotifications'),
     },
   ];
 
-  const systemItems = [
+  // Section 4: System & Configuration
+  const systemItems: MenuItem[] = [
     {
-      name: 'System Health',
+      name: 'System Health & Telemetry',
       icon: Activity,
-      desc: 'Live latency & telemetry',
-      color: '#06b6d4',
+      desc: 'Live latency, database status & diagnostics',
       action: () => navigation.navigate('AdminSystemHealth'),
     },
     {
       name: 'System Settings',
       icon: Settings,
-      desc: 'Global limits & app config',
-      color: '#64748b',
+      desc: 'Global credit limits & system configuration',
       action: () => navigation.navigate('AdminSettings'),
     },
     {
       name: 'Impersonate Client',
       icon: UserCheck,
-      desc: 'View portal as client user',
-      color: '#8b5cf6',
+      desc: 'Preview application portal from client view',
       action: () => setIsImpersonationModalOpen(true),
     },
   ];
 
-  const gridColumns = layout.isTablet ? 3 : 2;
-  const gridCardWidth = layout.getGridItemWidth(gridColumns, 12);
-
-  const renderGridSection = (title: string, subtitle: string, items: typeof operationItems) => (
+  const renderGroupedSection = (title: string, subtitle: string, items: MenuItem[]) => (
     <View style={styles.sectionWrapper}>
       <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionSubtitle, { color: '#ee4d2d' }]}>{subtitle}</Text>
+        <Text style={[styles.sectionSubtitle, { color: t.accent }]}>{subtitle}</Text>
         <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>{title}</Text>
       </View>
-      <View style={styles.gridLayout}>
+      <View style={[styles.groupedCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
         {items.map((item, idx) => {
           const Icon = item.icon;
-          const iconBg = item.color ? `${item.color}15` : t.accentLight;
-          const iconColor = item.color || t.accent;
+          const isLast = idx === items.length - 1;
           return (
-            <TouchableOpacity
-              key={idx}
-              style={[styles.gridCard, { width: gridCardWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-              onPress={item.action}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.iconWrapper, { backgroundColor: iconBg }]}>
-                <Icon size={20} color={iconColor} />
-              </View>
-              {Number((item as any).badge || 0) > 0 && (
-                <View style={styles.gridBadge}>
-                  <Text style={styles.gridBadgeText}>{Number((item as any).badge || 0) > 99 ? '99+' : (item as any).badge}</Text>
+            <React.Fragment key={item.name}>
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={item.action}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.name}, ${item.desc}`}
+              >
+                <View style={[styles.iconWrapper, { backgroundColor: t.accentLight }]}>
+                  <Icon size={18} color={t.accent} />
                 </View>
-              )}
-              <Text style={[styles.gridCardName, { color: t.textPrimary }]} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Text style={[styles.gridCardDesc, { color: t.textSecondary }]} numberOfLines={1}>
-                {item.desc}
-              </Text>
-            </TouchableOpacity>
+                <View style={styles.rowTextCol}>
+                  <Text style={[styles.rowTitle, { color: t.textPrimary }]}>{item.name}</Text>
+                  <Text style={[styles.rowDesc, { color: t.textSecondary }]} numberOfLines={1}>
+                    {item.desc}
+                  </Text>
+                </View>
+                {Number(item.badge || 0) > 0 && (
+                  <View style={styles.badgePill}>
+                    <Text style={styles.badgePillText}>
+                      {Number(item.badge || 0) > 99 ? '99+' : item.badge}
+                    </Text>
+                  </View>
+                )}
+                <ChevronRight size={16} color={t.textMuted} style={styles.chevron} />
+              </TouchableOpacity>
+              {!isLast && <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />}
+            </React.Fragment>
           );
         })}
       </View>
@@ -260,8 +259,8 @@ export default function AdminMoreScreen() {
       {/* Header */}
       <View style={[styles.headerBar, { backgroundColor: t.headerBg, borderBottomColor: t.headerBorder }]}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerSubtitle}>S-Pay Admin</Text>
-          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Control Submenu</Text>
+          <Text style={styles.headerSubtitle}>S-PAY ADMIN</Text>
+          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Control Hub</Text>
         </View>
         <TouchableOpacity
           style={[
@@ -273,18 +272,23 @@ export default function AdminMoreScreen() {
           ]}
           onPress={toggleTheme}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {isDarkMode ? <Sun size={18} color="#fbbf24" /> : <Moon size={18} color="#475569" />}
         </TouchableOpacity>
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          layout.scrollContentStyle,
+          { paddingBottom: insets.bottom + 110 },
+        ]}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        
         {/* Profile Card */}
         <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           {adminPhoto ? (
@@ -296,13 +300,13 @@ export default function AdminMoreScreen() {
           )}
 
           <View style={styles.profileDetails}>
-            <Text style={[styles.profileGreeting, { color: t.textSecondary }]}>Console Operator,</Text>
+            <Text style={[styles.profileGreeting, { color: t.textSecondary }]}>Logged In Administrator</Text>
             <Text style={[styles.profileName, { color: t.textPrimary }]} numberOfLines={1}>
               {adminName}
             </Text>
             <View style={styles.badgeRow}>
-              <View style={[styles.roleBadge, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-                <Text style={[styles.roleBadgeText, { color: '#3b82f6' }]}>
+              <View style={[styles.roleBadge, { backgroundColor: t.accentLight }]}>
+                <Text style={[styles.roleBadgeText, { color: t.accent }]}>
                   {userRole || 'ADMIN'}
                 </Text>
               </View>
@@ -315,49 +319,63 @@ export default function AdminMoreScreen() {
           </View>
         </View>
 
-        {/* 1. OPERATIONS (Web 1:1 Parity) */}
-        {renderGridSection('Operations', 'FINANCIAL & LEDGER MODULES', operationItems)}
+        {/* 1. FINANCIAL & CASH OPERATIONS */}
+        {renderGroupedSection('Finance & Cash Operations', 'CORE LEDGER & BALANCES', financeItems)}
 
-        {/* 2. OVERVIEW */}
-        {renderGridSection('Overview', 'INSIGHTS & ANALYTICS', overviewItems)}
+        {/* 2. INTELLIGENCE & INSIGHTS */}
+        {renderGroupedSection('Intelligence & Analytics', 'INSIGHTS & PORTFOLIO METRICS', intelligenceItems)}
 
-        {/* 3. SYSTEM */}
-        {renderGridSection('System & Security', 'OBSERVABILITY & CONFIG', systemItems)}
+        {/* 3. OPERATIONS & DIRECTORY */}
+        {renderGroupedSection('Operations & Directory', 'MANAGEMENT & COMMS', operationItems)}
 
-        {/* Workspace Actions */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionSubtitle, { color: t.textSecondary }]}>WORKSPACE ACTIONS</Text>
-          <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Security & Session</Text>
-        </View>
+        {/* 4. SYSTEM & SECURITY */}
+        {renderGroupedSection('System & Observability', 'CONFIG & TELEMETRY', systemItems)}
 
-        <View style={[styles.listContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }, styles.marginBottom]}>
-          {/* Switch Workspace */}
-          <TouchableOpacity
-            style={styles.listItemRow}
-            onPress={() => setActiveRole(null)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.listIconWrapper, { backgroundColor: t.iconBg }]}>
-              <Shield size={18} color={t.textSecondary} />
-            </View>
-            <View style={styles.listItemTextContainer}>
-              <Text style={[styles.listItemName, { color: t.textPrimary }]}>Switch Workspace</Text>
-              <Text style={[styles.listItemDesc, { color: t.textSecondary }]}>Change active system dashboard view</Text>
-            </View>
-            <ChevronRight size={16} color={t.textSecondary} />
-          </TouchableOpacity>
+        {/* 5. SESSION & WORKSPACE */}
+        <View style={styles.sectionWrapper}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionSubtitle, { color: t.accent }]}>SESSION MANAGEMENT</Text>
+            <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Workspace & Security</Text>
+          </View>
+          <View style={[styles.groupedCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+            {/* Switch Workspace */}
+            <TouchableOpacity
+              style={styles.groupedRow}
+              onPress={() => setActiveRole(null)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Switch Workspace, Change active role or dashboard perspective"
+            >
+              <View style={[styles.iconWrapper, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9' }]}>
+                <Shield size={18} color={t.textPrimary} />
+              </View>
+              <View style={styles.rowTextCol}>
+                <Text style={[styles.rowTitle, { color: t.textPrimary }]}>Switch Workspace</Text>
+                <Text style={[styles.rowDesc, { color: t.textSecondary }]}>Change active role / dashboard perspective</Text>
+              </View>
+              <ChevronRight size={16} color={t.textMuted} style={styles.chevron} />
+            </TouchableOpacity>
 
-          {/* Sign Out */}
-          <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />
-          <TouchableOpacity style={styles.listItemRow} onPress={handleSignOut} activeOpacity={0.7}>
-            <View style={[styles.listIconWrapper, { backgroundColor: 'rgba(239, 68, 68, 0.08)' }]}>
-              <LogOut size={18} color="#ef4444" />
-            </View>
-            <View style={styles.listItemTextContainer}>
-              <Text style={[styles.listItemName, { color: '#ef4444' }]}>Sign Out Control Panel</Text>
-              <Text style={[styles.listItemDesc, { color: t.textSecondary }]}>Safely sign out of your current session</Text>
-            </View>
-          </TouchableOpacity>
+            <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />
+
+            {/* Sign Out */}
+            <TouchableOpacity
+              style={styles.groupedRow}
+              onPress={handleSignOut}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Sign Out Control Panel, Safely end your current session"
+            >
+              <View style={[styles.iconWrapper, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                <LogOut size={18} color="#ef4444" />
+              </View>
+              <View style={styles.rowTextCol}>
+                <Text style={[styles.rowTitle, { color: '#ef4444' }]}>Sign Out Control Panel</Text>
+                <Text style={[styles.rowDesc, { color: t.textSecondary }]}>Safely end your current session</Text>
+              </View>
+              <ChevronRight size={16} color="#ef4444" style={styles.chevron} />
+            </TouchableOpacity>
+          </View>
         </View>
 
       </ScrollView>
@@ -381,13 +399,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 16,
-    borderBottomWidth: 1.5,
+    borderBottomWidth: 1,
   },
   headerLeft: {
     flex: 1,
   },
   headerSubtitle: {
-    color: '#ee4d2d',
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 2,
@@ -409,20 +426,20 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingTop: 12,
+    paddingTop: 14,
   },
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1.5,
+    borderRadius: 18,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 20,
   },
   avatarCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -433,16 +450,17 @@ const styles = StyleSheet.create({
   },
   profileDetails: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: 14,
     marginRight: 8,
   },
   profileGreeting: {
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '500',
   },
   profileName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
-    marginTop: 2,
+    marginTop: 1,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -459,20 +477,21 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 'bold',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   profileEmail: {
     fontSize: 11,
     flex: 1,
   },
   sectionWrapper: {
-    marginBottom: 8,
+    marginBottom: 20,
   },
   sectionHeader: {
-    marginBottom: 10,
+    marginBottom: 8,
     paddingHorizontal: 4,
   },
   sectionSubtitle: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: 'bold',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
@@ -482,37 +501,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 1,
   },
-  gridLayout: {
+  groupedCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  groupedRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 12,
-    marginBottom: 20,
-  },
-  gridCard: {
-    borderRadius: 18,
-    borderWidth: 1.5,
-    padding: 14,
-    justifyContent: 'space-between',
-    height: 120,
-    position: 'relative',
-  },
-  gridBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 6,
-    backgroundColor: '#ee4d2d',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gridBadgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontFamily: 'Jakarta-Bold',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
   },
   iconWrapper: {
     width: 36,
@@ -520,52 +518,38 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
   },
-  gridCardName: {
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  gridCardDesc: {
-    fontSize: 10,
-    marginTop: 2,
-  },
-  listContainer: {
-    borderRadius: 18,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    marginBottom: 24,
-  },
-  listItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  listIconWrapper: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  listItemTextContainer: {
+  rowTextCol: {
     flex: 1,
     marginLeft: 12,
     marginRight: 8,
   },
-  listItemName: {
-    fontSize: 13,
-    fontWeight: 'bold',
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
-  listItemDesc: {
-    fontSize: 10,
+  rowDesc: {
+    fontSize: 11,
     marginTop: 2,
   },
-  rowDivider: {
-    height: 1,
+  badgePill: {
+    backgroundColor: '#ee4d2d',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginRight: 6,
   },
-  marginBottom: {
-    marginBottom: 32,
+  badgePillText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  chevron: {
+    marginLeft: 4,
+  },
+  rowDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 62,
   },
 });
