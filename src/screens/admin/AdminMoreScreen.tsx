@@ -96,129 +96,162 @@ export default function AdminMoreScreen() {
     iconBg: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9',
   };
 
-  const featuredFinancialItems = [
-    {
-      name: 'Expenses Master Tracker',
-      tag: 'MASTER TRACKER',
-      icon: Wallet,
-      desc: 'SPay/Atome bills, cash on hand, countdown & shortcuts',
-      badge: '1:1 Web',
-      color: '#ee4d2d',
-      action: () => navigation.navigate('AdminExpenses'),
-    },
-    {
-      name: 'Ipon Savings Goals',
-      tag: 'SAVINGS & TARGETS',
-      icon: PiggyBank,
-      desc: '7 visual goal themes (Jar, Ring, Map, Battery, Mountain, Milestones, Bar)',
-      badge: '7 Themes',
-      color: '#10b981',
-      action: () => navigation.navigate('AdminIpon'),
-    },
-    {
-      name: 'Salary & Cashflow',
-      tag: 'PAYDAY INFLOW',
-      icon: Banknote,
-      desc: 'Payday countdown timer, compensation & cashflow forecast',
-      badge: 'Cashflow',
-      color: '#6366f1',
-      action: () => navigation.navigate('AdminSalary'),
-    },
-    {
-      name: 'System Health & Probes',
-      tag: 'OBSERVABILITY',
-      icon: Activity,
-      desc: 'Live DB/Redis/Auth latency probes, memory gauge & log stream',
-      badge: 'Realtime',
-      color: '#06b6d4',
-      action: () => navigation.navigate('AdminSystemHealth'),
-    },
-  ];
-
-  const gridItems = [
+  const overviewItems = [
     {
       name: 'Overview',
       icon: LayoutDashboard,
       desc: 'System metrics & stats',
+      color: '#3b82f6',
       action: () => navigation.navigate('AdminDashboard'),
     },
     {
       name: 'NootAI Copilot',
       icon: Sparkles,
-      desc: 'AI credit, limit & budget analyst',
+      desc: 'AI credit, limit & analyst',
+      color: '#8b5cf6',
       action: () => navigation.navigate('NootAi'),
     },
     {
       name: 'Reports & Analytics',
       icon: TrendingUp,
-      desc: 'Collection rates & category data',
+      desc: 'Collection rates & stats',
+      color: '#10b981',
       action: () => navigation.navigate('AdminReports'),
-    },
-    {
-      name: 'Clients Directory',
-      icon: Users,
-      desc: 'Manage users & limits',
-      action: () => navigation.navigate('AdminClients'),
-    },
-    {
-      name: 'Installments Ledger',
-      icon: CreditCard,
-      desc: 'Approve payments & proof',
-      action: () => navigation.navigate('AdminPayments'),
-    },
-    {
-      name: 'Payment Reminders',
-      icon: Bell,
-      desc: 'Manual & bulk notifications',
-      action: () => navigation.navigate('AdminReminders'),
-    },
-    {
-      name: 'Notifications',
-      icon: BellRing,
-      desc: unreadCount > 0 ? `${unreadCount > 99 ? '99+' : unreadCount} unread system alerts` : 'System alerts & audit inbox',
-      badge: unreadCount,
-      action: () => navigation.navigate('AdminNotifications'),
-    },
-    {
-      name: 'Client Orders',
-      icon: Receipt,
-      desc: 'Create & schedule plans',
-      action: () => navigation.navigate('AdminOrders'),
     },
     {
       name: 'Achievements',
       icon: Trophy,
       desc: 'System-wide milestones',
+      color: '#f59e0b',
       action: () => navigation.navigate('AdminMilestones'),
     },
+  ];
+
+  const operationItems = [
     {
-      name: 'Impersonate Client',
-      icon: UserCheck,
-      desc: 'View portal as client user',
-      action: () => setIsImpersonationModalOpen(true),
+      name: 'Expenses Tracker',
+      icon: Wallet,
+      desc: 'SPay/Atome bills & tracking',
+      color: '#ee4d2d',
+      action: () => navigation.navigate('AdminExpenses'),
+    },
+    {
+      name: 'Salary & Cashflow',
+      icon: Banknote,
+      desc: 'Payday timer & forecast',
+      color: '#6366f1',
+      action: () => navigation.navigate('AdminSalary'),
+    },
+    {
+      name: 'Ipon / Savings',
+      icon: PiggyBank,
+      desc: '7 visual goal themes',
+      color: '#059669',
+      action: () => navigation.navigate('AdminIpon'),
+    },
+    {
+      name: 'Clients Directory',
+      icon: Users,
+      desc: 'Manage users & limits',
+      color: '#0284c7',
+      action: () => navigation.navigate('AdminClients'),
+    },
+    {
+      name: 'Orders & Limits',
+      icon: Receipt,
+      desc: 'Create & schedule plans',
+      color: '#ea580c',
+      action: () => navigation.navigate('AdminOrders'),
+    },
+    {
+      name: 'Payments Ledger',
+      icon: CreditCard,
+      desc: 'Approve payments & proof',
+      color: '#16a34a',
+      action: () => navigation.navigate('AdminPayments'),
+    },
+    {
+      name: 'Payment Reminders',
+      icon: Bell,
+      desc: 'Manual & bulk alerts',
+      color: '#d97706',
+      action: () => navigation.navigate('AdminReminders'),
+    },
+    {
+      name: 'Notifications',
+      icon: BellRing,
+      desc: unreadCount > 0 ? `${unreadCount > 99 ? '99+' : unreadCount} unread alerts` : 'System alerts & inbox',
+      badge: unreadCount,
+      color: '#ef4444',
+      action: () => navigation.navigate('AdminNotifications'),
     },
   ];
 
   const systemItems = [
     {
-      name: 'System Health & Observability',
+      name: 'System Health',
       icon: Activity,
-      desc: 'Real-time telemetry, latency probes & live error logs',
+      desc: 'Live latency & telemetry',
+      color: '#06b6d4',
       action: () => navigation.navigate('AdminSystemHealth'),
     },
     {
       name: 'System Settings',
       icon: Settings,
-      desc: 'Global credit limits & notifications config',
+      desc: 'Global limits & app config',
+      color: '#64748b',
       action: () => navigation.navigate('AdminSettings'),
     },
     {
-      name: 'System Logs',
-      icon: Shield,
-      desc: 'Database audit events & alerts history',
-      action: () => navigation.navigate('AdminNotifications'),
+      name: 'Impersonate Client',
+      icon: UserCheck,
+      desc: 'View portal as client user',
+      color: '#8b5cf6',
+      action: () => setIsImpersonationModalOpen(true),
     },
   ];
+
+  const gridColumns = layout.isTablet ? 3 : 2;
+  const gridCardWidth = layout.getGridItemWidth(gridColumns, 12);
+
+  const renderGridSection = (title: string, subtitle: string, items: typeof operationItems) => (
+    <View style={styles.sectionWrapper}>
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionSubtitle, { color: '#ee4d2d' }]}>{subtitle}</Text>
+        <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>{title}</Text>
+      </View>
+      <View style={styles.gridLayout}>
+        {items.map((item, idx) => {
+          const Icon = item.icon;
+          const iconBg = item.color ? `${item.color}15` : t.accentLight;
+          const iconColor = item.color || t.accent;
+          return (
+            <TouchableOpacity
+              key={idx}
+              style={[styles.gridCard, { width: gridCardWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
+              onPress={item.action}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.iconWrapper, { backgroundColor: iconBg }]}>
+                <Icon size={20} color={iconColor} />
+              </View>
+              {Number((item as any).badge || 0) > 0 && (
+                <View style={styles.gridBadge}>
+                  <Text style={styles.gridBadgeText}>{Number((item as any).badge || 0) > 99 ? '99+' : (item as any).badge}</Text>
+                </View>
+              )}
+              <Text style={[styles.gridCardName, { color: t.textPrimary }]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={[styles.gridCardDesc, { color: t.textSecondary }]} numberOfLines={1}>
+                {item.desc}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
@@ -282,116 +315,18 @@ export default function AdminMoreScreen() {
           </View>
         </View>
 
-        {/* 🌟 FEATURED FINANCIAL & SYSTEM MODULES (1:1 WEB PARITY) */}
+        {/* 1. OPERATIONS (Web 1:1 Parity) */}
+        {renderGridSection('Operations', 'FINANCIAL & LEDGER MODULES', operationItems)}
+
+        {/* 2. OVERVIEW */}
+        {renderGridSection('Overview', 'INSIGHTS & ANALYTICS', overviewItems)}
+
+        {/* 3. SYSTEM */}
+        {renderGridSection('System & Security', 'OBSERVABILITY & CONFIG', systemItems)}
+
+        {/* Workspace Actions */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionSubtitle, { color: '#ee4d2d' }]}>CORE OPERATIONS</Text>
-          <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Financial & System Master Modules</Text>
-        </View>
-
-        <View style={styles.featuredContainer}>
-          {featuredFinancialItems.map((item, idx) => {
-            const Icon = item.icon;
-            return (
-              <TouchableOpacity
-                key={idx}
-                style={[
-                  styles.featuredCard,
-                  { backgroundColor: t.cardBg, borderColor: t.cardBorder },
-                ]}
-                onPress={item.action}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.featuredIconBox, { backgroundColor: `${item.color}18` }]}>
-                  <Icon size={22} color={item.color} />
-                </View>
-                <View style={styles.featuredTextCol}>
-                  <View style={styles.featuredHeaderRow}>
-                    <Text style={[styles.featuredTag, { color: item.color }]}>{item.tag}</Text>
-                    <View style={[styles.featuredBadgePill, { backgroundColor: `${item.color}15` }]}>
-                      <Text style={[styles.featuredBadgePillText, { color: item.color }]}>{item.badge}</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.featuredName, { color: t.textPrimary }]}>{item.name}</Text>
-                  <Text style={[styles.featuredDesc, { color: t.textSecondary }]} numberOfLines={2}>
-                    {item.desc}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={t.textMuted} />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Explore Features Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionSubtitle, { color: t.textSecondary }]}>Services</Text>
-          <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Administrative Actions</Text>
-        </View>
-
-        {/* Grid Layout */}
-        <View style={styles.gridLayout}>
-          {gridItems.map((item, idx) => {
-            const Icon = item.icon;
-            const gridColumns = layout.isTablet ? 3 : 2;
-            const gridCardWidth = layout.getGridItemWidth(gridColumns, 12);
-            return (
-              <TouchableOpacity
-                key={idx}
-                style={[styles.gridCard, { width: gridCardWidth, backgroundColor: t.cardBg, borderColor: t.cardBorder }]}
-                onPress={item.action}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.iconWrapper, { backgroundColor: t.accentLight }]}>
-                  <Icon size={20} color={t.accent} />
-                </View>
-                {Number(item.badge || 0) > 0 && (
-                  <View style={styles.gridBadge}>
-                    <Text style={styles.gridBadgeText}>{Number(item.badge || 0) > 99 ? '99+' : item.badge}</Text>
-                  </View>
-                )}
-                <Text style={[styles.gridCardName, { color: t.textPrimary }]} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={[styles.gridCardDesc, { color: t.textSecondary }]} numberOfLines={1}>
-                  {item.desc}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* App Preferences */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionSubtitle, { color: t.textSecondary }]}>Configuration</Text>
-          <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>System & Preferences</Text>
-        </View>
-
-        <View style={[styles.listContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          {systemItems.map((item, idx) => {
-            const Icon = item.icon;
-            return (
-              <View key={idx}>
-                {idx > 0 && <View style={[styles.rowDivider, { backgroundColor: t.divider }]} />}
-                <TouchableOpacity style={styles.listItemRow} onPress={item.action} activeOpacity={0.7}>
-                  <View style={[styles.listIconWrapper, { backgroundColor: t.iconBg }]}>
-                    <Icon size={18} color={t.textSecondary} />
-                  </View>
-                  <View style={styles.listItemTextContainer}>
-                    <Text style={[styles.listItemName, { color: t.textPrimary }]}>{item.name}</Text>
-                    <Text style={[styles.listItemDesc, { color: t.textSecondary }]} numberOfLines={1}>
-                      {item.desc}
-                    </Text>
-                  </View>
-                  <ChevronRight size={16} color={t.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* Account Security & Session */}
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionSubtitle, { color: t.textSecondary }]}>Workspace Actions</Text>
+          <Text style={[styles.sectionSubtitle, { color: t.textSecondary }]}>WORKSPACE ACTIONS</Text>
           <Text style={[styles.sectionTitle, { color: t.textPrimary }]}>Security & Session</Text>
         </View>
 
@@ -529,6 +464,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     flex: 1,
   },
+  sectionWrapper: {
+    marginBottom: 8,
+  },
   sectionHeader: {
     marginBottom: 10,
     paddingHorizontal: 4,
@@ -544,66 +482,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 1,
   },
-  featuredContainer: {
-    marginBottom: 24,
-    gap: 10,
-  },
-  featuredCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1.5,
-    padding: 14,
-  },
-  featuredIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  featuredTextCol: {
-    flex: 1,
-    marginRight: 8,
-  },
-  featuredHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  featuredTag: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  featuredBadgePill: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
-  },
-  featuredBadgePillText: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  featuredName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  featuredDesc: {
-    fontSize: 11,
-    lineHeight: 15,
-  },
   gridLayout: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     rowGap: 12,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   gridCard: {
     borderRadius: 18,
