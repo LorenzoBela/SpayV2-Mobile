@@ -47,6 +47,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
+import DevicePushStatusCard from '../../components/DevicePushStatusCard';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { callAdminApi } from '../../services/adminService';
 import {
@@ -763,6 +764,11 @@ export default function AdminSettingsScreen() {
           thumbColor={systemAlerts ? '#ffffff' : t.switchThumbFalse}
         />
       </View>
+
+      <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
+
+      {/* Live Device Push Status & Sync Card */}
+      <DevicePushStatusCard />
 
       <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
 

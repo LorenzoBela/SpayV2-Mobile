@@ -71,7 +71,6 @@ import AdminIponScreen from '../screens/admin/AdminIponScreen';
 import AdminSystemHealthScreen from '../screens/admin/AdminSystemHealthScreen';
 import {
   mirrorToLocalTray,
-  registerForTrayNotifications,
   reportNotificationReceipt,
   setupAndroidNotificationChannels,
   subscribeToRealtimeNotifications,
@@ -940,7 +939,7 @@ export default function AppNavigator() {
 
       try {
         if (isMounted) {
-          await registerForTrayNotifications(effectiveUserId);
+          await ensureDeviceRegistration(effectiveUserId);
         }
       } catch (error: any) {
         console.warn('[Notifications] Registration skipped:', error?.message || error);
@@ -948,8 +947,8 @@ export default function AppNavigator() {
     })();
 
     const unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
-      // Firebase / Notifee handles 100% of native push delivery. Skip local tray duplication on native platforms.
-      if (Platform.OS === 'android' || nativeFcmRegisteredRef.current) return;
+      // Trigger tray notification when inserting via Supabase
+      if (nativeFcmRegisteredRef.current) return;
       void mirrorToLocalTray(notification);
     });
     const unsubscribeForegroundFcm = subscribeToForegroundFcmMessages();

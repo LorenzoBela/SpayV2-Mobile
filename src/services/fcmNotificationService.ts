@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidGroupAlertBehavior } from '@notifee/react-native';
 import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
+import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { supabase } from '../utils/supabase';
 import { storage } from '../utils/queryPersister';
@@ -15,45 +16,63 @@ export async function setupNotifeeChannels() {
     [ANDROID_CHANNELS.PAYMENT_UPDATES]: {
       name: 'S-Pay Payments & Reminders',
       importance: AndroidImportance.HIGH,
-      vibrationPattern: [0, 150, 100, 150], // Crisp fintech double-tap
+      vibrationPattern: [150, 100, 150], // Crisp fintech double-tap
       lightColor: '#22c55e',
       showBadge: true,
     },
     [ANDROID_CHANNELS.ALERTS]: {
       name: 'S-Pay Security & Alerts',
       importance: AndroidImportance.HIGH,
-      vibrationPattern: [0, 300, 100, 300], // High urgency buzz
+      vibrationPattern: [300, 100, 300], // High urgency buzz
       lightColor: '#ef4444',
       showBadge: true,
     },
     [ANDROID_CHANNELS.ADS]: {
       name: 'S-Pay Announcements',
       importance: AndroidImportance.DEFAULT,
-      vibrationPattern: [0, 100],
+      vibrationPattern: [100, 100],
       lightColor: '#3b82f6',
       showBadge: false,
     },
     [ANDROID_CHANNELS.SYSTEM]: {
       name: 'S-Pay System Updates',
       importance: AndroidImportance.HIGH,
+      vibrationPattern: [250, 150, 250],
       lightColor: '#e11d48',
       showBadge: true,
     },
   };
 
   for (const [channelId, config] of Object.entries(channelConfigs)) {
-    await notifee.createChannel({
-      id: channelId,
-      name: config.name,
-      importance: config.importance,
-      sound: 'default',
-      vibration: true,
-      vibrationPattern: config.vibrationPattern,
-      lights: Boolean(config.lightColor),
-      lightColor: config.lightColor,
-      visibility: AndroidVisibility.PUBLIC,
-      badge: config.showBadge,
-    });
+    try {
+      await notifee.createChannel({
+        id: channelId,
+        name: config.name,
+        importance: config.importance,
+        sound: 'default',
+        vibration: true,
+        vibrationPattern: config.vibrationPattern,
+        lights: Boolean(config.lightColor),
+        lightColor: config.lightColor,
+        visibility: AndroidVisibility.PUBLIC,
+        badge: config.showBadge,
+      });
+    } catch (err: any) {
+      console.warn(`[Notifee] Channel creation fallback for ${channelId}:`, err?.message || err);
+      // Fallback without vibration pattern if device vendor rejects custom pattern
+      try {
+        await notifee.createChannel({
+          id: channelId,
+          name: config.name,
+          importance: config.importance,
+          sound: 'default',
+          vibration: true,
+          badge: config.showBadge,
+        });
+      } catch (fallbackErr: any) {
+        console.warn(`[Notifee] Base channel creation error for ${channelId}:`, fallbackErr?.message || fallbackErr);
+      }
+    }
   }
 }
 
@@ -172,6 +191,19 @@ function getPersistentDeviceId(): string {
 async function upsertFcmToken(userId: string, fcmToken: string, customDeviceId?: string) {
   const deviceId = customDeviceId || getPersistentDeviceId();
   
+  // Revoke any previous active tokens for this device to prevent duplicate records
+  try {
+    await supabase
+      .from('notification_devices')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('device_id', deviceId)
+      .neq('expo_push_token', `fcm:${fcmToken}`)
+      .is('revoked_at', null);
+  } catch (err) {
+    console.warn('[FCM] Error revoking stale device token:', err);
+  }
+
   // 1. Write to Supabase table
   const supabasePromise = supabase
     .from('notification_devices')
@@ -228,23 +260,32 @@ export async function ensureDeviceRegistration(userId: string) {
   await setupNotifeeChannels();
 
   await ensureTrayNotificationPermissions();
-  try {
-    await messaging().requestPermission();
-  } catch {
-    // Ignore
-  }
-
-  try {
-    await messaging().registerDeviceForRemoteMessages();
-  } catch {
-    // Ignore
+  if (Platform.OS === 'ios') {
+    try {
+      await messaging().requestPermission();
+      await messaging().registerDeviceForRemoteMessages();
+    } catch {
+      // Ignore
+    }
   }
 
   let fcmToken: string | null = null;
   try {
     fcmToken = await messaging().getToken();
   } catch (err) {
-    console.warn('[FCM] getToken error:', err);
+    console.warn('[FCM] messaging().getToken error:', err);
+  }
+
+  // Robust fallback: if messaging().getToken() returned null, retrieve native device push token directly
+  if (!fcmToken) {
+    try {
+      const deviceToken = await Notifications.getDevicePushTokenAsync();
+      if (deviceToken?.data && typeof deviceToken.data === 'string') {
+        fcmToken = deviceToken.data;
+      }
+    } catch (err) {
+      console.warn('[FCM] Notifications.getDevicePushTokenAsync error:', err);
+    }
   }
 
   if (!fcmToken) {

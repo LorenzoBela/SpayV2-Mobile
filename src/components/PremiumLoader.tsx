@@ -242,15 +242,21 @@ export default function PremiumLoader({
 
   return (
     <View style={[styles.container, { backgroundColor: containerBg }]}>
-      <View style={styles.content}>
+      <View style={[styles.modalCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
         
+        {/* Android System Sync Active Status Chip */}
+        <View style={[styles.statusChip, { backgroundColor: isDarkMode ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.08)', borderColor: isDarkMode ? 'rgba(34, 197, 94, 0.25)' : 'rgba(34, 197, 94, 0.2)' }]}>
+          <View style={styles.pulseDot} />
+          <Text style={[font('statusChipText'), { color: '#22c55e' }]}>ANDROID SECURE SYNC</Text>
+        </View>
+
         {/* Logo Badge with micro-animation */}
         <Animated.View style={[styles.logoBadge, { 
           transform: [{ scale: logoScale }],
-          backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.04)' : 'rgba(238, 77, 45, 0.03)',
-          borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.2)' : 'rgba(238, 77, 45, 0.1)'
+          backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.08)' : 'rgba(238, 77, 45, 0.05)',
+          borderColor: isDarkMode ? 'rgba(238, 77, 45, 0.25)' : 'rgba(238, 77, 45, 0.15)'
         }]}>
-          <Wallet size={40} color="#ee4d2d" strokeWidth={1.8} />
+          <Wallet size={42} color="#ee4d2d" strokeWidth={1.8} />
         </Animated.View>
         
         {/* Dynamic Branding & Loading Titles */}
@@ -280,7 +286,7 @@ export default function PremiumLoader({
 
         {/* Retry Actions / Information Widget */}
         {showErrorOrTimeout ? (
-          <View style={[styles.errorCard, { backgroundColor: cardBg, borderColor: error ? 'rgba(239, 68, 68, 0.2)' : cardBorder }]}>
+          <View style={[styles.errorCard, { backgroundColor: isDarkMode ? '#1a2234' : '#f8fafc', borderColor: error ? 'rgba(239, 68, 68, 0.3)' : cardBorder }]}>
             <View style={styles.errorHeader}>
               <AlertCircle size={20} color="#ef4444" />
               <Text style={font('errorTitle')}>Latency Alert</Text>
@@ -296,7 +302,7 @@ export default function PremiumLoader({
                 activeOpacity={0.85}
                 style={styles.retryBtn}
               >
-                <RefreshCw size={14} color="#f8fafc" />
+                <RefreshCw size={15} color="#f8fafc" />
                 <Text style={font('retryBtnText')}>Retry Connection</Text>
               </TouchableOpacity>
             )}
@@ -308,8 +314,8 @@ export default function PremiumLoader({
               {
                 opacity: slideOpacity,
                 transform: [{ translateX: slideTranslateX }],
-                backgroundColor: cardBg,
-                borderColor: cardBorder,
+                backgroundColor: isDarkMode ? '#121826' : '#f8fafc',
+                borderColor: isDarkMode ? '#1e293b' : '#e2e8f0',
               },
             ]}
           >
@@ -345,42 +351,71 @@ export default function PremiumLoader({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // Solid S-Pay dark background
+    backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 32,
   },
-  content: {
+  modalCard: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 420,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
     alignItems: 'center',
+    shadowColor: '#ee4d2d',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 99,
+    borderWidth: 1,
+    marginBottom: 24,
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22c55e',
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 1,
   },
   logoBadge: {
-    backgroundColor: 'rgba(238, 77, 45, 0.04)',
-    width: 80,
-    height: 80,
-    borderRadius: 24,
+    width: 88,
+    height: 88,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     borderWidth: 1.5,
-    borderColor: 'rgba(238, 77, 45, 0.2)',
     shadowColor: '#ee4d2d',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 6,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
     gap: 8,
   },
   loaderTitle: {
     color: '#f8fafc',
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: 'Outfit-Bold',
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
     textAlign: 'center',
   },
   loaderSubtitle: {
@@ -388,17 +423,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Jakarta-Medium',
     textAlign: 'center',
-    paddingHorizontal: 16,
+    lineHeight: 19,
+    paddingHorizontal: 12,
   },
   barWrapper: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 40,
-    gap: 8,
+    marginBottom: 28,
+    gap: 10,
   },
   barTrack: {
     width: '100%',
-    height: 5,
+    height: 6,
     backgroundColor: '#1f293d',
     borderRadius: 99,
     overflow: 'hidden',
@@ -413,36 +449,29 @@ const styles = StyleSheet.create({
   },
   progressPercent: {
     color: '#64748b',
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Jakarta-Bold',
     letterSpacing: 0.5,
   },
   carouselCard: {
     width: '100%',
-    backgroundColor: '#161c2a',
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#2d3748',
+    borderWidth: 1,
     padding: 20,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 4,
   },
   carouselHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   iconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(238, 77, 45, 0.08)',
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(238, 77, 45, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -458,8 +487,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Jakarta-Medium',
     textAlign: 'center',
     lineHeight: 18,
-    paddingHorizontal: 8,
-    marginBottom: 16,
+    paddingHorizontal: 6,
+    marginBottom: 14,
   },
   dotRow: {
     flexDirection: 'row',
@@ -473,17 +502,15 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     backgroundColor: '#ee4d2d',
-    width: 14,
+    width: 16,
   },
   dotInactive: {
     backgroundColor: '#334155',
   },
   errorCard: {
     width: '100%',
-    backgroundColor: '#161c2a',
     borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
+    borderWidth: 1,
     padding: 20,
     alignItems: 'center',
   },
@@ -491,7 +518,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   errorTitle: {
     color: '#ef4444',
@@ -508,22 +535,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   retryBtn: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 10,
     backgroundColor: '#ee4d2d',
     borderRadius: 99,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    shadowColor: '#000',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    shadowColor: '#ee4d2d',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 4,
   },
   retryBtnText: {
     color: '#f8fafc',
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: 'Jakarta-Bold',
   },
 });

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 import Constants from 'expo-constants';
 import { supabase } from '../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../utils/authProfile';
@@ -28,14 +29,14 @@ export interface AppNotification {
 const ENABLE_REMOTE_PUSH_NOTIFICATIONS =
   shouldAttemptRemotePushRegistration(process.env.EXPO_PUBLIC_ENABLE_REMOTE_PUSH_NOTIFICATIONS);
 
-// Disable expo-notifications auto-alert to prevent duplication with Notifee / Native FCM
+// Enable notification alert & banner display for local system tray
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: false,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: false,
-    shouldShowList: false,
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -50,53 +51,58 @@ function getProjectId(): string | undefined {
 export async function setupAndroidNotificationChannels() {
   if (Platform.OS !== 'android') return;
 
-  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.PAYMENT_UPDATES, {
-    name: 'S-Pay Payments',
-    description: 'Payment reminders, due dates, confirmations, and order updates.',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 150, 250],
-    enableVibrate: true,
-    enableLights: true,
-    showBadge: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    lightColor: '#ee4d2d',
-  });
+  const channels = [
+    {
+      id: ANDROID_CHANNELS.PAYMENT_UPDATES,
+      name: 'S-Pay Payments',
+      description: 'Payment reminders, due dates, confirmations, and order updates.',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [250, 150, 250],
+      lightColor: '#ee4d2d',
+    },
+    {
+      id: ANDROID_CHANNELS.ALERTS,
+      name: 'S-Pay Alerts',
+      description: 'Important account, budget, and system alerts.',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [350, 150, 350],
+      lightColor: '#ef4444',
+    },
+    {
+      id: ANDROID_CHANNELS.ADS,
+      name: 'S-Pay Announcements',
+      description: 'S-Pay promotions and announcements.',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [250, 150, 250],
+      lightColor: '#3b82f6',
+    },
+    {
+      id: ANDROID_CHANNELS.SYSTEM,
+      name: 'S-Pay System',
+      description: 'Account notices and general system messages.',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [250, 150, 250],
+      lightColor: '#10b981',
+    },
+  ];
 
-  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ALERTS, {
-    name: 'S-Pay Alerts',
-    description: 'Important account, budget, and system alerts.',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 350, 150, 350],
-    enableVibrate: true,
-    enableLights: true,
-    showBadge: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    lightColor: '#ef4444',
-  });
-
-  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.ADS, {
-    name: 'S-Pay Announcements',
-    description: 'S-Pay promotions and announcements.',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 150, 250],
-    enableVibrate: true,
-    enableLights: true,
-    showBadge: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    lightColor: '#3b82f6',
-  });
-
-  await Notifications.setNotificationChannelAsync(ANDROID_CHANNELS.SYSTEM, {
-    name: 'S-Pay System',
-    description: 'Account notices and general system messages.',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 150, 250],
-    enableVibrate: true,
-    enableLights: true,
-    showBadge: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    lightColor: '#10b981',
-  });
+  for (const ch of channels) {
+    try {
+      await Notifications.setNotificationChannelAsync(ch.id, {
+        name: ch.name,
+        description: ch.description,
+        importance: ch.importance,
+        vibrationPattern: ch.vibrationPattern,
+        enableVibrate: true,
+        enableLights: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        lightColor: ch.lightColor,
+      });
+    } catch (err: any) {
+      console.warn(`[Expo Notifications] Channel setup warning for ${ch.id}:`, err?.message || err);
+    }
+  }
 }
 
 export async function ensureTrayNotificationPermissions() {
@@ -298,13 +304,33 @@ export async function mirrorToLocalTray(notification: AppNotification) {
   const requestedChannelId = typeof rawChannel === 'string' ? rawChannel : '';
   const channelId = normalizeAndroidChannelId(requestedChannelId, notification.category);
 
+  if (Platform.OS === 'android') {
+    try {
+      await setupAndroidNotificationChannels();
+      await notifee.displayNotification({
+        title: notification.title,
+        body: notification.body,
+        data: (notification.data as Record<string, string>) || {},
+        android: {
+          channelId: channelId || ANDROID_CHANNELS.SYSTEM,
+          importance: AndroidImportance.HIGH,
+          sound: 'default',
+          pressAction: { id: 'default' },
+        },
+      });
+      return;
+    } catch (err) {
+      console.warn('[mirrorToLocalTray] Notifee display notification error:', err);
+    }
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title: notification.title,
       body: notification.body,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.MAX,
-      vibrate: [0, 250, 150, 250],
+      vibrate: [250, 150, 250],
       data: {
         notificationId: notification.id,
         type: notification.type,

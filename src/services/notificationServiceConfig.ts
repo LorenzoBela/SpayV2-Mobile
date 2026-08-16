@@ -1,10 +1,10 @@
 export type NotificationCategory = 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
 export const ANDROID_CHANNELS: Record<NotificationCategory, string> = {
-  PAYMENT_UPDATES: 'spay-payments-v2',
-  ALERTS: 'spay-alerts-v2',
-  ADS: 'spay-ads-v2',
-  SYSTEM: 'spay-system-v2',
+  PAYMENT_UPDATES: 'spay-payments-v3',
+  ALERTS: 'spay-alerts-v3',
+  ADS: 'spay-ads-v3',
+  SYSTEM: 'spay-system-v3',
 };
 
 const LEGACY_ANDROID_CHANNELS: Record<string, NotificationCategory> = {
@@ -12,6 +12,10 @@ const LEGACY_ANDROID_CHANNELS: Record<string, NotificationCategory> = {
   'spay-alerts-v1': 'ALERTS',
   'spay-ads-v1': 'ADS',
   'spay-system-v1': 'SYSTEM',
+  'spay-payments-v2': 'PAYMENT_UPDATES',
+  'spay-alerts-v2': 'ALERTS',
+  'spay-ads-v2': 'ADS',
+  'spay-system-v2': 'SYSTEM',
 };
 
 export function shouldAttemptRemotePushRegistration(value: string | undefined) {

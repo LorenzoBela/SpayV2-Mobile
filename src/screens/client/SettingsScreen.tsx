@@ -51,9 +51,12 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
+import { ensureDeviceRegistration } from '../../services/fcmNotificationService';
+import { ensureTrayNotificationPermissions } from '../../services/notificationService';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useImpersonation } from '../../context/ImpersonationContext';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
+import DevicePushStatusCard from '../../components/DevicePushStatusCard';
 import { useResponsiveLayout } from '../../utils/responsive';
 import {
   checkForUpdatesAndPromptAsync,
@@ -370,10 +373,59 @@ export default function SettingsScreen() {
     saveSetting('email_notifications', nextVal ? 'true' : 'false');
   };
 
-  const handleTogglePush = () => {
+  const handleTogglePush = async () => {
     const nextVal = !pushAlerts;
     setPushAlerts(nextVal);
     saveSetting('push_alerts', nextVal ? 'true' : 'false');
+    if (nextVal) {
+      try {
+        const { profileId } = await getLinkedProfileForCurrentUser();
+        if (profileId) {
+          void ensureDeviceRegistration(profileId);
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  };
+
+  const [syncingPush, setSyncingPush] = useState(false);
+
+  const handleSyncPushDevice = async () => {
+    try {
+      setSyncingPush(true);
+      const { profileId } = await getLinkedProfileForCurrentUser();
+      if (!profileId) {
+        Alert.alert('Error', 'Please log in first to register your push device.');
+        return;
+      }
+
+      const hasPerm = await ensureTrayNotificationPermissions();
+      if (!hasPerm) {
+        Alert.alert(
+          'Permission Required',
+          'Notification permission is not granted. Please enable notifications in your phone Settings > Apps > Spay > Notifications.',
+        );
+        return;
+      }
+
+      const token = await ensureDeviceRegistration(profileId);
+      if (token) {
+        Alert.alert(
+          '✅ Push Notifications Synced',
+          'Your device has been registered to receive payment reminders and alerts.',
+        );
+      } else {
+        Alert.alert(
+          'Registration Warning',
+          'Could not retrieve FCM token from Google Play Services. Please make sure your phone is connected to the internet.',
+        );
+      }
+    } catch (err: any) {
+      Alert.alert('Sync Error', err?.message || 'Failed to sync push device.');
+    } finally {
+      setSyncingPush(false);
+    }
   };
 
   const handleLanguageChange = (nextLang: 'en' | 'fil') => {
@@ -709,6 +761,11 @@ export default function SettingsScreen() {
           thumbColor={pushAlerts ? '#ffffff' : t.switchThumbFalse}
         />
       </View>
+
+      <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
+
+      {/* Live Device Push Status & Sync Card */}
+      <DevicePushStatusCard />
 
       <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
 
