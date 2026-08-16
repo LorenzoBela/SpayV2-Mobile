@@ -17,7 +17,6 @@ import { MotiView, AnimatePresence } from 'moti';
 import {
   Smartphone,
   CheckCircle2,
-  AlertCircle,
   RefreshCw,
   Copy,
   Zap,
@@ -25,6 +24,8 @@ import {
   BatteryCharging,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
+  BellRing,
 } from 'lucide-react-native';
 import { ThemeContext } from '../navigation/navigationTypes';
 import { ensureDeviceRegistration } from '../services/fcmNotificationService';
@@ -36,6 +37,29 @@ interface DevicePushStatusCardProps {
   userId?: string;
   onSyncComplete?: (token: string | null) => void;
   showDetailsDefault?: boolean;
+}
+
+function formatSyncTimestamp(timeStr: string | null): string {
+  if (!timeStr) return 'Pending sync';
+  try {
+    const date = new Date(timeStr);
+    if (!isNaN(date.getTime())) {
+      const now = new Date();
+      const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+      if (diffMinutes < 1) return 'Just now';
+      if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+      const isToday = date.toDateString() === now.toDateString();
+      const timeFormatted = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+      if (isToday) {
+        return `Today, ${timeFormatted}`;
+      }
+      return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeFormatted}`;
+    }
+  } catch {
+    // Non-blocking
+  }
+  return timeStr;
 }
 
 export default function DevicePushStatusCard({
@@ -118,9 +142,9 @@ export default function DevicePushStatusCard({
         return;
       }
 
-      const token = await ensureDeviceRegistration(effectiveId);
+      const token = await ensureDeviceRegistration(effectiveId, 2);
       if (token) {
-        const nowIso = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const nowIso = new Date().toISOString();
         setActiveToken(token);
         setLastSyncTime(nowIso);
         storage.set('spay_cached_fcm_token', token);
@@ -151,135 +175,139 @@ export default function DevicePushStatusCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isPermissionDenied = permissionGranted === false;
   const isReady = permissionGranted === true && Boolean(activeToken);
 
-  // High-Bandwidth Fintech Control Surface Design Tokens
   const theme = {
-    cardBg: isDarkMode ? '#0f172a' : '#ffffff',
-    cardBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.08)',
-    statusReadyBg: isDarkMode ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.08)',
-    statusReadyBorder: isDarkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.2)',
-    statusReadyText: '#22c55e',
-    statusWarnBg: isDarkMode ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
-    statusWarnBorder: isDarkMode ? 'rgba(245, 158, 11, 0.3)' : 'rgba(245, 158, 11, 0.2)',
-    statusWarnText: '#f59e0b',
+    cardBg: isDarkMode ? '#090d16' : '#ffffff',
+    cardBorder: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0',
+    divider: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : '#f1f5f9',
     textPrimary: isDarkMode ? '#f8fafc' : '#0f172a',
     textSecondary: isDarkMode ? '#94a3b8' : '#64748b',
     textMuted: isDarkMode ? '#64748b' : '#94a3b8',
-    pillBg: isDarkMode ? '#1e293b' : '#f1f5f9',
-    accentBtnBg: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
-    accentBtnBorder: '#3b82f6',
-    accentText: '#3b82f6',
-    subtleBg: isDarkMode ? '#1e293b' : '#f8fafc',
+    iconBg: isDarkMode ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.08)',
+    activeGreen: '#22c55e',
+    activeGreenBg: isDarkMode ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.08)',
+    warnAmber: '#f59e0b',
+    warnAmberBg: isDarkMode ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+    pillBg: isDarkMode ? '#0f172a' : '#f8fafc',
+    syncBtnBg: isReady
+      ? (isDarkMode ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.08)')
+      : '#ee4d2d',
+    syncBtnBorder: isReady
+      ? (isDarkMode ? 'rgba(59, 130, 246, 0.35)' : '#3b82f6')
+      : '#ee4d2d',
+    syncBtnText: isReady ? '#3b82f6' : '#ffffff',
   };
 
   return (
     <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-      {/* Header Bar */}
-      <View style={styles.headerRow}>
+      
+      {/* ── Top Header Bar ── */}
+      <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={[styles.iconBox, { backgroundColor: isReady ? theme.statusReadyBg : theme.statusWarnBg }]}>
-            <Smartphone size={18} color={isReady ? theme.statusReadyText : theme.statusWarnText} />
+          <View style={[styles.deviceIconBox, { backgroundColor: theme.iconBg }]}>
+            <Smartphone size={22} color="#3b82f6" strokeWidth={2.2} />
           </View>
-          <View style={styles.headerTextGroup}>
-            <View style={styles.titleWithBadge}>
-              <Text style={[styles.title, { color: theme.textPrimary }]}>{deviceModel}</Text>
-              <View
-                style={[
-                  styles.statusChip,
-                  {
-                    backgroundColor: isReady ? theme.statusReadyBg : theme.statusWarnBg,
-                    borderColor: isReady ? theme.statusReadyBorder : theme.statusWarnBorder,
-                  },
-                ]}
-              >
-                {isReady ? (
-                  <CheckCircle2 size={11} color={theme.statusReadyText} />
-                ) : (
-                  <AlertCircle size={11} color={theme.statusWarnText} />
-                )}
-                <Text style={[styles.statusChipText, { color: isReady ? theme.statusReadyText : theme.statusWarnText }]}>
-                  {isReady ? 'Push Active' : 'Needs Sync'}
-                </Text>
-              </View>
+          <View style={styles.headerMeta}>
+            <Text style={[styles.deviceTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+              {deviceModel}
+            </Text>
+            <View style={styles.syncStatusRow}>
+              <View style={[styles.statusDot, { backgroundColor: isReady ? theme.activeGreen : theme.warnAmber }]} />
+              <Text style={[styles.syncStatusText, { color: theme.textSecondary }]}>
+                {isReady ? `Synced ${formatSyncTimestamp(lastSyncTime)}` : 'Manual sync required'}
+              </Text>
             </View>
-            <Text style={[styles.subTitle, { color: theme.textSecondary }]}>
-              {isReady
-                ? `FCM v1 Engine • Synced ${lastSyncTime ? `${lastSyncTime}` : 'live'}`
-                : 'Direct tray delivery ready for hardware sync'}
+          </View>
+        </View>
+
+        {/* Sync Action Button */}
+        <TouchableOpacity
+          onPress={isPermissionDenied ? () => void Linking.openSettings() : handleSync}
+          disabled={syncing}
+          style={[
+            styles.syncBtn,
+            { backgroundColor: theme.syncBtnBg, borderColor: theme.syncBtnBorder },
+          ]}
+          activeOpacity={0.8}
+        >
+          {syncing ? (
+            <ActivityIndicator size="small" color={theme.syncBtnText} />
+          ) : (
+            <RefreshCw size={14} color={theme.syncBtnText} strokeWidth={2.2} />
+          )}
+          <Text style={[styles.syncBtnText, { color: theme.syncBtnText }]}>
+            {syncing ? 'Syncing...' : isReady ? 'Re-Sync' : 'Sync Now'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Key-Value Specs List ── */}
+      <View style={styles.specsList}>
+        
+        {/* Row 1: Engine */}
+        <View style={styles.specRow}>
+          <View style={styles.specRowLeft}>
+            <Zap size={15} color="#3b82f6" strokeWidth={2} />
+            <Text style={[styles.specRowLabel, { color: theme.textSecondary }]}>Push Engine</Text>
+          </View>
+          <Text style={[styles.specRowValue, { color: theme.textPrimary }]}>Firebase FCM v1</Text>
+        </View>
+
+        <View style={[styles.rowDivider, { backgroundColor: theme.divider }]} />
+
+        {/* Row 2: Priority */}
+        <View style={styles.specRow}>
+          <View style={styles.specRowLeft}>
+            <ShieldCheck size={15} color={theme.activeGreen} strokeWidth={2} />
+            <Text style={[styles.specRowLabel, { color: theme.textSecondary }]}>Priority & Delivery</Text>
+          </View>
+          <Text style={[styles.specRowValue, { color: theme.textPrimary }]}>High (Instant Tray)</Text>
+        </View>
+
+        <View style={[styles.rowDivider, { backgroundColor: theme.divider }]} />
+
+        {/* Row 3: Permission */}
+        <View style={styles.specRow}>
+          <View style={styles.specRowLeft}>
+            <BellRing size={15} color={permissionGranted ? theme.activeGreen : theme.warnAmber} strokeWidth={2} />
+            <Text style={[styles.specRowLabel, { color: theme.textSecondary }]}>System Permission</Text>
+          </View>
+          <View style={[styles.pillBadge, { backgroundColor: permissionGranted ? theme.activeGreenBg : theme.warnAmberBg }]}>
+            <Text style={[styles.pillBadgeText, { color: permissionGranted ? theme.activeGreen : theme.warnAmber }]}>
+              {permissionGranted === null ? 'Checking...' : permissionGranted ? 'Granted' : 'Disabled'}
             </Text>
           </View>
         </View>
 
-        {/* Sync Trigger Button */}
-        <TouchableOpacity
-          onPress={handleSync}
-          disabled={syncing}
-          style={[
-            styles.syncBtn,
-            { backgroundColor: theme.accentBtnBg, borderColor: theme.accentBtnBorder },
-          ]}
-          activeOpacity={0.7}
-        >
-          {syncing ? (
-            <ActivityIndicator size="small" color={theme.accentText} />
-          ) : (
-            <RefreshCw size={14} color={theme.accentText} />
-          )}
-          <Text style={[styles.syncBtnText, { color: theme.accentText }]}>
-            {syncing ? 'Syncing...' : 'Sync'}
-          </Text>
-        </TouchableOpacity>
+        {/* Row 4 (Optional): Samsung OneUI Battery */}
+        {isSamsung && (
+          <>
+            <View style={[styles.rowDivider, { backgroundColor: theme.divider }]} />
+            <TouchableOpacity
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void Linking.openSettings();
+              }}
+              style={styles.specRow}
+              activeOpacity={0.7}
+            >
+              <View style={styles.specRowLeft}>
+                <BatteryCharging size={15} color="#3b82f6" strokeWidth={2} />
+                <Text style={[styles.specRowLabel, { color: theme.textSecondary }]}>OneUI Battery</Text>
+              </View>
+              <View style={styles.samsungActionRow}>
+                <Text style={styles.samsungActionText}>Set Unrestricted</Text>
+                <ChevronRight size={14} color="#3b82f6" />
+              </View>
+            </TouchableOpacity>
+          </>
+        )}
+
       </View>
 
-      {/* Quick Specs Grid */}
-      <View style={[styles.specsGrid, { backgroundColor: theme.subtleBg, borderColor: theme.cardBorder }]}>
-        <View style={styles.specItem}>
-          <Text style={[styles.specLabel, { color: theme.textMuted }]}>ENGINE</Text>
-          <View style={styles.specValueRow}>
-            <Zap size={12} color="#3b82f6" />
-            <Text style={[styles.specValue, { color: theme.textPrimary }]}>Firebase FCM v1</Text>
-          </View>
-        </View>
-
-        <View style={[styles.specDivider, { backgroundColor: theme.cardBorder }]} />
-
-        <View style={styles.specItem}>
-          <Text style={[styles.specLabel, { color: theme.textMuted }]}>PRIORITY</Text>
-          <View style={styles.specValueRow}>
-            <ShieldCheck size={12} color="#22c55e" />
-            <Text style={[styles.specValue, { color: theme.textPrimary }]}>High (Max Urgency)</Text>
-          </View>
-        </View>
-
-        <View style={[styles.specDivider, { backgroundColor: theme.cardBorder }]} />
-
-        <View style={styles.specItem}>
-          <Text style={[styles.specLabel, { color: theme.textMuted }]}>PERMISSION</Text>
-          <Text style={[styles.specValue, { color: permissionGranted ? '#22c55e' : '#f59e0b' }]}>
-            {permissionGranted === null ? 'Checking...' : permissionGranted ? 'Granted' : 'Denied'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Samsung Optimization Prompt if applicable */}
-      {isSamsung && (
-        <TouchableOpacity
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            void Linking.openSettings();
-          }}
-          style={[styles.samsungBanner, { backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.05)' }]}
-          activeOpacity={0.7}
-        >
-          <BatteryCharging size={14} color="#3b82f6" />
-          <Text style={[styles.samsungBannerText, { color: theme.textSecondary }]}>
-            Samsung OneUI detected: Set battery to <Text style={{ color: '#3b82f6', fontFamily: 'Jakarta-Bold' }}>Unrestricted</Text> for instant lock-screen alerts.
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Expandable Diagnostic Token Details */}
+      {/* ── Expandable Hardware Token ── */}
       <TouchableOpacity
         onPress={() => {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -289,7 +317,7 @@ export default function DevicePushStatusCard({
         activeOpacity={0.7}
       >
         <Text style={[styles.detailsToggleText, { color: theme.textMuted }]}>
-          {showDetails ? 'Hide Hardware Token' : 'View Hardware Token'}
+          {showDetails ? 'Hide Device Token' : 'View Device Token'}
         </Text>
         {showDetails ? (
           <ChevronUp size={14} color={theme.textMuted} />
@@ -304,7 +332,7 @@ export default function DevicePushStatusCard({
             from={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ type: 'timing', duration: 250 }}
+            transition={{ type: 'timing', duration: 200 }}
             style={styles.detailsContainer}
           >
             {activeToken ? (
@@ -319,13 +347,13 @@ export default function DevicePushStatusCard({
                     {activeToken}
                   </Text>
                 </View>
-                <View style={[styles.copyBtn, { backgroundColor: copied ? '#22c55e' : theme.accentBtnBg }]}>
+                <View style={[styles.copyBtn, { backgroundColor: copied ? theme.activeGreen : theme.iconBg }]}>
                   {copied ? (
                     <CheckCircle2 size={13} color="#ffffff" />
                   ) : (
-                    <Copy size={13} color={theme.accentText} />
+                    <Copy size={13} color="#3b82f6" />
                   )}
-                  <Text style={[styles.copyBtnText, { color: copied ? '#ffffff' : theme.accentText }]}>
+                  <Text style={[styles.copyBtnText, { color: copied ? '#ffffff' : '#3b82f6' }]}>
                     {copied ? 'Copied' : 'Copy'}
                   </Text>
                 </View>
@@ -333,146 +361,138 @@ export default function DevicePushStatusCard({
             ) : (
               <View style={[styles.tokenBox, { backgroundColor: theme.pillBg, borderColor: theme.cardBorder }]}>
                 <Text style={[styles.noTokenText, { color: theme.textSecondary }]}>
-                  No active token found yet. Tap "Sync" above to register this device.
+                  No active token found. Tap "Sync Now" above to register.
                 </Text>
               </View>
             )}
           </MotiView>
         )}
       </AnimatePresence>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 14,
-    gap: 12,
-    marginVertical: 4,
+    padding: 18,
+    gap: 16,
+    marginVertical: 6,
   },
-  headerRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flex: 1,
   },
-  iconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+  deviceIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTextGroup: {
+  headerMeta: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
-  titleWithBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  title: {
-    fontSize: 14,
+  deviceTitle: {
+    fontSize: 16,
     fontFamily: 'Outfit-Bold',
     letterSpacing: -0.2,
   },
-  subTitle: {
-    fontSize: 11,
-    fontFamily: 'Jakarta-Medium',
-    lineHeight: 14,
-  },
-  statusChip: {
+  syncStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 20,
-    borderWidth: 1,
+    gap: 6,
   },
-  statusChipText: {
-    fontSize: 10,
-    fontFamily: 'Jakarta-Bold',
-    letterSpacing: 0.2,
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  syncStatusText: {
+    fontSize: 12,
+    fontFamily: 'Jakarta-Medium',
   },
   syncBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    height: 34,
-    borderRadius: 10,
+    paddingHorizontal: 15,
+    height: 38,
+    borderRadius: 12,
     borderWidth: 1,
   },
   syncBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: 'Jakarta-Bold',
   },
-  specsGrid: {
+  specsList: {
+    borderRadius: 14,
+    paddingVertical: 4,
+  },
+  specRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
   },
-  specItem: {
-    flex: 1,
+  specRowLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 10,
   },
-  specDivider: {
-    width: 1,
-    height: 24,
+  specRowLabel: {
+    fontSize: 13,
+    fontFamily: 'Jakarta-Medium',
   },
-  specLabel: {
-    fontSize: 9,
+  specRowValue: {
+    fontSize: 13,
     fontFamily: 'Jakarta-Bold',
-    letterSpacing: 0.5,
   },
-  specValueRow: {
+  rowDivider: {
+    width: '100%',
+    height: 1,
+  },
+  pillBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 99,
+  },
+  pillBadgeText: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Bold',
+    letterSpacing: 0.2,
+  },
+  samsungActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  specValue: {
-    fontSize: 11,
+  samsungActionText: {
+    fontSize: 12,
     fontFamily: 'Jakarta-Bold',
-  },
-  samsungBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 8,
-    borderRadius: 8,
-  },
-  samsungBannerText: {
-    fontSize: 11,
-    fontFamily: 'Jakarta-Medium',
-    flex: 1,
-    lineHeight: 15,
+    color: '#3b82f6',
   },
   detailsToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 5,
     paddingVertical: 2,
   },
   detailsToggleText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Jakarta-Medium',
   },
   detailsContainer: {
@@ -482,39 +502,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 10,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
     gap: 10,
   },
   tokenTextGroup: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   tokenLabel: {
     fontSize: 9,
     fontFamily: 'Jakarta-Bold',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   tokenValue: {
     fontSize: 11,
     fontFamily: 'Jakarta-Medium',
     fontVariant: ['tabular-nums'],
+    letterSpacing: 0.2,
   },
   copyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   copyBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Jakarta-Bold',
   },
   noTokenText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Jakarta-Medium',
     textAlign: 'center',
     width: '100%',

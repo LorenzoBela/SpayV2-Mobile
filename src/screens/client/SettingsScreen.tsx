@@ -708,6 +708,11 @@ export default function SettingsScreen() {
           })}
         </View>
       </View>
+
+      <View style={[styles.formDivider, { backgroundColor: t.divider }]} />
+
+      {/* Live Device Push Status & Sync Card */}
+      <DevicePushStatusCard />
     </View>
   );
 
@@ -1215,7 +1220,7 @@ export default function SettingsScreen() {
             <View style={styles.tabBar}>
               {([
                 { id: 'profile' as const, label: 'Profile', icon: User },
-                { id: 'notifications' as const, label: 'Alerts', icon: Sliders },
+                { id: 'notifications' as const, label: 'Sync & Alerts', icon: RefreshCw },
                 { id: 'security' as const, label: 'Security', icon: Shield },
               ]).map(item => {
                 const Icon = item.icon;

@@ -253,7 +253,7 @@ export async function registerForFcmNotifications(userId: string) {
   return ensureDeviceRegistration(userId);
 }
 
-export async function ensureDeviceRegistration(userId: string) {
+export async function ensureDeviceRegistration(userId: string, maxRetries = 3): Promise<string | null> {
   if (!userId) return null;
 
   await setupAndroidNotificationChannels();
@@ -269,38 +269,52 @@ export async function ensureDeviceRegistration(userId: string) {
     }
   }
 
-  let fcmToken: string | null = null;
-  try {
-    fcmToken = await messaging().getToken();
-  } catch (err) {
-    console.warn('[FCM] messaging().getToken error:', err);
-  }
+  let attempt = 0;
+  const retryDelays = [1000, 2500, 5000, 10000];
 
-  // Robust fallback: if messaging().getToken() returned null, retrieve native device push token directly
-  if (!fcmToken) {
+  while (attempt <= maxRetries) {
     try {
-      const deviceToken = await Notifications.getDevicePushTokenAsync();
-      if (deviceToken?.data && typeof deviceToken.data === 'string') {
-        fcmToken = deviceToken.data;
+      let fcmToken: string | null = null;
+      try {
+        fcmToken = await messaging().getToken();
+      } catch (err) {
+        console.warn(`[FCM] messaging().getToken error (attempt ${attempt + 1}/${maxRetries + 1}):`, err);
+      }
+
+      // Robust fallback: if messaging().getToken() returned null, retrieve native device push token directly
+      if (!fcmToken) {
+        try {
+          const deviceToken = await Notifications.getDevicePushTokenAsync();
+          if (deviceToken?.data && typeof deviceToken.data === 'string') {
+            fcmToken = deviceToken.data;
+          }
+        } catch (err) {
+          console.warn(`[FCM] Notifications.getDevicePushTokenAsync error (attempt ${attempt + 1}/${maxRetries + 1}):`, err);
+        }
+      }
+
+      if (fcmToken) {
+        const deviceId = getPersistentDeviceId();
+        const { error } = await upsertFcmToken(userId, fcmToken, deviceId);
+        if (error) {
+          console.warn(`[FCM] Supabase registration warning (attempt ${attempt + 1}):`, error.message);
+        } else {
+          storage.set('spay_cached_fcm_token', fcmToken);
+          storage.set('spay_last_fcm_sync', new Date().toISOString());
+          return fcmToken;
+        }
       }
     } catch (err) {
-      console.warn('[FCM] Notifications.getDevicePushTokenAsync error:', err);
+      console.warn(`[FCM] ensureDeviceRegistration unexpected error (attempt ${attempt + 1}):`, err);
+    }
+
+    attempt++;
+    if (attempt <= maxRetries) {
+      await new Promise((res) => setTimeout(res, retryDelays[attempt - 1] || 3000));
     }
   }
 
-  if (!fcmToken) {
-    console.warn('[FCM] No token retrieved from Firebase');
-    return null;
-  }
-
-  const deviceId = getPersistentDeviceId();
-  console.log('[FCM] Ensuring registration for device:', deviceId, 'token:', fcmToken.slice(0, 20) + '...');
-  const { error } = await upsertFcmToken(userId, fcmToken, deviceId);
-  if (error) {
-    console.warn('[FCM] Supabase registration warning:', error.message);
-  }
-
-  return fcmToken;
+  return null;
 }
 
 export function subscribeToFcmTokenRefresh(userId: string) {

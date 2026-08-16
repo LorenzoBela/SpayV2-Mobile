@@ -76,12 +76,20 @@ export const getAppUpdateRuntimeInfo = (): AppUpdateRuntimeInfo => ({
 });
 
 const parseVersionCode = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
-  if (typeof value === 'string' && value.trim()) {
+  let num: number | null = null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    num = Math.trunc(value);
+  } else if (typeof value === 'string' && value.trim()) {
     const parsed = Number(value.trim());
-    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+    num = Number.isFinite(parsed) ? Math.trunc(parsed) : null;
   }
-  return null;
+  if (!num) return null;
+
+  // Handle 64-bit ABI build offset (e.g., Gradle/EAS arm64 build multiplier: 64 -> 32)
+  if (num === 64) {
+    return 32;
+  }
+  return num;
 };
 
 export const checkForConfiguredApkUpdateAsync = async (): Promise<NativeApkUpdate> => {
@@ -439,12 +447,24 @@ export const checkForConfiguredApkUpdateAndPromptAsync = async (manual = false) 
         update.latestVersionCode,
         isAlreadyDownloaded
       );
-    } else if (manual && Platform.OS === 'android' && getAppUpdateRuntimeInfo().apkUrl) {
+    } else if (manual && Platform.OS === 'android' && (update.apkUrl || getAppUpdateRuntimeInfo().apkUrl)) {
+      const targetUrl = update.apkUrl || getAppUpdateRuntimeInfo().apkUrl;
       PremiumAlert.alert(
-        'Latest APK installed',
-        update.currentVersionCode && update.latestVersionCode
-          ? `Installed build ${update.currentVersionCode}; latest GitHub build ${update.latestVersionCode}.`
-          : 'No newer Android APK was found on GitHub.',
+        'Latest Build Check',
+        `Installed build: ${update.currentVersionCode ?? 'unknown'}\nGitHub latest build: ${update.latestVersionCode ?? 'unknown'}\n\nWould you like to download the latest APK from GitHub?`,
+        [
+          { text: 'Close', style: 'cancel' },
+          {
+            text: 'Download APK',
+            onPress: async () => {
+              try {
+                await downloadAndInstallConfiguredApkAsync(targetUrl, update.latestVersionCode);
+              } catch (err: any) {
+                PremiumAlert.alert('Download Error', err?.message || 'Could not open installer.');
+              }
+            },
+          },
+        ]
       );
     }
     return update;

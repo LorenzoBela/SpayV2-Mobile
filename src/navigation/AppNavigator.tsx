@@ -919,7 +919,7 @@ export default function AppNavigator() {
     let isMounted = true;
     let unsubscribeFcmTokenRefresh: (() => void) | undefined;
 
-    // Wrap notification registration to prevent PromiseLike catch method type error
+    // Startup auto-sync with automatic retry
     (async () => {
       try {
         const fcmToken = await registerForFcmNotifications(effectiveUserId);
@@ -934,17 +934,16 @@ export default function AppNavigator() {
           }
         }
       } catch (error: any) {
-        console.warn('[FCM] Registration skipped:', error?.message || error);
-      }
-
-      try {
-        if (isMounted) {
-          await ensureDeviceRegistration(effectiveUserId);
-        }
-      } catch (error: any) {
-        console.warn('[Notifications] Registration skipped:', error?.message || error);
+        console.warn('[FCM] Startup registration warning:', error?.message || error);
       }
     })();
+
+    // Auto-sync whenever the app returns to the foreground
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && isMounted && effectiveUserId) {
+        void ensureDeviceRegistration(effectiveUserId, 1);
+      }
+    });
 
     const unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
       // Trigger tray notification when inserting via Supabase
@@ -999,6 +998,7 @@ export default function AppNavigator() {
       unsubscribeRealtime();
       receivedSubscription.remove();
       responseSubscription.remove();
+      appStateSubscription.remove();
       appStateSub.remove();
     };
   }, [effectiveUserId]);
