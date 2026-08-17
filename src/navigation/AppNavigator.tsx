@@ -82,6 +82,7 @@ import {
   subscribeToFcmTokenRefresh,
   subscribeToForegroundFcmMessages,
 } from '../services/fcmNotificationService';
+import { runFcmHeartbeatCheck } from '../services/fcmHeartbeatService';
 import {
   AuthStackParamList,
   MainTabParamList,
@@ -938,18 +939,38 @@ export default function AppNavigator() {
       }
     })();
 
-    // Auto-sync whenever the app returns to the foreground
+    let unsubscribeRealtime: (() => void) | undefined;
+
+    const connectRealtime = () => {
+      if (unsubscribeRealtime) {
+        unsubscribeRealtime();
+        unsubscribeRealtime = undefined;
+      }
+      unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
+        if (nativeFcmRegisteredRef.current) return;
+        void mirrorToLocalTray(notification);
+      });
+    };
+
+    // Initial connection
+    connectRealtime();
+
+    // Auto-sync, 24h heartbeat, and WebSocket battery management on AppState changes
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active' && isMounted && effectiveUserId) {
+        // Re-establish WebSocket when returning to foreground
+        connectRealtime();
         void ensureDeviceRegistration(effectiveUserId, 1);
+        void runFcmHeartbeatCheck(effectiveUserId);
+      } else if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // Gracefully disconnect WebSocket to conserve battery while minimized
+        if (unsubscribeRealtime) {
+          unsubscribeRealtime();
+          unsubscribeRealtime = undefined;
+        }
       }
     });
 
-    const unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
-      // Trigger tray notification when inserting via Supabase
-      if (nativeFcmRegisteredRef.current) return;
-      void mirrorToLocalTray(notification);
-    });
     const unsubscribeForegroundFcm = subscribeToForegroundFcmMessages();
 
     const receivedSubscription = Notifications.addNotificationReceivedListener((event) => {
@@ -984,22 +1005,14 @@ export default function AppNavigator() {
       }
     });
 
-    // Re-verify and ensure device registration every time app returns to foreground
-    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'active' && effectiveUserId) {
-        void ensureDeviceRegistration(effectiveUserId);
-      }
-    });
-
     return () => {
       isMounted = false;
       unsubscribeFcmTokenRefresh?.();
       unsubscribeForegroundFcm();
-      unsubscribeRealtime();
+      unsubscribeRealtime?.();
       receivedSubscription.remove();
       responseSubscription.remove();
       appStateSubscription.remove();
-      appStateSub.remove();
     };
   }, [effectiveUserId]);
 

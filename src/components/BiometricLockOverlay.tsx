@@ -24,8 +24,14 @@ import { BlurView } from 'expo-blur';
 import { Fingerprint, Lock, ShieldAlert, X } from 'lucide-react-native';
 import { useSecurityPin } from '../hooks/useSecurityPin';
 import { getKeypadBottomPadding } from '../utils/safeArea';
+import {
+  triggerSuccessHaptic,
+  triggerWarningHaptic,
+  triggerErrorHaptic,
+  triggerMediumHaptic,
+} from '../utils/haptics';
 
-const GRACE_PERIOD_MS = 30000; // 30 seconds
+const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minutes (Fintech standard grace window)
 
 interface BiometricLockOverlayProps {
   children: React.ReactNode;
@@ -178,7 +184,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
           lastBackgroundTime.current
         ) {
           const elapsed = Date.now() - lastBackgroundTime.current;
-          if (elapsed > GRACE_PERIOD_MS) {
+          if (elapsed > INACTIVITY_TIMEOUT_MS) {
             const shouldLock = (isSupported && isEnrolled) || hasPin;
             if (shouldLock) {
               setIsLocked(true);
@@ -218,7 +224,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
     if (pin.length !== 6 || !isLocked) return;
     let active = true;
 
-    verifyPin(pin).then((valid) => {
+    verifyPin(pin).then((valid: boolean) => {
       if (!active) return;
       if (valid) {
         try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); } catch {}

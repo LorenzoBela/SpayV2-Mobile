@@ -18,6 +18,9 @@ import AppNavigator from './src/navigation/AppNavigator';
 import AppUpdateGate from './src/components/AppUpdateGate';
 import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
 import GlobalProgressBar from './src/components/GlobalProgressBar';
+import RootErrorBoundary from './src/components/RootErrorBoundary';
+import PrivacyCurtain from './src/components/PrivacyCurtain';
+import { useNetworkReconciliation } from './src/hooks/useNetworkReconciliation';
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
 
@@ -70,6 +73,43 @@ const darkTheme = {
   },
 };
 
+function AppContent() {
+  useNetworkReconciliation();
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PostHogProvider client={posthog}>
+        <ImpersonationProvider>
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{
+              persister: clientPersister,
+              maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
+              dehydrateOptions: {
+                shouldDehydrateQuery: () => true, // Persist all queries
+              },
+            }}
+          >
+            <trpc.Provider client={trpcClient} queryClient={queryClient}>
+              <PaperProvider theme={darkTheme}>
+                <ProgressProvider>
+                  <SafeAreaProvider>
+                    <AppUpdateGate />
+                    <AppNavigator />
+                    <PrivacyCurtain />
+                    <GlobalPremiumAlert />
+                    <GlobalProgressBar />
+                  </SafeAreaProvider>
+                </ProgressProvider>
+              </PaperProvider>
+            </trpc.Provider>
+          </PersistQueryClientProvider>
+        </ImpersonationProvider>
+      </PostHogProvider>
+    </GestureHandlerRootView>
+  );
+}
+
 export default function App() {
   const [isSplashAnimationComplete, setIsSplashAnimationComplete] = useState(false);
 
@@ -101,34 +141,8 @@ export default function App() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <PostHogProvider client={posthog}>
-        <ImpersonationProvider>
-          <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={{
-              persister: clientPersister,
-              maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
-              dehydrateOptions: {
-                shouldDehydrateQuery: () => true, // Persist all queries
-              },
-            }}
-          >
-            <trpc.Provider client={trpcClient} queryClient={queryClient}>
-              <PaperProvider theme={darkTheme}>
-                <ProgressProvider>
-                  <SafeAreaProvider>
-                    <AppUpdateGate />
-                    <AppNavigator />
-                    <GlobalPremiumAlert />
-                    <GlobalProgressBar />
-                  </SafeAreaProvider>
-                </ProgressProvider>
-              </PaperProvider>
-            </trpc.Provider>
-          </PersistQueryClientProvider>
-        </ImpersonationProvider>
-      </PostHogProvider>
-    </GestureHandlerRootView>
+    <RootErrorBoundary>
+      <AppContent />
+    </RootErrorBoundary>
   );
 }
