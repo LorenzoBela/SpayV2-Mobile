@@ -11,9 +11,9 @@ describe('notificationServiceConfig', () => {
   });
 
   it('normalizes Android channel IDs properly', () => {
-    expect(normalizeAndroidChannelId('spay-system-v1', 'SYSTEM')).toBe('spay-system-v2');
-    expect(normalizeAndroidChannelId('spay-ads-v1', 'ADS')).toBe('spay-ads-v2');
-    expect(normalizeAndroidChannelId('spay-payments-v2', 'SYSTEM')).toBe('spay-payments-v2');
-    expect(normalizeAndroidChannelId('', 'ALERTS')).toBe('spay-alerts-v2');
+    expect(normalizeAndroidChannelId('spay-system-v1', 'SYSTEM')).toBe('spay-system-v3');
+    expect(normalizeAndroidChannelId('spay-ads-v1', 'ADS')).toBe('spay-ads-v3');
+    expect(normalizeAndroidChannelId('spay-payments-v2', 'SYSTEM')).toBe('spay-payments-v3');
+    expect(normalizeAndroidChannelId('', 'ALERTS')).toBe('spay-alerts-v3');
   });
 });

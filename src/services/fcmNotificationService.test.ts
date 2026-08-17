@@ -18,7 +18,7 @@ describe('fcmNotificationServiceConfig', () => {
     expect(input).not.toBeNull();
     expect(input?.title).toBe('Reminder');
     expect(input?.body).toBe('Pay today.');
-    expect(input?.channelId).toBe('spay-payments-v2');
+    expect(input?.channelId).toBe('spay-payments-v3');
     expect(input?.data?.notificationId).toBe('notif-1');
   });
 });

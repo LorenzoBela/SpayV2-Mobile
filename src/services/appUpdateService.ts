@@ -76,20 +76,13 @@ export const getAppUpdateRuntimeInfo = (): AppUpdateRuntimeInfo => ({
 });
 
 const parseVersionCode = (value: unknown): number | null => {
-  let num: number | null = null;
   if (typeof value === 'number' && Number.isFinite(value)) {
-    num = Math.trunc(value);
+    return Math.trunc(value);
   } else if (typeof value === 'string' && value.trim()) {
     const parsed = Number(value.trim());
-    num = Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
   }
-  if (!num) return null;
-
-  // Handle 64-bit ABI build offset (e.g., Gradle/EAS arm64 build multiplier: 64 -> 32)
-  if (num === 64) {
-    return 32;
-  }
-  return num;
+  return null;
 };
 
 export const checkForConfiguredApkUpdateAsync = async (): Promise<NativeApkUpdate> => {

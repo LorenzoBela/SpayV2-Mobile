@@ -191,7 +191,31 @@ function Set-ProductionBuildMetadata {
         if ($null -ne $config.expo.android.versionCode) {
             $currentVersionCode = [int]$config.expo.android.versionCode
         }
-        $nextVersionCode = [Math]::Max(1, $currentVersionCode + 1)
+
+        # Check existing gradle versionCode to prevent downgrade
+        $gradlePath = Join-Path $PSScriptRoot "android\app\build.gradle"
+        if (Test-Path $gradlePath) {
+            $gradleContent = Get-Content $gradlePath -Raw
+            if ($gradleContent -match 'versionCode\s+(\d+)') {
+                $gradleVersionCode = [int]$matches[1]
+                if ($gradleVersionCode -gt $currentVersionCode) {
+                    $currentVersionCode = $gradleVersionCode
+                }
+            }
+        }
+
+        # Check latest published manifest
+        $manifestPath = Join-Path $PSScriptRoot "APK\spay-latest.json"
+        if (Test-Path $manifestPath) {
+            try {
+                $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+                if ($manifest.versionCode -and [int]$manifest.versionCode -gt $currentVersionCode) {
+                    $currentVersionCode = [int]$manifest.versionCode
+                }
+            } catch {}
+        }
+
+        $nextVersionCode = [Math]::Max(32, $currentVersionCode)
         $versionName = if ($config.expo.version) { [string]$config.expo.version } else { "1.0.0" }
         $apkUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$([uri]::EscapeDataString($script:GitHubApkFileName))"
         $manifestUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$($script:GitHubManifestFileName)"
@@ -798,7 +822,9 @@ function Ensure-AppCmakeArguments {
         '                          "-DCMAKE_PREFIX_PATH=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
         '                          "-DReactAndroid_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
         '                          "-Dfbjni_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
-        '                          "-Dhermes-engine_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils"',
+        '                          "-Dhermes-engine_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+        '                          "-DREACT_NATIVE_PRODUCTION=1",',
+        '                          "-DRN_DEBUG_STRING_CONVERTIBLE=0"',
         '            }',
         '        }',
         '        // END app-cmake-libcxx-fix'
@@ -837,7 +863,7 @@ function Ensure-CMakeLibCppShared {
     }
 
     if ($raw -notmatch '# BEGIN cmake-utils-prefix') {
-        $prefixInject = "`n# BEGIN cmake-utils-prefix`nset(ReactAndroid_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nset(fbjni_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nset(hermes-engine_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nlist(APPEND CMAKE_PREFIX_PATH `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nlist(APPEND CMAKE_MODULE_PATH `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nadd_compile_definitions(RN_SERIALIZABLE_STATE=1 RN_FABRIC_ENABLED=1 IS_NEW_ARCHITECTURE_ENABLED=1 FOLLY_NO_CONFIG=1)`n# END cmake-utils-prefix`n"
+        $prefixInject = "`n# BEGIN cmake-utils-prefix`nset(ReactAndroid_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nset(fbjni_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nset(hermes-engine_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nlist(APPEND CMAKE_PREFIX_PATH `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nlist(APPEND CMAKE_MODULE_PATH `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nadd_compile_definitions(RN_SERIALIZABLE_STATE=1 RN_FABRIC_ENABLED=1 IS_NEW_ARCHITECTURE_ENABLED=1 FOLLY_NO_CONFIG=1 HERMES_V1_ENABLED=1 REACT_NATIVE_PRODUCTION=1 RN_DEBUG_STRING_CONVERTIBLE=0)`n# END cmake-utils-prefix`n"
         if ($raw -match 'cmake_minimum_required\([^\)]*\)\s*') {
             $raw = [regex]::Replace($raw, '(cmake_minimum_required\([^\)]*\)\s*)', { $args[0].Groups[1].Value + $prefixInject })
         } else {
@@ -850,6 +876,9 @@ function Ensure-CMakeLibCppShared {
     $raw = $raw -replace 'find_package\(hermes-engine\s+REQUIRED\s+CONFIG\)', 'find_package(hermes-engine REQUIRED)'
     $raw = $raw -replace 'find_package\(ReactAndroid\s+REQUIRED\s+CONFIG\)', 'find_package(ReactAndroid REQUIRED)'
     $raw = $raw -replace 'find_package\(fbjni\s+REQUIRED\s+CONFIG\)', 'find_package(fbjni REQUIRED)'
+    $raw = $raw -replace 'target_link_libraries\(worklets ReactAndroid::hermestooling\)', '# target_link_libraries(worklets ReactAndroid::hermestooling)'
+    $raw = $raw -replace '(?s)if\(REACT_NATIVE_MINOR_VERSION LESS 84\)\s*string\(APPEND CMAKE_CXX_FLAGS " -DHERMES_V1_ENABLED=\$\{HERMES_V1_ENABLED\}"\)\s*endif\(\)', 'string(APPEND CMAKE_CXX_FLAGS " -DHERMES_V1_ENABLED=1")'
+    $raw = $raw -replace '(?s)target_link_libraries\(\s*expo-modules-core\s+PRIVATE\s+\$\{LOG_LIB\}\s+android\s+\$\{JSEXECUTOR_LIB\}\s+\$\{NEW_ARCHITECTURE_DEPENDENCIES\}\s+expo-modules-jsi\s*\)', "target_link_libraries(`n  expo-modules-core`n  PRIVATE`n  `${LOG_LIB}`n  android`n  `${JSEXECUTOR_LIB}`n  `${NEW_ARCHITECTURE_DEPENDENCIES}`n  expo-modules-jsi`n  ReactAndroid::reactnative`n  `${CPP_SHARED_LIB}`n)"
 
     $targetLinkMatches = [regex]::Matches($raw, "target_link_libraries\s*\(\s*$escapedTargetName\b(?<body>[\s\S]*?)\)")
     $usesKeywordSignature = $false
@@ -897,7 +926,9 @@ $cmakeBlock = @(
     '                  "-DCMAKE_PREFIX_PATH=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
     '                  "-DReactAndroid_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
     '                  "-Dfbjni_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
-    '                  "-Dhermes-engine_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils"',
+    '                  "-Dhermes-engine_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+    '                  "-DREACT_NATIVE_PRODUCTION=1",',
+    '                  "-DRN_DEBUG_STRING_CONVERTIBLE=0"',
     '      }',
     '    }',
     '  }',

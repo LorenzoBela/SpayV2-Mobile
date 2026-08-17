@@ -1,5 +1,5 @@
 # Android Development Build Script for S-Pay V2 App
-# This script syncs files from editing location to build location, then cleans and builds the Android app in debug mode.
+# This script syncs files, patches native CMake and Android components, and builds a local debug APK.
 #
 # ================================================================================================
 # CONFIGURATION snap (Expo SDK 56 + React Native 0.85.3)
@@ -59,7 +59,6 @@ function Invoke-GradleDaemonCleanup {
     Write-Host "[INFO] Stopping Gradle daemons and cleaning old caches..." -ForegroundColor Yellow
     
     try {
-        # Stop all Gradle daemons
         Push-Location (Join-Path $ProjectPath "android")
         .\gradlew --stop 2>&1 | Out-Null
         Pop-Location
@@ -68,7 +67,6 @@ function Invoke-GradleDaemonCleanup {
         Write-Host "[WARN] Could not stop Gradle daemons: $_" -ForegroundColor DarkYellow
     }
     
-    # Clean old Gradle cache files (keep recent ones)
     try {
         $gradleCache = Join-Path $env:USERPROFILE ".gradle\caches"
         if (Test-Path $gradleCache) {
@@ -89,7 +87,6 @@ function Test-AndroidEnvironment {
     
     $issues = @()
     
-    # Check critical SDK components
     $requiredComponents = @(
         @{Path="platform-tools"; Name="Android Platform Tools"},
         @{Path="build-tools"; Name="Android Build Tools"},
@@ -148,8 +145,8 @@ function Invoke-SmartCleanup {
         }
     }
     
-    # Restore APKs from the backup dir
-    $BACKUP_DIR = "C:\Users\Lorenzo Bela\Downloads\SpayV2\mobile\apk_backup"
+    # Restore APKs from backup dir
+    $BACKUP_DIR = Join-Path $ProjectPath "apk_backup"
     if (Test-Path $BACKUP_DIR) {
         Write-Host "  Restoring previous APK outputs from backup..." -ForegroundColor Gray
         $restoredFiles = Get-ChildItem -Path $BACKUP_DIR -Filter "*.apk"
@@ -198,354 +195,131 @@ function Get-CombinedHash {
         }
     }
     if ($parts.Count -eq 0) { return $null }
-    $joined = ($parts | Sort-Object) -join "`n"
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($joined)
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $hashBytes = $sha.ComputeHash($bytes)
-        return ([BitConverter]::ToString($hashBytes)).Replace("-", "")
-    } finally {
-        $sha.Dispose()
-    }
+    $combined = $parts -join "`n"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($combined)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    $hashBytes = $hasher.ComputeHash($bytes)
+    return (-join ($hashBytes | ForEach-Object { "{0:x2}" -f $_ }))
 }
 
-# Step 0: Sync files from editing location to build location
-Write-Host "`nStep 0: Backing up previously built APKs..." -ForegroundColor Yellow
-
-$BACKUP_DIR = Join-Path $SOURCE_DIR "apk_backup"
-if (-not (Test-Path $BACKUP_DIR)) {
-    New-Item -ItemType Directory -Path $BACKUP_DIR -Force | Out-Null
-}
-Write-Host "  Backing up previously built APKs to $BACKUP_DIR..." -ForegroundColor Gray
-$apkOutputs = @(
-    "$DEST_DIR\android\app\build\outputs\apk\debug\*.apk",
-    "$DEST_DIR\android\app\build\outputs\apk\release\*.apk"
-)
-
-foreach ($pattern in $apkOutputs) {
-    if (Test-Path $pattern) {
-        Copy-Item -Path $pattern -Destination $BACKUP_DIR -Force -ErrorAction SilentlyContinue 
-    }
-}
-
-Write-Host "[OK] Robocopy skipped. Building directly in local directory." -ForegroundColor Green
-
-# Change to build directory for all subsequent operations
-Set-Location $DEST_DIR
-Write-Host "[OK] Switched to build directory: $DEST_DIR" -ForegroundColor Green
-Write-Host ""
-
-$BUILD_CACHE_DIR = Join-Path $DEST_DIR ".build-cache"
-if (-not (Test-Path $BUILD_CACHE_DIR)) {
-    New-Item -ItemType Directory -Path $BUILD_CACHE_DIR -Force | Out-Null
-}
-
-# Check and enable Windows long path support if needed
-Write-Host "`nStep 1: Checking Windows long path support..." -ForegroundColor Yellow
+# Free port 8081 if occupied
 try {
-    $longPathsEnabled = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -ErrorAction SilentlyContinue
-    if ($longPathsEnabled.LongPathsEnabled -ne 1) {
-        Write-Host "[INFO] Attempting to enable long path support (requires admin)..." -ForegroundColor Yellow
-        try {
-            Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -ErrorAction Stop
-            Write-Host "[OK] Long path support enabled." -ForegroundColor Green
-        } catch {
-            Write-Host "[WARN] Could not enable long path support (requires admin privileges)" -ForegroundColor DarkYellow
+    $portConnections = Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue
+    if ($portConnections) {
+        $pids = $portConnections | Select-Object -ExpandProperty OwningProcess -Unique
+        foreach ($pidToKill in $pids) {
+            if ($pidToKill -gt 0 -and $pidToKill -ne $PID) {
+                Write-Host "Freeing port 8081: Terminating process $pidToKill..." -ForegroundColor Yellow
+                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            }
         }
-    } else {
-        Write-Host "[OK] Long path support is already enabled" -ForegroundColor Green
+        Start-Sleep -Seconds 1
     }
 } catch {
-    Write-Host "[WARN] Could not check long path support status" -ForegroundColor DarkYellow
+    # Ignore if NetTCPConnection is unavailable
 }
 
-# Set project root to build directory
+# --- STEP 1: PRE-FLIGHT CHECKS ---
+Write-Host "`nStep 1: Running pre-flight system checks..." -ForegroundColor Yellow
 $PROJECT_ROOT = $DEST_DIR
 $ANDROID_DIR = Join-Path $PROJECT_ROOT "android"
+$BUILD_CACHE_DIR = Join-Path $PROJECT_ROOT ".build-cache"
+if (-not (Test-Path $BUILD_CACHE_DIR)) { New-Item -ItemType Directory -Path $BUILD_CACHE_DIR -Force | Out-Null }
 
-# Restore last known good config (best-effort)
-function Restore-LastGoodConfig {
-    param([string]$ProjectRoot)
-    $lastGoodPath = Join-Path $ProjectRoot "build-last-good.json"
-    if (-not (Test-Path $lastGoodPath)) { return }
-    try {
-        $lastGood = Get-Content -Path $lastGoodPath -Raw | ConvertFrom-Json
-        if (-not $env:ANDROID_HOME -and $lastGood.androidHome) { $env:ANDROID_HOME = $lastGood.androidHome }
-        if (-not $env:ANDROID_SDK_ROOT -and $lastGood.androidSdkRoot) { $env:ANDROID_SDK_ROOT = $lastGood.androidSdkRoot }
-        if (-not $env:ANDROID_NDK_HOME -and $lastGood.androidNdkHome) { $env:ANDROID_NDK_HOME = $lastGood.androidNdkHome }
-        if (-not $env:NDK_HOME -and $lastGood.ndkHome) { $env:NDK_HOME = $lastGood.ndkHome }
-        if (-not $env:JAVA_HOME -and $lastGood.javaHome) { $env:JAVA_HOME = $lastGood.javaHome }
-        if (-not $env:NODE_BINARY -and $lastGood.nodeBinary) { $env:NODE_BINARY = $lastGood.nodeBinary }
-        if (-not $env:ANDROID_STL -and $lastGood.androidStl) { $env:ANDROID_STL = $lastGood.androidStl }
-        if (-not $env:CMAKE_ANDROID_STL_TYPE -and $lastGood.cmakeAndroidStlType) { $env:CMAKE_ANDROID_STL_TYPE = $lastGood.cmakeAndroidStlType }
-        Write-Host "[OK] Loaded last known good build config: $lastGoodPath" -ForegroundColor Green
-    } catch {
-        Write-Host "[WARN] Failed to load last known good build config" -ForegroundColor DarkYellow
+# Locate Android SDK
+$sdkCandidates = @(
+    $env:ANDROID_HOME,
+    $env:ANDROID_SDK_ROOT,
+    "$env:LOCALAPPDATA\Android\Sdk",
+    "$env:USERPROFILE\AppData\Local\Android\Sdk",
+    "C:\Android\Sdk"
+)
+$resolvedSdk = $null
+foreach ($cand in $sdkCandidates) {
+    if ($cand -and (Test-Path $cand)) {
+        $resolvedSdk = $cand
+        break
     }
 }
 
-Restore-LastGoodConfig -ProjectRoot $PROJECT_ROOT
-
-# Set Node binary path
-$env:NODE_BINARY = "C:\Program Files\nodejs\node.exe"
-Write-Host "[OK] Node binary set to: $env:NODE_BINARY" -ForegroundColor Green
-
-# Step 2: Pre-Flight Environment Validation
-Write-Host "`nStep 2: Pre-Flight Environment Validation..." -ForegroundColor Yellow
-
-# Check Node.js version
-Test-ToolVersion -ToolName "Node.js" `
-    -VersionCommand { node --version } `
-    -RequiredPattern "v(1[6-9]|2\d)\." `
-    -Description "Node.js 16.x or higher"
-
-# Check Java/JDK version
-$javaCheck = Test-ToolVersion -ToolName "Java JDK" `
-    -VersionCommand { javac -version } `
-    -RequiredPattern "javac (11|17|21)\." `
-    -Description "JDK 11, 17, or 21"
-
-if (-not $javaCheck) {
-    Write-Host "[WARN] JDK version might cause build issues. Recommended: JDK 17" -ForegroundColor DarkYellow
+if (-not $resolvedSdk) {
+    Write-Host "[ERROR] Android SDK not found in any standard location" -ForegroundColor Red
+    exit 1
 }
 
-# Clean Gradle daemons and old caches
-Invoke-GradleDaemonCleanup -ProjectPath $PROJECT_ROOT
+$env:ANDROID_HOME = $resolvedSdk
+$env:ANDROID_SDK_ROOT = $resolvedSdk
+Write-Host "[OK] ANDROID_HOME resolved to: $env:ANDROID_HOME" -ForegroundColor Green
 
-# Step 2.1: Toolchain sanity (JDK + Android SDK)
-Write-Host "`nStep 2.1: Toolchain sanity (JDK + Android SDK)..." -ForegroundColor Yellow
+# Locate Android NDK
+$preferredNdkVersion = "26.1.10909125"
+$ndkCandidates = @(
+    $env:ANDROID_NDK_HOME,
+    $env:NDK_HOME,
+    (Join-Path $resolvedSdk "ndk\$preferredNdkVersion"),
+    (Join-Path $resolvedSdk "ndk-bundle")
+)
 
-# Force CMake/NDK to use shared libc++ to avoid missing stdlib symbols at link time
-$env:ANDROID_STL = "c++_shared"
-$env:CMAKE_ANDROID_STL_TYPE = "c++_shared"
-Write-Host "[OK] Android STL set to: $env:ANDROID_STL" -ForegroundColor Green
-
-# Try to infer ANDROID_HOME/ANDROID_SDK_ROOT from local.properties if missing
-$localPropsPathEarly = "$ANDROID_DIR\local.properties"
-$sdkDirEarly = $null
-if (Test-Path $localPropsPathEarly) {
-    $sdkLineEarly = Get-Content $localPropsPathEarly | Where-Object { $_ -match '^sdk\.dir=' } | Select-Object -First 1
-    if ($sdkLineEarly) {
-        $sdkLineEarly = $sdkLineEarly -replace 'ndk\.dir=.*', ''
-        $sdkDirEarly = $sdkLineEarly -replace '^sdk\.dir=', '' -replace '\\:', ':' -replace '\\ ', ' ' -replace '\\\\', '\'
+$resolvedNdk = $null
+foreach ($n in $ndkCandidates) {
+    if ($n -and (Test-Path $n)) {
+        $resolvedNdk = $n
+        break
     }
 }
 
-function Update-LocalPropertiesPaths {
-    param(
-        [string]$Path,
-        [string]$SdkDir
-    )
-    $lines = @()
-    if (Test-Path $Path) {
-        $lines = Get-Content $Path
-    }
-    $lines = $lines | Where-Object { $_ -notmatch '^sdk\.dir=' -and $_ -notmatch '^ndk\.dir=' }
-    if ($SdkDir) { $lines += ("sdk.dir=" + ($SdkDir -replace '\\', '/')) }
-    Set-Content -Path $Path -Value $lines
-}
-
-function Remove-NdkDirFromLocalProperties {
-    param([string]$Path)
-    if (-not (Test-Path $Path)) { return }
-    $lines = Get-Content $Path | Where-Object { $_ -notmatch '^ndk\.dir=' }
-    Set-Content -Path $Path -Value $lines
-}
-
-function Get-ResolvedAndroidSdkDir {
-    param(
-        [string]$LocalPropertiesPath,
-        [string]$SdkFromLocalProperties
-    )
-
-    $candidates = @(
-        $env:ANDROID_SDK_ROOT,
-        $env:ANDROID_HOME,
-        $SdkFromLocalProperties,
-        "$env:LOCALAPPDATA\Android\Sdk",
-        "$env:USERPROFILE\AppData\Local\Android\Sdk"
-    ) | Where-Object { $_ -and $_.Trim().Length -gt 0 }
-
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) { return $candidate }
-    }
-
-    return $null
-}
-
-if ((!$env:ANDROID_HOME -or !$env:ANDROID_SDK_ROOT) -and $sdkDirEarly) {
-    if (-not $env:ANDROID_HOME) { $env:ANDROID_HOME = $sdkDirEarly }
-    if (-not $env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT = $sdkDirEarly }
-    Write-Host "[OK] Android SDK inferred from local.properties: $sdkDirEarly" -ForegroundColor Green
-
-    # Validate Android SDK components
-    Test-AndroidEnvironment -SdkPath $sdkDirEarly
-
-    # Normalize sdk.dir in local.properties for the build directory
-    Update-LocalPropertiesPaths -Path $localPropsPathEarly -SdkDir $sdkDirEarly
-    Remove-NdkDirFromLocalProperties -Path $localPropsPathEarly
-    
-    # Add platform-tools to PATH if not already there
-    $platformTools = Join-Path $sdkDirEarly "platform-tools"
-    if ((Test-Path $platformTools) -and ($env:Path -notlike "*$platformTools*")) {
-        $env:Path = "$platformTools;$env:Path"
-        Write-Host "[OK] Added Android platform-tools to PATH" -ForegroundColor Green
-    }
-
-    # --- CRITICAL NDK 26 LOCK ---
-    $preferredNdkVersion = "26.1.10909125"
-    $ndkRoot = Join-Path $sdkDirEarly "ndk"
-    $ndkDir = $null
-    
-    if (-not (Test-Path (Join-Path $ndkRoot $preferredNdkVersion))) {
-        Write-Host "`n[ERROR] CRITICAL: Android NDK $preferredNdkVersion is recommended." -ForegroundColor Red
-    }
-
-    function Get-SdkManagerPath {
-        param([string]$SdkRoot)
-        $candidates = @(
-            Join-Path $SdkRoot "cmdline-tools\latest\bin\sdkmanager.bat",
-            Join-Path $SdkRoot "cmdline-tools\bin\sdkmanager.bat",
-            Join-Path $SdkRoot "tools\bin\sdkmanager.bat"
-        )
-        foreach ($c in $candidates) {
-            if (Test-Path $c) { return $c }
-        }
-        return $null
-    }
-
-    function Test-NdkValid {
-        param([string]$Path)
-        return (Test-Path (Join-Path $Path "source.properties"))
-    }
-
+if (-not $resolvedNdk) {
+    $ndkRoot = Join-Path $resolvedSdk "ndk"
     if (Test-Path $ndkRoot) {
-        $preferredCandidate = Join-Path $ndkRoot $preferredNdkVersion
-
-        if ((Test-Path $preferredCandidate) -and -not (Test-NdkValid $preferredCandidate)) {
-            Write-Host "[WARN] NDK $preferredNdkVersion exists but is missing source.properties. Removing broken folder..." -ForegroundColor DarkYellow
-            try {
-                Remove-Item -Recurse -Force $preferredCandidate -ErrorAction Stop
-            } catch {
-                Write-Host "[WARN] Failed to remove broken NDK folder: $preferredCandidate" -ForegroundColor DarkYellow
-            }
+        $installedNdks = Get-ChildItem -Path $ndkRoot -Directory | Sort-Object Name -Descending
+        if ($installedNdks.Count -gt 0) {
+            $resolvedNdk = $installedNdks[0].FullName
         }
-
-        if ((Test-Path $preferredCandidate) -and (Test-NdkValid $preferredCandidate)) {
-            $ndkDir = $preferredCandidate
-        } else {
-            $sdkManager = Get-SdkManagerPath -SdkRoot $sdkDirEarly
-            if ($sdkManager) {
-                Write-Host "[INFO] Installing NDK $preferredNdkVersion via sdkmanager..." -ForegroundColor Yellow
-                try {
-                    $env:ANDROID_SDK_ROOT = $sdkDirEarly
-                    $env:ANDROID_HOME = $sdkDirEarly
-                    "y" | & $sdkManager "ndk;$preferredNdkVersion" | Out-Host
-                } catch {
-                    Write-Host "[WARN] Failed to install NDK $preferredNdkVersion via sdkmanager." -ForegroundColor DarkYellow
-                }
-            } else {
-                Write-Host "[WARN] sdkmanager not found. Please install NDK $preferredNdkVersion in Android SDK Manager." -ForegroundColor DarkYellow
-            }
-
-            if ((Test-Path $preferredCandidate) -and (Test-NdkValid $preferredCandidate)) {
-                $ndkDir = $preferredCandidate
-            } else {
-                Write-Host "`n[ERROR] CRITICAL: NDK $preferredNdkVersion is required but could not be resolved." -ForegroundColor Red
-                exit 1
-            }
-        }
-    }
-
-    if ($ndkDir) {
-        $env:ANDROID_NDK_HOME = $ndkDir
-        $env:NDK_HOME = $ndkDir
-        
-        $ndkSourceProps = Join-Path $ndkDir "source.properties"
-        if (Test-Path $ndkSourceProps) {
-            $ndkVersion = (Get-Content $ndkSourceProps | Where-Object { $_ -match "^Pkg.Revision" } | Select-Object -First 1) -replace "^Pkg.Revision\s*=\s*", ""
-            Write-Host "[OK] NDK verified: $ndkVersion (supports c++_shared STL)" -ForegroundColor Green
-        }
-
-        Remove-NdkDirFromLocalProperties -Path $localPropsPathEarly
-        Write-Host "[OK] Using NDK: $ndkDir" -ForegroundColor Green
-    } else {
-        Write-Host "[ERROR] No valid NDK installation found under $ndkRoot" -ForegroundColor Red
-        exit 1
     }
 }
 
-# Ensure Android SDK env + local.properties are always available before any Gradle invocation
-$resolvedSdkDir = Get-ResolvedAndroidSdkDir -LocalPropertiesPath $localPropsPathEarly -SdkFromLocalProperties $sdkDirEarly
-if ($resolvedSdkDir) {
-    if (-not $env:ANDROID_HOME) { $env:ANDROID_HOME = $resolvedSdkDir }
-    if (-not $env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT = $resolvedSdkDir }
-    Update-LocalPropertiesPaths -Path $localPropsPathEarly -SdkDir $resolvedSdkDir
-    Remove-NdkDirFromLocalProperties -Path $localPropsPathEarly
-    Write-Host "[OK] Android SDK resolved to: $resolvedSdkDir" -ForegroundColor Green
+if ($resolvedNdk) {
+    $env:ANDROID_NDK_HOME = $resolvedNdk
+    $env:NDK_HOME = $resolvedNdk
+    Write-Host "[OK] ANDROID_NDK_HOME resolved to: $env:ANDROID_NDK_HOME" -ForegroundColor Green
 } else {
-    Write-Host "[WARN] Could not resolve Android SDK path from env/local.properties/common locations" -ForegroundColor DarkYellow
+    Write-Host "[WARN] Android NDK directory not found. CMake builds may fail." -ForegroundColor DarkYellow
 }
 
-# Save working config snapshot for future builds
-Write-Host "`nStep 2.5: Saving working build config..." -ForegroundColor Yellow
-$configPath = Join-Path $PROJECT_ROOT "build-config.json"
-$configData = [ordered]@{
-    timestamp           = (Get-Date).ToString("o")
-    projectRoot         = $PROJECT_ROOT
-    androidDir          = $ANDROID_DIR
-    androidSdkRoot      = $env:ANDROID_SDK_ROOT
-    androidHome         = $env:ANDROID_HOME
-    androidNdkHome       = $env:ANDROID_NDK_HOME
-    ndkHome             = $env:NDK_HOME
-    javaHome            = $env:JAVA_HOME
-    nodeBinary          = $env:NODE_BINARY
-    androidStl          = $env:ANDROID_STL
-    cmakeAndroidStlType = $env:CMAKE_ANDROID_STL_TYPE
-}
-try {
-    $configData | ConvertTo-Json -Depth 5 | Set-Content -Path $configPath -Encoding UTF8
-    Write-Host "[OK] Saved build config to: $configPath" -ForegroundColor Green
-} catch {
-    Write-Host "[WARN] Failed to save build config snapshot" -ForegroundColor DarkYellow
+# Locate Node Binary
+$nodeCmd = Get-Command "node.exe" -ErrorAction SilentlyContinue
+if ($nodeCmd) {
+    $env:NODE_BINARY = $nodeCmd.Source
+    Write-Host "[OK] NODE_BINARY set to: $env:NODE_BINARY" -ForegroundColor Green
 }
 
-# Step 2.6: Apply known working build fixes (Gradle + CMake patches)
-Write-Host "`nStep 2.6: Applying working build fixes..." -ForegroundColor Yellow
+# --- STEP 2: HARDWARE/MEMORY OPTIMIZATION ---
+Write-Host "`nStep 2: Optimizing Gradle memory for host hardware..." -ForegroundColor Yellow
 
 function Ensure-LineInFile {
-    param(
-        [string]$Path,
-        [string]$MatchRegex,
-        [string]$LineToSet
-    )
+    param([string]$Path, [string]$MatchRegex, [string]$LineToSet)
     if (-not (Test-Path $Path)) { return }
-    $content = Get-Content -Path $Path
-    $matched = $false
-    $newContent = @()
-    foreach ($line in $content) {
-        if ($line -match $MatchRegex) {
-            $newContent += $LineToSet
-            $matched = $true
-        } else {
-            $newContent += $line
-        }
+    $content = Get-Content -Path $Path -Raw
+    if ($content -match $MatchRegex) {
+        $content = [regex]::Replace($content, "(?m)$MatchRegex.*", $LineToSet)
+    } else {
+        $content = $content.TrimEnd() + "`r`n" + $LineToSet + "`r`n"
     }
-    if (-not $matched) { $newContent += $LineToSet }
-    Set-Content -Path $Path -Value $newContent
+    Set-Content -Path $Path -Value $content
 }
 
 function Ensure-GradleMemorySettings {
     param([string]$GradlePropsPath)
     if (-not (Test-Path $GradlePropsPath)) { return }
 
+    $totalRamGb = 8
     $logicalCores = [Environment]::ProcessorCount
-    $totalRamGb = 16
     try {
-        $totalRamGb = [math]::Round(((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB), 1)
-    } catch {
-        Write-Host "[WARN] Could not read total RAM. Falling back to safe defaults." -ForegroundColor DarkYellow
-    }
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs -and $cs.TotalPhysicalMemory) {
+            $totalRamGb = [math]::Round($cs.TotalPhysicalMemory / 1GB)
+        }
+    } catch {}
 
     $heapMb = [int][math]::Floor([math]::Min(12288, [math]::Max(6144, $totalRamGb * 1024 * 0.5)))
     $metaMb = [int][math]::Floor([math]::Min(1536, [math]::Max(768, $heapMb * 0.125)))
@@ -554,8 +328,8 @@ function Ensure-GradleMemorySettings {
     $workersByCore = [math]::Max(2, $logicalCores - 2)
     $workersByRam = [math]::Max(2, [int][math]::Floor($totalRamGb / 4))
     $maxWorkers = [math]::Min(8, [math]::Min($workersByCore, $workersByRam))
-    $parallelEnabled = if ($maxWorkers -ge 4) { "true" } else { "false" }
 
+    $parallelEnabled = if ($maxWorkers -ge 4) { "true" } else { "false" }
     $script:GradleMaxWorkers = $maxWorkers
     $script:GradleHeapMb = $heapMb
 
@@ -563,17 +337,10 @@ function Ensure-GradleMemorySettings {
     Ensure-LineInFile -Path $GradlePropsPath -MatchRegex '^kotlin\.daemon\.jvm\.options=' -LineToSet "kotlin.daemon.jvm.options=-Xmx${kotlinMb}m"
     Ensure-LineInFile -Path $GradlePropsPath -MatchRegex '^org\.gradle\.workers\.max=' -LineToSet "org.gradle.workers.max=$maxWorkers"
     Ensure-LineInFile -Path $GradlePropsPath -MatchRegex '^org\.gradle\.parallel=' -LineToSet "org.gradle.parallel=$parallelEnabled"
-
-    Write-Host "[OK] Auto-tuned build profile: RAM=${totalRamGb}GB, heap=${heapMb}MB, workers=${maxWorkers}" -ForegroundColor Green
 }
 
 function Ensure-BlockAfterLine {
-    param(
-        [string]$Path,
-        [string]$AnchorRegex,
-        [string]$BlockText,
-        [string]$BlockMarker
-    )
+    param([string]$Path, [string]$AnchorRegex, [string]$BlockText, [string]$BlockMarker)
     if (-not (Test-Path $Path)) { return }
     $raw = Get-Content -Path $Path -Raw
     if ($raw -match [regex]::Escape($BlockMarker)) { return }
@@ -581,35 +348,35 @@ function Ensure-BlockAfterLine {
     $output = @()
     foreach ($line in $lines) {
         $output += $line
-        if ($line -match $AnchorRegex) {
-            $output += $BlockText
-        }
+        if ($line -match $AnchorRegex) { $output += $BlockText }
     }
     Set-Content -Path $Path -Value $output
 }
 
 function Ensure-AppCmakeArguments {
-    param(
-        [string]$Path
-    )
+    param([string]$Path)
     if (-not (Test-Path $Path)) { return }
     $raw = Get-Content -Path $Path -Raw
     if ($raw -match 'BEGIN app-cmake-libcxx-fix') { return }
-
     $block = @(
-'        // BEGIN app-cmake-libcxx-fix',
-'        externalNativeBuild {',
-'            cmake {',
-'                arguments "-DANDROID_STL=c++_shared",',
-'                          "-DCMAKE_ANDROID_STL_TYPE=c++_shared",',
-'                          "-DCMAKE_SHARED_LINKER_FLAGS=-lc++_shared",',
-'                          "-DCMAKE_EXE_LINKER_FLAGS=-lc++_shared",',
-'                          "-DANDROID_LD=lld"',
-'            }',
-'        }',
-'        // END app-cmake-libcxx-fix'
+        '        // BEGIN app-cmake-libcxx-fix',
+        '        externalNativeBuild {',
+        '            cmake {',
+        '                arguments "-DANDROID_STL=c++_shared",',
+        '                          "-DCMAKE_ANDROID_STL_TYPE=c++_shared",',
+        '                          "-DCMAKE_SHARED_LINKER_FLAGS=-lc++_shared",',
+        '                          "-DCMAKE_EXE_LINKER_FLAGS=-lc++_shared",',
+        '                          "-DANDROID_LD=lld",',
+        '                          "-DCMAKE_PREFIX_PATH=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+        '                          "-DReactAndroid_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+        '                          "-Dfbjni_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+        '                          "-Dhermes-engine_DIR=${rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+        '                          "-DREACT_NATIVE_PRODUCTION=1",',
+        '                          "-DRN_DEBUG_STRING_CONVERTIBLE=0"',
+        '            }',
+        '        }',
+        '        // END app-cmake-libcxx-fix'
     )
-
     $lines = Get-Content -Path $Path
     $output = @()
     foreach ($line in $lines) {
@@ -622,24 +389,15 @@ function Ensure-AppCmakeArguments {
 }
 
 function Ensure-CMakeLibCppShared {
-    param(
-        [string]$Path,
-        [string]$TargetName
-    )
+    param([string]$Path, [string]$TargetName)
     if (-not (Test-Path $Path)) { return }
     $raw = Get-Content -Path $Path -Raw
 
     $raw = $raw -replace '`cmake_minimum_required', 'cmake_minimum_required'
     $raw = $raw -replace '`n', "`n"
     $escapedTargetName = [regex]::Escape($TargetName)
-
-    if ($raw -notmatch "add_library\s*\(\s*$escapedTargetName\b") {
-        return
-    }
-
-    if ($raw -match "add_library\s*\(\s*$escapedTargetName\b[^\)]*\bIMPORTED\b") {
-        return
-    }
+    if ($raw -notmatch 'add_library\s*\(') { return }
+    if ($raw -match 'add_library\s*\(\s*([^\s\)]+)\s+IMPORTED') { return }
 
     if ($raw -notmatch 'find_library\(CPP_SHARED_LIB c\+\+_shared\)') {
         if ($raw -match 'find_library\([^\n]*log[^\n]*\)') {
@@ -651,6 +409,24 @@ function Ensure-CMakeLibCppShared {
             $raw = "find_library(CPP_SHARED_LIB c++_shared)`n`nif(NOT CPP_SHARED_LIB)`n  set(CPP_SHARED_LIB c++_shared)`nendif()`n`n$raw"
         }
     }
+
+    if ($raw -notmatch '# BEGIN cmake-utils-prefix') {
+        $prefixInject = "`n# BEGIN cmake-utils-prefix`nset(ReactAndroid_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nset(fbjni_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nset(hermes-engine_DIR `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nlist(APPEND CMAKE_PREFIX_PATH `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nlist(APPEND CMAKE_MODULE_PATH `"`${CMAKE_CURRENT_SOURCE_DIR}/../../react-native/ReactAndroid/cmake-utils`")`nadd_compile_definitions(RN_SERIALIZABLE_STATE=1 RN_FABRIC_ENABLED=1 IS_NEW_ARCHITECTURE_ENABLED=1 FOLLY_NO_CONFIG=1 HERMES_V1_ENABLED=1 REACT_NATIVE_PRODUCTION=1 RN_DEBUG_STRING_CONVERTIBLE=0)`n# END cmake-utils-prefix`n"
+        if ($raw -match 'cmake_minimum_required\([^\)]*\)\s*') {
+            $raw = [regex]::Replace($raw, '(cmake_minimum_required\([^\)]*\)\s*)', { $args[0].Groups[1].Value + $prefixInject })
+        } else {
+            $raw = $prefixInject + $raw
+        }
+    }
+
+    $raw = $raw -replace 'find_package\(fbjni\s+REQUIRED\s+NitroConfig\)', 'find_package(fbjni REQUIRED)'
+    $raw = $raw -replace 'find_package\(ReactAndroid\s+REQUIRED\s+NitroConfig\)', 'find_package(ReactAndroid REQUIRED)'
+    $raw = $raw -replace 'find_package\(hermes-engine\s+REQUIRED\s+CONFIG\)', 'find_package(hermes-engine REQUIRED)'
+    $raw = $raw -replace 'find_package\(ReactAndroid\s+REQUIRED\s+CONFIG\)', 'find_package(ReactAndroid REQUIRED)'
+    $raw = $raw -replace 'find_package\(fbjni\s+REQUIRED\s+CONFIG\)', 'find_package(fbjni REQUIRED)'
+    $raw = $raw -replace 'target_link_libraries\(worklets ReactAndroid::hermestooling\)', '# target_link_libraries(worklets ReactAndroid::hermestooling)'
+    $raw = $raw -replace '(?s)if\(REACT_NATIVE_MINOR_VERSION LESS 84\)\s*string\(APPEND CMAKE_CXX_FLAGS " -DHERMES_V1_ENABLED=\$\{HERMES_V1_ENABLED\}"\)\s*endif\(\)', 'string(APPEND CMAKE_CXX_FLAGS " -DHERMES_V1_ENABLED=1")'
+    $raw = $raw -replace '(?s)target_link_libraries\(\s*expo-modules-core\s+PRIVATE\s+\$\{LOG_LIB\}\s+android\s+\$\{JSEXECUTOR_LIB\}\s+\$\{NEW_ARCHITECTURE_DEPENDENCIES\}\s+expo-modules-jsi\s*\)', "target_link_libraries(`n  expo-modules-core`n  PRIVATE`n  `${LOG_LIB}`n  android`n  `${JSEXECUTOR_LIB}`n  `${NEW_ARCHITECTURE_DEPENDENCIES}`n  expo-modules-jsi`n  ReactAndroid::reactnative`n  `${CPP_SHARED_LIB}`n)"
 
     $targetLinkMatches = [regex]::Matches($raw, "target_link_libraries\s*\(\s*$escapedTargetName\b(?<body>[\s\S]*?)\)")
     $usesKeywordSignature = $false
@@ -677,47 +453,6 @@ function Ensure-CMakeLibCppShared {
 
     Set-Content -Path $Path -Value $raw
 }
-
-# Enforce Gradle STL flags
-$gradleProps = Join-Path $ANDROID_DIR "gradle.properties"
-Ensure-LineInFile -Path $gradleProps -MatchRegex '^reactNativeArchitectures=' -LineToSet 'reactNativeArchitectures=arm64-v8a'
-Ensure-LineInFile -Path $gradleProps -MatchRegex '^android\.cmake\.arguments=' -LineToSet 'android.cmake.arguments=-DANDROID_STL=c++_shared -DCMAKE_ANDROID_STL_TYPE=c++_shared -DCMAKE_SHARED_LINKER_FLAGS=-lc++_shared -DCMAKE_EXE_LINKER_FLAGS=-lc++_shared'
-Ensure-GradleMemorySettings -GradlePropsPath $gradleProps
-$env:GRADLE_OPTS = "-Xmx$($script:GradleHeapMb)m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
-$env:JAVA_TOOL_OPTIONS = "-Xmx$($script:GradleHeapMb)m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
-Write-Host "[OK] Gradle/JVM memory limits applied for current shell" -ForegroundColor Green
-
-# Enforce root build.gradle subproject CMake args
-$rootBuildGradle = Join-Path $ANDROID_DIR "build.gradle"
-$cmakeBlock = @(
-'// BEGIN libcxx-shared-fix',
-'def configureAndroidCmake = { Project project ->',
-'  project.android.defaultConfig {',
-'    externalNativeBuild {',
-'      cmake {',
-'        arguments "-DANDROID_STL=c++_shared",',
-'                  "-DCMAKE_ANDROID_STL_TYPE=c++_shared",',
-'                  "-DCMAKE_SHARED_LINKER_FLAGS=-lc++_shared",',
-'                  "-DCMAKE_EXE_LINKER_FLAGS=-lc++_shared"',
-'      }',
-'    }',
-'  }',
-'}',
-'subprojects { project ->',
-'  project.plugins.withId("com.android.application") {',
-'    configureAndroidCmake(project)',
-'  }',
-'  project.plugins.withId("com.android.library") {',
-'    configureAndroidCmake(project)',
-'  }',
-'}',
-'// END libcxx-shared-fix'
-)
-Ensure-BlockAfterLine -Path $rootBuildGradle -AnchorRegex 'apply plugin: "com.facebook.react.rootproject"' -BlockText $cmakeBlock -BlockMarker '// BEGIN libcxx-shared-fix'
-
-# Enforce app build.gradle defaultConfig CMake args
-$appBuildGradle = Join-Path $ANDROID_DIR "app\build.gradle"
-Ensure-AppCmakeArguments -Path $appBuildGradle
 
 # Prefer Android Studio JBR
 $candidateJdks = @(
@@ -846,8 +581,10 @@ Write-Host "`nStep 6.1: Applying post-prebuild Gradle fixes..." -ForegroundColor
 
 $gradleProps = Join-Path $ANDROID_DIR "gradle.properties"
 if (Test-Path $gradleProps) {
-    Ensure-LineInFile -Path $gradleProps -MatchRegex '^reactNativeArchitectures=' -LineToSet 'reactNativeArchitectures=arm64-v8a'
     $propsContent = Get-Content $gradleProps -Raw
+    if ($propsContent -match '(?m)^reactNativeArchitectures=.*') {
+        $propsContent = $propsContent -replace '(?m)^reactNativeArchitectures=.*', ''
+    }
     $targetKotlinVersion = "2.1.20"
     if ($propsContent -match 'android\.kotlinVersion=([^\r\n]+)') {
         $extractedVersion = $matches[1].Trim()
@@ -868,44 +605,69 @@ Ensure-GradleMemorySettings -GradlePropsPath $gradleProps
 $env:GRADLE_OPTS = "-Xmx$($script:GradleHeapMb)m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
 $env:JAVA_TOOL_OPTIONS = "-Xmx$($script:GradleHeapMb)m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
 
-# Re-apply CMake/libcxx-shared fixes to android/ files (wiped by prebuild --clean)
+# Re-apply CMake/libcxx-shared fixes to android/ files
 $rootBuildGradle = Join-Path $ANDROID_DIR "build.gradle"
 $appBuildGradle = Join-Path $ANDROID_DIR "app\build.gradle"
 Ensure-LineInFile -Path $gradleProps -MatchRegex '^android\.cmake\.arguments=' -LineToSet 'android.cmake.arguments=-DANDROID_STL=c++_shared -DCMAKE_ANDROID_STL_TYPE=c++_shared -DCMAKE_SHARED_LINKER_FLAGS=-lc++_shared -DCMAKE_EXE_LINKER_FLAGS=-lc++_shared'
+
+$cmakeBlock = @(
+    '// BEGIN libcxx-shared-fix',
+    'def configureAndroidCmake = { Project project ->',
+    '  project.android.defaultConfig {',
+    '    externalNativeBuild {',
+    '      cmake {',
+    '        arguments "-DANDROID_STL=c++_shared",',
+    '                  "-DCMAKE_ANDROID_STL_TYPE=c++_shared",',
+    '                  "-DCMAKE_SHARED_LINKER_FLAGS=-lc++_shared",',
+    '                  "-DCMAKE_EXE_LINKER_FLAGS=-lc++_shared",',
+    '                  "-DCMAKE_PREFIX_PATH=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+    '                  "-DReactAndroid_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+    '                  "-Dfbjni_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+    '                  "-Dhermes-engine_DIR=${project.rootDir}/../node_modules/react-native/ReactAndroid/cmake-utils",',
+    '                  "-DREACT_NATIVE_PRODUCTION=1",',
+    '                  "-DRN_DEBUG_STRING_CONVERTIBLE=0"',
+    '      }',
+    '    }',
+    '  }',
+    '}',
+    'subprojects { project ->',
+    '  project.plugins.withId("com.android.application") {',
+    '    configureAndroidCmake(project)',
+    '  }',
+    '  project.plugins.withId("com.android.library") {',
+    '    configureAndroidCmake(project)',
+    '  }',
+    '}',
+    '// END libcxx-shared-fix'
+)
 Ensure-BlockAfterLine -Path $rootBuildGradle -AnchorRegex 'apply plugin: "com.facebook.react.rootproject"' -BlockText $cmakeBlock -BlockMarker '// BEGIN libcxx-shared-fix'
 Ensure-AppCmakeArguments -Path $appBuildGradle
 
-# Patch native modules CMakeLists.txt files to link c++_shared
+# Patch native modules CMakeLists.txt files
 $knownTargets = @{
-    'expo-modules-core'           = 'expo-modules-core'
+    'expo-modules-core'           = '${PACKAGE_NAME}'
     'react-native-screens'        = 'rnscreens'
     'react-native-worklets'       = 'worklets'
     'react-native-reanimated'     = 'reanimated'
     'react-native-nitro-modules'  = 'NitroModules'
-    '@shopify\react-native-skia'  = '${PACKAGE_NAME}'
+    'react-native-mmkv'           = 'NitroMmkv'
+    'react-native-gesture-handler'= '${PACKAGE_NAME}'
 }
 $cmakePatchCount = 0
 
 $cmakePatchStampPath = Join-Path $BUILD_CACHE_DIR "cmake-patch.sha256"
-$cmakePatchKey = Get-FileSha256 -Path (Join-Path $PROJECT_ROOT "package-lock.json")
+$cmakePatchKey = Get-FileSha256 -Path $lockFilePath
 $skipCmakeScan = $false
 if ($FAST_MODE -and $cmakePatchKey -and (Test-Path $cmakePatchStampPath)) {
     $previousCmakePatchKey = (Get-Content -Path $cmakePatchStampPath -Raw).Trim()
-    if ($previousCmakePatchKey -eq $cmakePatchKey) {
-        $skipCmakeScan = $true
-    }
+    if ($previousCmakePatchKey -eq $cmakePatchKey) { $skipCmakeScan = $true }
 }
 
 if ($skipCmakeScan) {
     Write-Host "[INFO] FAST_MODE: node_modules unchanged, skipping CMake scan" -ForegroundColor Gray
 } else {
-    $cmakeFiles = Get-ChildItem -Path (Join-Path $PROJECT_ROOT "node_modules") -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object {
-            ($_.Name -eq 'CMakeLists.txt' -or $_.Extension -eq '.cmake') -and
-            $_.FullName -match 'android' -and
-            $_.FullName -notmatch '\.cxx' -and
-            $_.FullName -notmatch 'build\\'
-        }
+    $cmakeFiles = Get-ChildItem -Path (Join-Path $PROJECT_ROOT "node_modules") -Filter "CMakeLists.txt" -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match 'android' -and $_.FullName -notmatch '\.cxx' -and $_.FullName -notmatch 'build\\' }
 
     foreach ($cmakeFile in $cmakeFiles) {
         $raw = Get-Content -Path $cmakeFile.FullName -Raw -ErrorAction SilentlyContinue
@@ -925,13 +687,315 @@ if ($skipCmakeScan) {
         $cmakePatchCount++
     }
 
+    $autolinkingFiles = Get-ChildItem -Path (Join-Path $PROJECT_ROOT "node_modules") -Filter "*.cmake" -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '\.cxx' -and $_.FullName -notmatch 'build\\' -and $_.FullName -notmatch 'ReactAndroid[\\/]cmake-utils' }
+
+    $rnCmakeUtils = (Join-Path $PROJECT_ROOT "node_modules/react-native/ReactAndroid/cmake-utils").Replace('\', '/')
+
+    foreach ($autolinkingFile in $autolinkingFiles) {
+        $raw = Get-Content -Path $autolinkingFile.FullName -Raw -ErrorAction SilentlyContinue
+        if (-not $raw) { continue }
+        if (($raw -match 'find_package\s*\(\s*(ReactAndroid|fbjni|hermes-engine)') -and ($raw -notmatch '# BEGIN cmake-utils-prefix')) {
+            $prefixInject = "`n# BEGIN cmake-utils-prefix`nset(ReactAndroid_DIR `"$rnCmakeUtils`")`nset(fbjni_DIR `"$rnCmakeUtils`")`nset(hermes-engine_DIR `"$rnCmakeUtils`")`nlist(APPEND CMAKE_PREFIX_PATH `"$rnCmakeUtils`")`nlist(APPEND CMAKE_MODULE_PATH `"$rnCmakeUtils`")`n# END cmake-utils-prefix`n"
+            $raw = $prefixInject + $raw
+            $raw = $raw -replace 'find_package\(fbjni\s+REQUIRED\s+NitroConfig\)', 'find_package(fbjni REQUIRED)'
+            $raw = $raw -replace 'find_package\(ReactAndroid\s+REQUIRED\s+NitroConfig\)', 'find_package(ReactAndroid REQUIRED)'
+            $raw = $raw -replace 'find_package\(hermes-engine\s+REQUIRED\s+CONFIG\)', 'find_package(hermes-engine REQUIRED)'
+            $raw = $raw -replace 'find_package\(ReactAndroid\s+REQUIRED\s+CONFIG\)', 'find_package(ReactAndroid REQUIRED)'
+            $raw = $raw -replace 'find_package\(fbjni\s+REQUIRED\s+CONFIG\)', 'find_package(fbjni REQUIRED)'
+            Set-Content -Path $autolinkingFile.FullName -Value $raw
+            $cmakePatchCount++
+        }
+    }
+
+    $rnAppCmake = Join-Path $PROJECT_ROOT "node_modules/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake"
+    if (Test-Path $rnAppCmake) {
+        $rawApp = Get-Content -Path $rnAppCmake -Raw -ErrorAction SilentlyContinue
+        if ($rawApp -and ($rawApp -notmatch 'set\(fbjni_DIR')) {
+            $rawApp = $rawApp -replace 'set\(ReactAndroid_DIR "[^"]*"\)', "set(ReactAndroid_DIR `"$rnCmakeUtils`")`nset(fbjni_DIR `"$rnCmakeUtils`")`nset(hermes-engine_DIR `"$rnCmakeUtils`")`nlist(APPEND CMAKE_PREFIX_PATH `"$rnCmakeUtils`")`nlist(APPEND CMAKE_MODULE_PATH `"$rnCmakeUtils`")"
+            $rawApp = $rawApp -replace 'find_package\(ReactAndroid\s+REQUIRED\s+CONFIG\)', 'find_package(ReactAndroid REQUIRED)'
+            $rawApp = $rawApp -replace 'find_package\(fbjni\s+REQUIRED\s+CONFIG\)', 'find_package(fbjni REQUIRED)'
+            Set-Content -Path $rnAppCmake -Value $rawApp
+        }
+    }
+
     if ($cmakePatchKey) {
         Set-Content -Path $cmakePatchStampPath -Value $cmakePatchKey
     }
+    Write-Host "[OK] Patched $cmakePatchCount CMakeLists.txt/cmake files with absolute cmake-utils" -ForegroundColor Green
 }
-Write-Host "[OK] Patched $cmakePatchCount CMakeLists.txt files with c++_shared linking" -ForegroundColor Green
 
-# Apply existing patches for RN background actions
+# --- FIREBASE MESSAGING MANIFEST OVERRIDE ---
+function Invoke-FirebaseMessagingManifestFix {
+    param([string]$ProjectRoot)
+
+    $manifestPath = Join-Path $ProjectRoot "android\app\src\main\AndroidManifest.xml"
+    if (-not (Test-Path $manifestPath)) { return }
+
+    $raw = Get-Content -Path $manifestPath -Raw
+    if ($raw -notmatch 'xmlns:tools=') {
+        $raw = $raw -replace '<manifest xmlns:android="http://schemas.android.com/apk/res/android"', '<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"'
+    }
+
+    $raw = [regex]::Replace(
+        $raw,
+        '(<meta-data\s+android:name="com\.google\.firebase\.messaging\.default_notification_channel_id"\s+android:value="spay-system-v2")(?![^>]*tools:replace=)(\s*/?>)',
+        '$1 tools:replace="android:value"$2'
+    )
+
+    Set-Content -Path $manifestPath -Value $raw
+    Write-Host "[OK] Applied Firebase Messaging manifest override for default channel" -ForegroundColor Green
+}
+Invoke-FirebaseMessagingManifestFix -ProjectRoot $PROJECT_ROOT
+
+# --- ANDROID HOME SCREEN WIDGETS INTEGRATION ---
+function Invoke-CopyWidgetFiles {
+    param([string]$ProjectRoot)
+    $widgetsDir = Join-Path $ProjectRoot "widgets"
+    $androidAppDir = Join-Path $ProjectRoot "android\app"
+    
+    if (-not (Test-Path $widgetsDir)) {
+        Write-Host "[WARN] Widgets source directory not found at $widgetsDir" -ForegroundColor Yellow
+        return
+    }
+    
+    $destJavaDir = Join-Path $androidAppDir "src\main\java\com\cerberuzz91141\mobile"
+    $destLayoutDir = Join-Path $androidAppDir "src\main\res\layout"
+    $destXmlDir = Join-Path $androidAppDir "src\main\res\xml"
+    $destDrawableDir = Join-Path $androidAppDir "src\main\res\drawable"
+    
+    if (-not (Test-Path $destJavaDir)) { New-Item -ItemType Directory -Path $destJavaDir -Force | Out-Null }
+    if (-not (Test-Path $destLayoutDir)) { New-Item -ItemType Directory -Path $destLayoutDir -Force | Out-Null }
+    if (-not (Test-Path $destXmlDir)) { New-Item -ItemType Directory -Path $destXmlDir -Force | Out-Null }
+    if (-not (Test-Path $destDrawableDir)) { New-Item -ItemType Directory -Path $destDrawableDir -Force | Out-Null }
+    
+    Copy-Item -Path (Join-Path $widgetsDir "kotlin\*") -Destination $destJavaDir -Force
+    Copy-Item -Path (Join-Path $widgetsDir "layout\*") -Destination $destLayoutDir -Force
+    Get-ChildItem -Path (Join-Path $widgetsDir "xml\*.xml") | ForEach-Object {
+        $cleanXml = (Get-Content $_.FullName) | Where-Object { $_ -notmatch 'android:previewImage=' -and $_ -notmatch 'android:description=' }
+        Set-Content -Path (Join-Path $destXmlDir $_.Name) -Value $cleanXml
+    }
+    $srcDrawableDir = Join-Path $widgetsDir "drawable"
+    if (Test-Path $srcDrawableDir) {
+        Copy-Item -Path (Join-Path $srcDrawableDir "*") -Destination $destDrawableDir -Force
+        Write-Host "[OK] Copied widget drawable resources to native Android directory" -ForegroundColor Green
+    }
+    
+    Write-Host "[OK] Copied widget source files to native Android directory" -ForegroundColor Green
+}
+
+function Invoke-StringsXmlFix {
+    param([string]$ProjectRoot)
+    $stringsPath = Join-Path $ProjectRoot "android\app\src\main\res\values\strings.xml"
+    if (-not (Test-Path $stringsPath)) { return }
+    $content = Get-Content $stringsPath -Raw
+    
+    $widgetStrings = @'
+  <string name="widget_client_countdown_label">Billing Cycle Countdown</string>
+  <string name="widget_credit_limit_label">Credit Limit Info</string>
+  <string name="widget_noot_ai_label">Noot AI Assistant</string>
+  <string name="widget_client_transactions_label">Recent Transactions</string>
+  <string name="widget_client_health_label">Credit Health Score</string>
+  <string name="widget_client_upcoming_label">Upcoming Payments</string>
+  <string name="widget_client_inbox_label">Inbox Messages</string>
+  <string name="widget_admin_countdown_label">Admin Billing Countdown</string>
+  <string name="widget_admin_exposure_label">Admin Exposure Stats</string>
+  <string name="widget_admin_reminders_label">Admin Payment Reminders</string>
+  <string name="widget_admin_stats_label">Admin Overview Stats</string>
+  <string name="widget_admin_audit_label">Admin Audit Logs</string>
+'@
+    
+    if ($content -notlike "*widget_client_countdown_label*") {
+        $content = $content -replace '</resources>', "$widgetStrings`r`n</resources>"
+        Set-Content -Path $stringsPath -Value $content
+        Write-Host "[OK] Added widget string labels to strings.xml" -ForegroundColor Green
+    }
+}
+
+function Invoke-MainApplicationWidgetFix {
+    param([string]$ProjectRoot)
+    $appPath = Join-Path $ProjectRoot "android\app\src\main\java\com\cerberuzz91141\mobile\MainApplication.kt"
+    if (-not (Test-Path $appPath)) { return }
+    $raw = Get-Content -Path $appPath -Raw
+    if ($raw -notmatch 'SpayWidgetPackage\(\)') {
+        if ($raw -match '// add\(MyReactNativePackage\(\)\)\r\n') {
+            $raw = $raw -replace '// add\(MyReactNativePackage\(\)\)\r\n', "// add(MyReactNativePackage())`r`n          add(SpayWidgetPackage())`r`n"
+        } else {
+            $raw = $raw -replace '// add\(MyReactNativePackage\(\)\)\n', "// add(MyReactNativePackage())\n          add(SpayWidgetPackage())\n"
+        }
+        Set-Content -Path $appPath -Value $raw
+        Write-Host "[OK] Registered SpayWidgetPackage in MainApplication.kt" -ForegroundColor Green
+    } else {
+        Write-Host "[OK] SpayWidgetPackage already registered in MainApplication.kt" -ForegroundColor Green
+    }
+}
+
+function Invoke-WidgetManifestInjection {
+    param([string]$ProjectRoot)
+
+    $manifestPath = Join-Path $ProjectRoot "android\app\src\main\AndroidManifest.xml"
+    if (-not (Test-Path $manifestPath)) { return }
+
+    $raw = Get-Content -Path $manifestPath -Raw
+
+    if ($raw -match 'ClientCountdownWidgetProvider') {
+        Write-Host "[OK] Widget receivers already present in AndroidManifest.xml" -ForegroundColor Green
+        return
+    }
+
+    $widgetReceivers = @'
+    <receiver android:name=".ClientCountdownWidgetProvider" android:exported="true" android:label="@string/widget_client_countdown_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_PREV_MONTH"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_countdown"/>
+    </receiver>
+    <receiver android:name=".CreditLimitWidgetProvider" android:exported="true" android:label="@string/widget_credit_limit_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_credit_limit"/>
+    </receiver>
+    <receiver android:name=".NootAiWidgetProvider" android:exported="true" android:label="@string/widget_noot_ai_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_noot_ai"/>
+    </receiver>
+    <receiver android:name=".ClientTransactionsWidgetProvider" android:exported="true" android:label="@string/widget_client_transactions_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_transactions"/>
+    </receiver>
+    <receiver android:name=".ClientHealthWidgetProvider" android:exported="true" android:label="@string/widget_client_health_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_health"/>
+    </receiver>
+    <receiver android:name=".ClientUpcomingWidgetProvider" android:exported="true" android:label="@string/widget_client_upcoming_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_upcoming"/>
+    </receiver>
+    <receiver android:name=".ClientInboxWidgetProvider" android:exported="true" android:label="@string/widget_client_inbox_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_client_inbox"/>
+    </receiver>
+    <receiver android:name=".AdminCountdownWidgetProvider" android:exported="true" android:label="@string/widget_admin_countdown_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_NEXT_MONTH"/>
+        <action android:name="com.cerberuzz91141.mobile.ACTION_ADMIN_PREV_MONTH"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_countdown"/>
+    </receiver>
+    <receiver android:name=".AdminExposureWidgetProvider" android:exported="true" android:label="@string/widget_admin_exposure_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_exposure"/>
+    </receiver>
+    <receiver android:name=".AdminRemindersWidgetProvider" android:exported="true" android:label="@string/widget_admin_reminders_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_reminders"/>
+    </receiver>
+    <receiver android:name=".AdminStatsWidgetProvider" android:exported="true" android:label="@string/widget_admin_stats_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_stats"/>
+    </receiver>
+    <receiver android:name=".AdminAuditWidgetProvider" android:exported="true" android:label="@string/widget_admin_audit_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+        <action android:name="android.intent.action.USER_PRESENT"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_audit"/>
+    </receiver>
+'@
+
+    $raw = $raw -replace '</application>', "$widgetReceivers`n  </application>"
+    Set-Content -Path $manifestPath -Value $raw
+    Write-Host "[OK] Injected 12 widget receivers into AndroidManifest.xml" -ForegroundColor Green
+}
+
+Invoke-WidgetManifestInjection -ProjectRoot $PROJECT_ROOT
+Invoke-CopyWidgetFiles -ProjectRoot $PROJECT_ROOT
+Invoke-StringsXmlFix -ProjectRoot $PROJECT_ROOT
+
+function Invoke-ReactNativeRClassFix {
+    param([string]$ProjectRoot)
+    $appMainDir = Join-Path $ProjectRoot "android\app\src\main"
+    
+    $resValuesDir = Join-Path $appMainDir "res\values"
+    if (-not (Test-Path $resValuesDir)) { New-Item -ItemType Directory -Path $resValuesDir -Force | Out-Null }
+    $idsXml = Join-Path $resValuesDir "ids.xml"
+    $idsContent = @"
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="important_for_accessibility_subview" />
+    <item type="id" name="important_for_interaction" />
+    <item type="id" name="important_for_interaction_subview" />
+    <item type="id" name="catalyst_react_js_error_view" />
+    <item type="id" name="react_test_id" />
+    <item type="id" name="view_tag_native_id" />
+    <item type="id" name="view_tag_instance_handle" />
+</resources>
+"@
+    [System.IO.File]::WriteAllText($idsXml, $idsContent, [System.Text.Encoding]::ASCII)
+
+    $rJava = Join-Path $appMainDir "java\com\facebook\react\R.java"
+    if (Test-Path $rJava) { Remove-Item -Path $rJava -Force -ErrorAction SilentlyContinue }
+    Write-Host "[OK] Injected ids.xml resource definitions for React Native view tags" -ForegroundColor Green
+}
+Invoke-ReactNativeRClassFix -ProjectRoot $PROJECT_ROOT
+
+function Invoke-ProGuardRulesFix {
+    param([string]$ProjectRoot)
+    $pgFile = Join-Path $ProjectRoot "android\app\proguard-rules.pro"
+    if (Test-Path $pgFile) {
+        $content = Get-Content -Path $pgFile -Raw
+        $rulesToAdd = @"
+-keep class com.swmansion.reanimated.** { *; }
+-keep class com.facebook.react.turbomodule.** { *; }
+-keep class com.facebook.react.** { *; }
+-keep class com.facebook.react.R$* { *; }
+-keep class com.facebook.react.R { *; }
+-keepclassmembers class **.R$* {
+    public static <fields>;
+}
+"@
+        if ($content -notmatch 'com\.facebook\.react\.R') {
+            $content = $content + "`n" + $rulesToAdd
+            Set-Content -Path $pgFile -Value $content
+            Write-Host "[OK] Injected ProGuard R-class keep rules into proguard-rules.pro" -ForegroundColor Green
+        }
+    }
+}
+Invoke-ProGuardRulesFix -ProjectRoot $PROJECT_ROOT
+Invoke-MainApplicationWidgetFix -ProjectRoot $PROJECT_ROOT
+
+# Apply existing patches for RN background actions 
 $bgActionsTask = Join-Path $PROJECT_ROOT "node_modules\react-native-background-actions\android\src\main\java\com\asterinet\react\bgactions\RNBackgroundActionsTask.java"
 if (Test-Path $bgActionsTask) {
     $rawBg = Get-Content -Path $bgActionsTask -Raw
@@ -969,9 +1033,14 @@ Write-Host "`nStep 6.2: Verifying critical build patches..." -ForegroundColor Ye
 $allChecksPass = $true
 $allChecksPass = (Test-FileContains -Path $gradleProps -Pattern 'android\.cmake\.arguments=.*ANDROID_STL=c\+\+_shared') -and $allChecksPass
 $allChecksPass = (Test-FileContains -Path $rootBuildGradle -Pattern 'BEGIN libcxx-shared-fix') -and $allChecksPass
+$androidManifestPath = Join-Path $ANDROID_DIR "app\src\main\AndroidManifest.xml"
+$allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'com\.google\.firebase\.messaging\.default_notification_channel_id.*tools:replace="android:value"') -and $allChecksPass
 
 $screensCmakeCheck = Join-Path $PROJECT_ROOT "node_modules\react-native-screens\android\CMakeLists.txt"
 $allChecksPass = (Test-FileContains -Path $screensCmakeCheck -Pattern 'c\+\+_shared') -and $allChecksPass
+
+$allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'ClientCountdownWidgetProvider') -and $allChecksPass
+$allChecksPass = (Test-FileContains -Path $androidManifestPath -Pattern 'CreditLimitWidgetProvider') -and $allChecksPass
 
 if (-not $allChecksPass) {
     Write-Host "`n[ERROR] Critical build patches are missing. Build will likely fail." -ForegroundColor Red
@@ -1029,7 +1098,7 @@ if ($overallExit -eq 0) {
         } | ConvertTo-Json -Depth 3 | Set-Content -Path $lastGoodPath -Encoding UTF8
     } catch {}
 
-    # Display APKs
+    # Display and copy APKs
     $apkSearchPaths = @("$ANDROID_DIR\app\build\outputs\apk\debug\*.apk")
     $foundApks = @()
     foreach ($pattern in $apkSearchPaths) {
