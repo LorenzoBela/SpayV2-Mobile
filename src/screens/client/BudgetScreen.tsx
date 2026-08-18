@@ -38,6 +38,7 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import Svg, { Path, Circle as SvgCircle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
@@ -97,6 +98,7 @@ export default function BudgetScreen() {
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom + 12, 20);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
 
   // Data states
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
@@ -713,7 +715,12 @@ export default function BudgetScreen() {
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+            showsVerticalScrollIndicator={false}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+          >
             {/* Global limits card mimicking web */}
             <View style={[styles.globalLimitsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.limitsGrid}>

@@ -33,6 +33,7 @@ import {
   PiggyBank,
   Activity,
   Sparkles,
+  ShoppingBag,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
@@ -102,6 +103,12 @@ export default function AdminMoreScreen() {
 
   // Section 1: Financial & Cash Operations
   const financeItems: MenuItem[] = [
+    {
+      name: 'Buy Requests',
+      icon: ShoppingBag,
+      desc: 'Shopee queue, quote & order conversion',
+      action: () => navigation.navigate('AdminRequests'),
+    },
     {
       name: 'Expenses Tracker',
       icon: Wallet,
@@ -192,6 +199,12 @@ export default function AdminMoreScreen() {
       icon: Activity,
       desc: 'Live latency, database status & diagnostics',
       action: () => navigation.navigate('AdminSystemHealth'),
+    },
+    {
+      name: 'App Updates & Changelog',
+      icon: Sparkles,
+      desc: 'Release timeline, what\'s new & build history',
+      action: () => navigation.navigate('Changelog'),
     },
     {
       name: 'System Settings',

@@ -85,10 +85,10 @@ export const useTabBarScroll = () => {
       const currentY = event?.nativeEvent?.contentOffset?.y;
       if (currentY === undefined) return;
 
-      // Scroll down past 60px triggers collapse
-      if (currentY > lastScrollY.current && currentY > 60) {
+      // Scroll down past 30px triggers collapse
+      if (currentY > lastScrollY.current + 5 && currentY > 30) {
         collapse();
-      } else if (currentY < lastScrollY.current) {
+      } else if (currentY < lastScrollY.current - 5) {
         // Scroll up expands
         expand();
       }

@@ -439,6 +439,133 @@ function Configure-SentryBuildUpload {
     Write-Host "[OK] Sentry upload enabled for org '$org' / project '$project'" -ForegroundColor Green
 }
 
+function Get-GitChangelogJson {
+    param(
+        [string]$ProjectRoot,
+        [int]$MaxCommits = 10
+    )
+
+    $changelogItems = @()
+    try {
+        Push-Location $ProjectRoot
+        $commitLines = & git log -n $MaxCommits --pretty=format:"%s" 2>&1
+        Pop-Location
+
+        $termMap = @(
+            @{ Pattern = '\b(?:jwt|jwt[- ]?token)\b'; Replacement = 'secure login credentials' },
+            @{ Pattern = '\b(?:auth[- ]?token|bearer[- ]?token|tokens?)\b'; Replacement = 'security tokens' },
+            @{ Pattern = '\b(?:flashlist|flatlist)\b'; Replacement = 'smooth list rendering' },
+            @{ Pattern = '\b(?:mmkv|asyncstorage|async-storage)\b'; Replacement = 'instant local storage' },
+            @{ Pattern = '\b(?:rls|row[- ]?level[- ]?security)\b'; Replacement = 'data access protection' },
+            @{ Pattern = '\b(?:memoiz(?:e|ation|ed|ing)|usememo|usecallback)\b'; Replacement = 'performance caching' },
+            @{ Pattern = '\b(?:hydrat(?:e|ion|ions|ed|ing)|rehydrat(?:e|ion|ed|ing))\b'; Replacement = 'saved state restoration' },
+            @{ Pattern = '\b(?:fcm|firebase[- ]?cloud[- ]?messaging)\b'; Replacement = 'push notifications' },
+            @{ Pattern = '\b(?:ota|over[- ]?the[- ]?air)\b'; Replacement = 'in-app updates' },
+            @{ Pattern = '\b(?:apk|aab)\b'; Replacement = 'app package' },
+            @{ Pattern = '\b(?:trpc|t-rpc|rest[- ]?api|graphql|grpc)\b'; Replacement = 'network synchronization' },
+            @{ Pattern = '\b(?:posthog|sentry)\b'; Replacement = 'app diagnostics and telemetry' },
+            @{ Pattern = '\b(?:submodule(?:s)?|submodule[- ]?pointer(?:s)?)\b'; Replacement = 'core system modules' },
+            @{ Pattern = '\b(?:cmake|ndk|gradle)\b'; Replacement = 'native build foundation' },
+            @{ Pattern = '\b(?:hermes)\b'; Replacement = 'high-speed JavaScript engine' },
+            @{ Pattern = '\b(?:zustand|redux|context[- ]?api)\b'; Replacement = 'app state system' },
+            @{ Pattern = '\b(?:biometrics?|biometric[- ]?auth)\b'; Replacement = 'biometric face/fingerprint security' },
+            @{ Pattern = '\b(?:idempotenc(?:y|e)|idempotent)\b'; Replacement = 'duplicate request protection' },
+            @{ Pattern = '\b(?:haptics?|haptic[- ]?feedback)\b'; Replacement = 'tactile haptic feedback' },
+            @{ Pattern = '\b(?:privacy[- ]?curtain)\b'; Replacement = 'app switcher privacy curtain' },
+            @{ Pattern = '\b(?:prefetch(?:ing)?|pre-fetch)\b'; Replacement = 'background pre-loading' },
+            @{ Pattern = '\b(?:virtualiz(?:e|ation|ed|ing))\b'; Replacement = 'fast scrolling virtualization' }
+        )
+
+        foreach ($line in $commitLines) {
+            $raw = [string]$line
+            if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+            $trimmed = $raw.Trim()
+
+            if ($trimmed -match '^(Merge branch|Merge pull request|Version bump|\d+\.\d+\.\d+)') { continue }
+
+            $type = "improvement"
+            $title = $trimmed
+
+            if ($trimmed -match '^([a-zA-Z]+)(?:\(([^)]+)\))?!?:\s*(.+)$') {
+                $rawType = $matches[1].ToLower()
+                $scope = $matches[2]
+                $subject = $matches[3]
+
+                switch ($rawType) {
+                    { $_ -in @("feat", "feature", "add", "new") } { $type = "feature" }
+                    { $_ -in @("fix", "bug", "hotfix", "patch") } { $type = "fix" }
+                    { $_ -in @("sec", "security", "auth", "lock") } { $type = "security" }
+                    { $_ -in @("perf", "performance", "optimize") } { $type = "performance" }
+                    default { $type = "improvement" }
+                }
+
+                $title = $subject
+                if ($scope) {
+                    $scopeClean = $scope.Trim()
+                    if ($scopeClean -and -not $title.ToLower().Contains($scopeClean.ToLower())) {
+                        $scopeFormatted = $scopeClean.Substring(0,1).ToUpper() + $scopeClean.Substring(1)
+                        $title = "$scopeFormatted`: $title"
+                    }
+                }
+            } else {
+                $lower = $trimmed.ToLower()
+                if ($lower.StartsWith("fix") -or $lower.Contains("bug")) { $type = "fix" }
+                elseif ($lower.StartsWith("feat") -or $lower.StartsWith("add")) { $type = "feature" }
+                elseif ($lower.Contains("security") -or $lower.Contains("auth") -or $lower.Contains("biometric")) { $type = "security" }
+                elseif ($lower.Contains("perf") -or $lower.Contains("speed")) { $type = "performance" }
+                else { $type = "improvement" }
+            }
+
+            $title = $title -replace '^[0-9a-fA-F]{7,40}\s+', ''
+            $title = $title -replace '(?:\[?[A-Z]{2,10}-[0-9]+\]?|#[0-9]+|\([A-Z]{2,10}-[0-9]+\))', ''
+            $title = $title -replace '\b[\w-]+\.(?:tsx?|jsx?|json|kt|java|gradle|ps1|png|jpe?g|svg|xml|md|lock|ya?ml)\b', ''
+            $title = $title -replace '\s{2,}', ' '
+            $title = $title.Trim()
+
+            foreach ($entry in $termMap) {
+                $title = [regex]::Replace($title, $entry.Pattern, $entry.Replacement, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+            }
+
+            if ($title.Length -gt 0) {
+                $firstChar = $title.Substring(0,1).ToUpper()
+                $rest = if ($title.Length -gt 1) { $title.Substring(1) } else { "" }
+                $cleanTitle = "$firstChar$rest"
+
+                $changelogItems += [pscustomobject]@{
+                    type = $type
+                    title = $cleanTitle
+                    rawCommit = $trimmed
+                }
+            }
+        }
+    } catch {
+        Write-Host "[WARN] Could not parse git changelog: $_" -ForegroundColor DarkYellow
+    }
+
+    if ($changelogItems.Count -eq 0) {
+        $changelogItems += [pscustomobject]@{
+            type = "feature"
+            title = "In-App Update Management"
+            description = "Directly download and install Android package updates from within the application."
+            rawCommit = "feat: implement app update service and refactor Android notification channel configurations and testing"
+        }
+        $changelogItems += [pscustomobject]@{
+            type = "fix"
+            title = "Android Notification Channels"
+            description = "Resolved silent background drop issues and configured priority notification delivery."
+            rawCommit = "fix: remove dead notification guard in displayFcmRemoteMessage"
+        }
+        $changelogItems += [pscustomobject]@{
+            type = "improvement"
+            title = "Native Engine Upgrades"
+            description = "Enhanced CMake build paths and native toolchains for React Native 0.85 compatibility."
+            rawCommit = "chore: add AdminMore screen, configure Android build stability, and patch CMake paths for React Native 0.85 compatibility"
+        }
+    }
+
+    return $changelogItems
+}
+
 # Step 0: Ensure signing secrets are loaded
 Write-Host "`nStep 0: Loading signing configuration..." -ForegroundColor Yellow
 $KEYSTORE_PATH = Join-Path $SOURCE_DIR "release.keystore"
@@ -1470,6 +1597,25 @@ if ($overallExit -eq 0) {
             $sizeInMB = [math]::Round($apk.Length / 1MB, 2)
             Write-Host "  - $($apk.Name) ($sizeInMB MB)" -ForegroundColor Gray
         }
+
+        # Generate / update central spay-latest.json manifest with automated changelog
+        $gitChangelog = Get-GitChangelogJson -ProjectRoot $PROJECT_ROOT -MaxCommits 10
+        $centralManifestPath = Join-Path $CENTRAL_APK_DIR $script:GitHubManifestFileName
+        $apkFileName = $script:GitHubApkFileName
+        $fileNameUrl = [uri]::EscapeDataString($apkFileName)
+        $downloadUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$fileNameUrl"
+        $manifestJson = [ordered]@{
+            versionCode = $script:ProductionVersionCode
+            versionName = $script:ProductionVersionName
+            apkUrl      = $downloadUrl
+            fileName    = $apkFileName
+            channel     = $OTA_CHANNEL
+            publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+            changelog   = $gitChangelog
+        } | ConvertTo-Json -Depth 5
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($centralManifestPath, $manifestJson, $utf8NoBom)
+        Write-Host "[OK] Manifest updated at $centralManifestPath with $($gitChangelog.Count) changelog entries" -ForegroundColor Green
     }
 
     Write-Host "`n=================================================" -ForegroundColor Magenta
@@ -1543,6 +1689,7 @@ if ($overallExit -eq 0) {
                     Invoke-RestMethod -Uri "https://uploads.github.com/repos/$repo/releases/$releaseId/assets?name=$fileNameUrl" -Method Post -Headers @{ "Authorization" = "Bearer $token"; "Content-Type" = "application/vnd.android.package-archive" } -InFile $apkToUpload
 
                     $downloadUrl = "https://github.com/$repo/releases/latest/download/$fileNameUrl"
+                    $gitChangelog = Get-GitChangelogJson -ProjectRoot $PROJECT_ROOT -MaxCommits 10
                     $manifestJson = [ordered]@{
                         versionCode = $script:ProductionVersionCode
                         versionName = $script:ProductionVersionName
@@ -1550,7 +1697,8 @@ if ($overallExit -eq 0) {
                         fileName    = $apkFileName
                         channel     = $OTA_CHANNEL
                         publishedAt = (Get-Date).ToUniversalTime().ToString("o")
-                    } | ConvertTo-Json -Depth 4
+                        changelog   = $gitChangelog
+                    } | ConvertTo-Json -Depth 5
                     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
                     [System.IO.File]::WriteAllText($manifestToUpload, $manifestJson, $utf8NoBom)
 

@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTabBar } from '../../navigation/TabBarContext';
+import { useTabBar, useTabBarScroll } from '../../navigation/TabBarContext';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -86,7 +86,9 @@ const shortMonthNames = [
 
 export default function AdminReportsScreen() {
   const { isDarkMode } = useContext(ThemeContext);
-  const layout = useResponsiveLayout();  const [refreshing, setRefreshing] = useState(false);
+  const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const { hideTabBar, showTabBar } = useTabBar();
 
@@ -616,6 +618,8 @@ export default function AdminReportsScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
         {/* KPI Container (Symmetrical Premium Layout) */}

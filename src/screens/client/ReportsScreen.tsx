@@ -44,6 +44,7 @@ import * as Sharing from 'expo-sharing';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { ReportsSkeleton } from '../../components/SkeletonLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -53,6 +54,7 @@ export default function ReportsScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { isDarkMode } = useContext(ThemeContext);
+  const scrollHandler = useTabBarScroll();
   const layout = useResponsiveLayout();
   const chartCanvasWidth = layout.getChartWidth(76);
   const [loading, setLoading] = useState(true);
@@ -1439,7 +1441,12 @@ export default function ReportsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+      >
         {/* S-Pay Branding and Description */}
         <View style={styles.brandContainer}>
           <Text style={styles.brandSub}>S-Pay Client</Text>

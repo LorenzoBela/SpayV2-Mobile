@@ -44,6 +44,7 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import { useResponsiveLayout } from '../../utils/responsive';
 
@@ -109,6 +110,7 @@ export default function WishlistScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
+  const scrollHandler = useTabBarScroll();
 
   const [loading, setLoading] = useState(true);
   const [wishlists, setWishlists] = useState<WishlistGoal[]>([]);
@@ -273,6 +275,8 @@ export default function WishlistScreen() {
         <ScrollView
           contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
           showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
         >
           <View style={styles.grid}>
             {sortedWishlists.map((w) => (

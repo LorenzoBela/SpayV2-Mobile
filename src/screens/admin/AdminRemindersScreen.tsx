@@ -48,6 +48,7 @@ import {
   Settings,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
 import { fetchAdminReminders, fetchAdminClients, callAdminApi, triggerNotificationScheduler } from '../../services/adminService';
@@ -304,6 +305,7 @@ export default function AdminRemindersScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
+  const scrollHandler = useTabBarScroll();
 
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -1426,6 +1428,8 @@ export default function AdminRemindersScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
         {loading && !refreshing ? (

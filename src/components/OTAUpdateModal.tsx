@@ -8,6 +8,8 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Download } from 'lucide-react-native';
+import { translateCommitToPlainLanguage } from '../utils/changelogTranslator';
+import { BUNDLED_CHANGELOGS } from '../data/changelogs';
 
 interface OTAUpdateModalProps {
   visible: boolean;
@@ -16,6 +18,8 @@ interface OTAUpdateModalProps {
   onDismiss?: () => void;
   runtimeVersion?: string | null;
   type?: 'ota' | 'apk';
+  summary?: string | null;
+  rawCommit?: string | null;
 }
 
 export default function OTAUpdateModal({
@@ -25,9 +29,28 @@ export default function OTAUpdateModal({
   onDismiss,
   runtimeVersion,
   type = 'ota',
+  summary,
+  rawCommit,
 }: OTAUpdateModalProps) {
   const handleAction = onRestart || onApply || (() => {});
   const isApk = type === 'apk';
+
+  const modalDescription = React.useMemo(() => {
+    if (summary && summary.trim().length > 0) {
+      return summary.trim();
+    }
+    if (rawCommit && rawCommit.trim().length > 0) {
+      const translated = translateCommitToPlainLanguage(rawCommit);
+      return translated.title;
+    }
+    const latest = BUNDLED_CHANGELOGS[0];
+    if (latest?.summary) {
+      return latest.summary;
+    }
+    return isApk
+      ? 'A new build is available. Update to get the latest features and improvements.'
+      : 'A newer version has been downloaded. Restart S-Pay now to apply the latest features.';
+  }, [summary, rawCommit, isApk]);
 
   return (
     <Modal
@@ -52,9 +75,7 @@ export default function OTAUpdateModal({
                 {isApk ? 'App Update Available' : 'Update Ready'}
               </Text>
               <Text style={styles.description}>
-                {isApk
-                  ? 'A new build is available. Update to get the latest features and improvements.'
-                  : 'A newer version has been downloaded. Restart S-Pay now to apply the latest features.'}
+                {modalDescription}
               </Text>
               {runtimeVersion ? (
                 <View style={styles.versionPill}>

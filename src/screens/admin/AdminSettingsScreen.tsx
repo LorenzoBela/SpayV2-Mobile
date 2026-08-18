@@ -41,11 +41,13 @@ import {
   LayoutDashboard,
   RefreshCw,
   Download,
+  Sparkles,
 } from 'lucide-react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
 import DevicePushStatusCard from '../../components/DevicePushStatusCard';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -71,6 +73,7 @@ export default function AdminSettingsScreen() {
   const systemColorScheme = useColorScheme();
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
+  const scrollHandler = useTabBarScroll();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -918,6 +921,17 @@ export default function AdminSettingsScreen() {
               )}
             </TouchableOpacity>
           ) : null}
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Changelog')}
+            style={[styles.updateSecondaryBtn, { borderColor: t.inputBorder, marginTop: 8 }]}
+            activeOpacity={0.8}
+          >
+            <Sparkles size={15} color={t.accent} />
+            <Text style={[styles.updateSecondaryBtnText, { color: t.textPrimary }]}>
+              Release Notes & Changelog
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Master Refresh Data */}
@@ -999,7 +1013,12 @@ export default function AdminSettingsScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+          keyboardShouldPersistTaps="handled"
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+        >
           {/* User Quick Info Card */}
           <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.avatarRow}>

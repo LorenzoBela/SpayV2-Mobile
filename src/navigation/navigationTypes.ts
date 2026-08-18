@@ -10,10 +10,14 @@ export type RootStackParamList = {
   Calendar: undefined;
   Settings: undefined;
   Wishlist: undefined;
+  RequestBuy: undefined;
+  MyRequests: undefined;
+  AdminRequests: undefined;
   AdminSalary: undefined;
   AdminExpenses: undefined;
   AdminIpon: undefined;
   AdminSystemHealth: undefined;
+  Changelog: undefined;
 };
 
 export type AuthStackParamList = {
@@ -33,6 +37,8 @@ export type MainTabParamList = {
   NootAi: undefined;
   ClientMilestones: undefined;
   Wishlist: undefined;
+  RequestBuy: undefined;
+  MyRequests: undefined;
 };
 
 export type AdminTabParamList = {
@@ -46,6 +52,7 @@ export type AdminTabParamList = {
   AdminSettings: undefined;
   AdminNotifications: undefined;
   AdminMilestones: undefined;
+  AdminRequests: undefined;
   AdminSalary: undefined;
   AdminExpenses: undefined;
   AdminIpon: undefined;

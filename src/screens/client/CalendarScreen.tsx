@@ -39,6 +39,7 @@ import { parseUtcDate, createUtc8Date } from '../../utils/date';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { CalendarSkeleton } from '../../components/SkeletonLoader';
 import { trpc } from '../../utils/trpc';
 import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
@@ -184,6 +185,7 @@ export default function CalendarScreen() {
   const layout = useResponsiveLayout();
   const cellWidth = Math.floor((layout.contentInnerWidth - 12) / 7);
   const rescheduleMutation = trpc.payments.reschedule.useMutation();
+  const scrollHandler = useTabBarScroll();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -666,6 +668,8 @@ export default function CalendarScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ee4d2d" />
         }

@@ -22,6 +22,7 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useImpersonation } from '../../context/ImpersonationContext';
 import { ProfileSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
@@ -43,6 +44,7 @@ export default function ProfileScreen() {
   const { setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const { isImpersonating } = useImpersonation();
+  const scrollHandler = useTabBarScroll();
   const [profile, setProfile] = useState<UserProfile>({
     name: 'Client User',
     email: 'client@spay.com',
@@ -299,7 +301,12 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+          >
             {/* User info header card */}
             <View style={[styles.profileCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.avatarLarge}>

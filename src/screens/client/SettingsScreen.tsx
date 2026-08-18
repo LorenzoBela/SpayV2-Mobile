@@ -44,6 +44,7 @@ import {
   Download,
   FileSpreadsheet,
   FileJson,
+  Sparkles,
 } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -54,6 +55,7 @@ import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ensureDeviceRegistration } from '../../services/fcmNotificationService';
 import { ensureTrayNotificationPermissions } from '../../services/notificationService';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useImpersonation } from '../../context/ImpersonationContext';
 import { SettingsSkeleton } from '../../components/SkeletonLoader';
 import DevicePushStatusCard from '../../components/DevicePushStatusCard';
@@ -80,6 +82,7 @@ export default function SettingsScreen() {
   const systemColorScheme = useColorScheme();
   const layout = useResponsiveLayout();
   const insets = useSafeAreaInsets();
+  const scrollHandler = useTabBarScroll();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -900,6 +903,17 @@ export default function SettingsScreen() {
             )}
           </TouchableOpacity>
 
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Changelog')}
+            style={[styles.updateSecondaryBtn, { borderColor: t.inputBorder, marginTop: 8 }]}
+            activeOpacity={0.8}
+          >
+            <Sparkles size={15} color={t.accent} />
+            <Text style={[styles.updateSecondaryBtnText, { color: t.accent }]}>
+              Changelog & Release Notes
+            </Text>
+          </TouchableOpacity>
+
           {Platform.OS === 'android' && updateInfo.apkUrl ? (
             <TouchableOpacity
               onPress={handleDownloadApk}
@@ -1179,7 +1193,12 @@ export default function SettingsScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1 }}
         >
-          <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+            keyboardShouldPersistTaps="handled"
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+          >
             {/* Title Section */}
             <View style={styles.titleSection}>
               <Text style={styles.subtitleText}>S-PAY CLIENT</Text>

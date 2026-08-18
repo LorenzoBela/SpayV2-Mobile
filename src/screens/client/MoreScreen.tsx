@@ -32,6 +32,7 @@ import {
   Sparkles,
   Trophy,
   Target,
+  ShoppingBag,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
@@ -98,6 +99,12 @@ export default function MoreScreen() {
   };
 
   const gridItems = [
+    {
+      name: 'Request Buy',
+      icon: ShoppingBag,
+      desc: 'Shopee procurement',
+      action: () => navigation.navigate('RequestBuy'),
+    },
     {
       name: 'NootAI Chatbot',
       icon: Sparkles,

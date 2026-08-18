@@ -57,6 +57,13 @@ import ExitConfirmationModal from '../../components/ExitConfirmationModal';
 import Svg, { Path, Circle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
 import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
+import WhatsNewModal from '../../components/WhatsNewModal';
+import {
+  shouldShowWhatsNewAsync,
+  getLatestChangelogAsync,
+  markWhatsNewSeenAsync,
+} from '../../services/changelogService';
+import { ReleaseChangelog } from '../../types/changelog';
 import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
 
 
@@ -590,6 +597,48 @@ export default function DashboardScreen() {
   });
   const [spendingCategories, setSpendingCategories] = useState<SpendingCategory[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
+
+  // What's New & Changelog state
+  const [whatsNewVisible, setWhatsNewVisible] = useState(false);
+  const [latestRelease, setLatestRelease] = useState<ReleaseChangelog | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      (async () => {
+        try {
+          const shouldShow = await shouldShowWhatsNewAsync();
+          if (shouldShow && isActive) {
+            const release = await getLatestChangelogAsync();
+            if (isActive && release) {
+              setLatestRelease(release);
+              setWhatsNewVisible(true);
+            }
+          }
+        } catch (err) {
+          console.warn('[DashboardScreen] Failed to check WhatsNew:', err);
+        }
+      })();
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
+
+  const handleCloseWhatsNew = useCallback(() => {
+    setWhatsNewVisible(false);
+    if (latestRelease) {
+      void markWhatsNewSeenAsync(latestRelease.versionCode, latestRelease.updateId);
+    }
+  }, [latestRelease]);
+
+  const handleViewAllChangelog = useCallback(() => {
+    setWhatsNewVisible(false);
+    if (latestRelease) {
+      void markWhatsNewSeenAsync(latestRelease.versionCode, latestRelease.updateId);
+    }
+    navigation.navigate('Changelog');
+  }, [latestRelease, navigation]);
 
   // Sync TRPC payments data with countdown breakdown & metrics
   useEffect(() => {
@@ -1753,6 +1802,12 @@ export default function DashboardScreen() {
       <SPayLaterGuideModal
         visible={isGuideModalOpen}
         onClose={() => setIsGuideModalOpen(false)}
+      />
+      <WhatsNewModal
+        visible={whatsNewVisible}
+        release={latestRelease}
+        onClose={handleCloseWhatsNew}
+        onViewAll={handleViewAllChangelog}
       />
     </SafeAreaView>
   );

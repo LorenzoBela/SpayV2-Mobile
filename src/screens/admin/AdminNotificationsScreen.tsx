@@ -44,10 +44,12 @@ import {
   Key,
   FileText,
   Users,
+  AlertTriangle,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../../utils/supabase';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { getNotifications, markNotificationsRead, clearNotifications, sendAdminAnnouncement } from '../../services/adminService';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -134,6 +136,7 @@ export default function AdminNotificationsScreen() {
   const { refreshUnreadCount } = useNotifications();
   const layout = useResponsiveLayout();
   const queryClient = useQueryClient();
+  const scrollHandler = useTabBarScroll();
 
   useEffect(() => {
     void clearAppBadge();
@@ -395,7 +398,12 @@ export default function AdminNotificationsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+      >
         
         {/* Quick Batch Actions */}
         <View style={styles.batchActionsRow}>

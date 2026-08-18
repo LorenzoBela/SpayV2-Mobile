@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, useColorScheme, Platform, type AppStateStatus } from 'react-native';
+import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, useColorScheme, Platform, Linking, type AppStateStatus } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -64,11 +64,15 @@ import MoreScreen from '../screens/client/MoreScreen';
 import NootAiScreen from '../screens/client/NootAiScreen';
 import ClientMilestonesScreen from '../screens/client/ClientMilestonesScreen'; // refresh cache
 import WishlistScreen from '../screens/client/WishlistScreen';
+import RequestBuyScreen from '../screens/client/RequestBuyScreen';
+import ChangelogScreen from '../screens/client/ChangelogScreen';
+import { parseShopeeShareText } from '../utils/shopeeParser';
 import AdminMilestonesScreen from '../screens/admin/AdminMilestonesScreen'; // refresh cache
 import AdminSalaryScreen from '../screens/admin/AdminSalaryScreen';
 import AdminExpensesScreen from '../screens/admin/AdminExpensesScreen';
 import AdminIponScreen from '../screens/admin/AdminIponScreen';
 import AdminSystemHealthScreen from '../screens/admin/AdminSystemHealthScreen';
+import AdminRequestsScreen from '../screens/admin/AdminRequestsScreen';
 import {
   mirrorToLocalTray,
   reportNotificationReceipt,
@@ -180,9 +184,12 @@ const CustomTabBar = ({ state, descriptors, navigation, isDarkMode, icons, unrea
 
   let activeIndex = visibleRoutes.findIndex((r: any) => {
     const activeRouteName = state.routes[state.index].name;
-    const isSubScreen = ['Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones', 'Wishlist',
-                         'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones', 'AdminSalary',
-                         'AdminExpenses', 'AdminIpon', 'AdminSystemHealth'].includes(activeRouteName);
+    const isSubScreen = [
+      'Budget', 'Reports', 'Settings', 'Calendar', 'NootAi', 'ClientMilestones', 'Wishlist', 'Profile',
+      'RequestBuy', 'MyRequests', 'Changelog',
+      'AdminRequests', 'AdminReminders', 'AdminReports', 'AdminSettings', 'AdminNotifications', 'AdminMilestones', 'AdminSalary',
+      'AdminExpenses', 'AdminIpon', 'AdminSystemHealth'
+    ].includes(activeRouteName);
     if (isSubScreen) {
       return r.name === 'More' || r.name === 'AdminMore';
     }
@@ -517,6 +524,24 @@ const MainNavigator = () => {
           unmountOnBlur: true,
         } as any}
       />
+      <Tab.Screen
+        name="RequestBuy"
+        component={RequestBuyScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
+      <Tab.Screen
+        name="MyRequests"
+        component={RequestBuyScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
     </Tab.Navigator>
   );
 };
@@ -631,6 +656,15 @@ const AdminNavigator = () => {
       <AdminTab.Screen
         name="AdminSystemHealth"
         component={AdminSystemHealthScreen}
+        options={{
+          tabBarItemStyle: { display: 'none' },
+          tabBarButton: () => null,
+          unmountOnBlur: true,
+        } as any}
+      />
+      <AdminTab.Screen
+        name="AdminRequests"
+        component={AdminRequestsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -988,8 +1022,15 @@ export default function AppNavigator() {
       if (typeof notificationId === 'string') {
         void reportNotificationReceipt(notificationId, 'opened');
       }
-      const screen = response.notification.request.content.data?.screen;
-      if (screen === 'Budget') {
+      const data = response.notification.request.content.data || {};
+      const screen = data.screen;
+      const type = data.type;
+
+      if (screen === 'AdminRequests' || type === 'PURCHASE_REQUEST_SUBMITTED') {
+        navigationRef.current?.navigate('AdminRequests');
+      } else if (screen === 'RequestBuy' || screen === 'MyRequests' || type === 'PURCHASE_REQUEST_APPROVED') {
+        navigationRef.current?.navigate('Main', { screen: 'RequestBuy' });
+      } else if (screen === 'Budget') {
         navigationRef.current?.navigate('Main', { screen: 'Budget' });
       } else {
         const target =
@@ -1005,6 +1046,39 @@ export default function AppNavigator() {
       }
     });
 
+    // Deep Link & Share Intent Interceptor (100% OTA Safe)
+    const handleDeepLink = (url: string | null) => {
+      if (!url) return;
+      try {
+        let textToParse = url;
+        if (url.includes('shared_text=')) {
+          const match = url.match(/[?&]shared_text=([^&]+)/);
+          if (match && match[1]) {
+            textToParse = decodeURIComponent(match[1]);
+          }
+        } else if (url.includes('url=')) {
+          const match = url.match(/[?&]url=([^&]+)/);
+          if (match && match[1]) {
+            textToParse = decodeURIComponent(match[1]);
+          }
+        }
+        const parsed = parseShopeeShareText(decodeURIComponent(textToParse));
+        if (parsed.isShopee && parsed.url) {
+          navigationRef.current?.navigate('Main', {
+            screen: 'RequestBuy',
+            params: { initialUrl: parsed.url, initialTitle: parsed.title },
+          });
+        }
+      } catch (err) {
+        console.warn('[AppNavigator] Deep link parse error:', err);
+      }
+    };
+
+    void Linking.getInitialURL().then(handleDeepLink);
+    const linkingSubscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
     return () => {
       isMounted = false;
       unsubscribeFcmTokenRefresh?.();
@@ -1013,6 +1087,7 @@ export default function AppNavigator() {
       receivedSubscription.remove();
       responseSubscription.remove();
       appStateSubscription.remove();
+      linkingSubscription.remove();
     };
   }, [effectiveUserId]);
 
@@ -1093,18 +1168,23 @@ export default function AppNavigator() {
                           ) : activeRole === 'admin' ? (
                             <>
                               <Stack.Screen name="Admin" component={AdminNavigator} />
+                              <Stack.Screen name="AdminRequests" component={AdminRequestsScreen} />
                               <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
                               <Stack.Screen name="AdminExpenses" component={AdminExpensesScreen} />
                               <Stack.Screen name="AdminIpon" component={AdminIponScreen} />
                               <Stack.Screen name="AdminSystemHealth" component={AdminSystemHealthScreen} />
+                              <Stack.Screen name="Changelog" component={ChangelogScreen} options={{ headerShown: false }} />
                             </>
                           ) : (
                             <>
                               <Stack.Screen name="Main" component={MainNavigator} />
+                              <Stack.Screen name="RequestBuy" component={RequestBuyScreen} />
+                              <Stack.Screen name="MyRequests" component={RequestBuyScreen} />
                               <Stack.Screen name="AdminSalary" component={AdminSalaryScreen} />
                               <Stack.Screen name="AdminExpenses" component={AdminExpensesScreen} />
                               <Stack.Screen name="AdminIpon" component={AdminIponScreen} />
                               <Stack.Screen name="AdminSystemHealth" component={AdminSystemHealthScreen} />
+                              <Stack.Screen name="Changelog" component={ChangelogScreen} options={{ headerShown: false }} />
                             </>
                           )
                         ) : (
