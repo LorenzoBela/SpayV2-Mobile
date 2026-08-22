@@ -55,9 +55,18 @@ export async function syncWidgetData() {
     const role = (profile?.role || 'client').toLowerCase();
 
     // Fetch limits
-    const { data: globalStats } = await supabase.rpc('get_global_shared_limits');
-    const globalLimit = globalStats && globalStats[0] ? parseFloat(globalStats[0].credit_limit_total) : 250000.0;
-    const globalUnpaid = globalStats && globalStats[0] ? parseFloat(globalStats[0].unpaid_amount_total) : 65000.0;
+    let globalLimit = 0;
+    let globalUnpaid = 0;
+    const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
+    if (!rpcError && globalStats && globalStats[0]) {
+      globalLimit = parseFloat(globalStats[0].credit_limit_total) || 0;
+      globalUnpaid = parseFloat(globalStats[0].unpaid_amount_total) || 0;
+    } else {
+      const { data: limitsData } = await supabase.from('account_limits').select('credit_limit');
+      if (limitsData && limitsData.length > 0) {
+        globalLimit = limitsData.reduce((sum: number, l: any) => sum + (parseFloat(l.credit_limit) || 0), 0);
+      }
+    }
     const globalAvailable = Math.max(0, globalLimit - globalUnpaid);
 
     // Initial base payload structure

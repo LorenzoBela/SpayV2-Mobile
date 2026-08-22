@@ -580,8 +580,8 @@ export default function DashboardScreen() {
   const { data: queryOrdersData, isLoading: queryOrdersLoading, refetch: refetchOrders } = useClientOrdersQuery();
 
   // Financial Limits States
-  const [globalCreditLimit, setGlobalCreditLimit] = useState(250000);
-  const [globalAvailableCredit, setGlobalAvailableCredit] = useState(185000);
+  const [globalCreditLimit, setGlobalCreditLimit] = useState(0);
+  const [globalAvailableCredit, setGlobalAvailableCredit] = useState(0);
   const [isDemo, setIsDemo] = useState(true);
 
   // Payments / Orders States
@@ -909,6 +909,29 @@ export default function DashboardScreen() {
     setMonthlyTrends(monthsArray.map(key => trendsMap.get(key)));
   };
 
+  // Global credit limit fetcher
+  const fetchGlobalLimits = useCallback(async () => {
+    try {
+      const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
+      if (!rpcError && globalStats && globalStats[0]) {
+        const dynamicLimit = parseFloat(globalStats[0].credit_limit_total) || 0;
+        setGlobalCreditLimit(dynamicLimit);
+        return dynamicLimit;
+      }
+      const { data: limitsData } = await supabase
+        .from('account_limits')
+        .select('credit_limit');
+      if (limitsData && limitsData.length > 0) {
+        const sumLimit = limitsData.reduce((acc: number, curr: any) => acc + (parseFloat(curr.credit_limit) || 0), 0);
+        setGlobalCreditLimit(sumLimit);
+        return sumLimit;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch global credit limits:', err);
+    }
+    return null;
+  }, []);
+
   // User Profile effect
   useEffect(() => {
     getLinkedProfileForCurrentUser().then(({ user, profile }) => {
@@ -921,7 +944,8 @@ export default function DashboardScreen() {
         setUserPhoto(photoUrl);
       }
     });
-  }, []);
+    fetchGlobalLimits();
+  }, [fetchGlobalLimits]);
 
   // Derive financial metrics, recent orders, payment countdowns, categories, and trends synchronously from query cache (0ms MMKV)
   useEffect(() => {
@@ -945,8 +969,10 @@ export default function DashboardScreen() {
           });
           setSpendingCategories([]);
           setMonthlyTrends([]);
-          setGlobalCreditLimit(250000);
-          setGlobalAvailableCredit(250000);
+          fetchGlobalLimits().then((fetchedLimit) => {
+            const limit = fetchedLimit ?? 0;
+            setGlobalAvailableCredit(limit);
+          });
           setLoading(false);
           return;
         }
@@ -991,9 +1017,10 @@ export default function DashboardScreen() {
 
     // Global credit limit calculations
     const unpaidAmountTotal = paymentsList.reduce((sum: number, p: any) => (p.isPaid ? sum : sum + p.amountDue), 0);
-    const limitTotal = 250000;
-    setGlobalCreditLimit(limitTotal);
-    setGlobalAvailableCredit(Math.max(0, limitTotal - unpaidAmountTotal));
+    fetchGlobalLimits().then((fetchedLimit) => {
+      const limitToUse = fetchedLimit !== null && fetchedLimit !== undefined ? fetchedLimit : globalCreditLimit;
+      setGlobalAvailableCredit(Math.max(0, limitToUse - unpaidAmountTotal));
+    });
 
     // 2. Orders & Recent Orders
     const ordersList = queryOrdersData?.orders || [];
@@ -1138,7 +1165,8 @@ export default function DashboardScreen() {
     useCallback(() => {
       refetchPayments();
       refetchOrders();
-    }, [refetchPayments, refetchOrders])
+      fetchGlobalLimits();
+    }, [refetchPayments, refetchOrders, fetchGlobalLimits])
   );
 
   // Instantly refetch live data whenever app returns from background
@@ -1147,26 +1175,28 @@ export default function DashboardScreen() {
       if (nextAppState === 'active') {
         refetchPayments();
         refetchOrders();
+        fetchGlobalLimits();
       }
     });
     return () => subscription.remove();
-  }, [refetchPayments, refetchOrders]);
+  }, [refetchPayments, refetchOrders, fetchGlobalLimits]);
 
   useRealtimeSync(['orders', 'payments', 'account_limits'], () => {
     refetchPayments();
     refetchOrders();
+    fetchGlobalLimits();
   });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.allSettled([refetchPayments(), refetchOrders()]);
+      await Promise.allSettled([refetchPayments(), refetchOrders(), fetchGlobalLimits()]);
     } catch (err) {
       console.warn('Dashboard pull-to-refresh error:', err);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchPayments, refetchOrders]);
+  }, [refetchPayments, refetchOrders, fetchGlobalLimits]);
 
 
 

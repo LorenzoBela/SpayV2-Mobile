@@ -55,6 +55,8 @@ export interface WeatherInfo {
   stormAlert: StormAlert | null;
 }
 
+export type WeatherTab = 'now' | '3day' | 'week';
+
 export interface WeatherSnapshot {
   temp: number;
   tempStr: string;
@@ -69,17 +71,17 @@ export interface WeatherSnapshot {
 
 export let memoryWeatherCache: WeatherSnapshot | null = null;
 
-type WeatherSubscriber = (weather: WeatherInfo) => void;
+type WeatherSubscriber = (weather: WeatherSnapshot) => void;
 const subscribers = new Set<WeatherSubscriber>();
 
-export function subscribeToWeatherUpdates(cb: (weather: WeatherInfo) => void): () => void {
+export function subscribeToWeatherUpdates(cb: (weather: WeatherSnapshot) => void): () => void {
   subscribers.add(cb);
   return () => {
     subscribers.delete(cb);
   };
 }
 
-function notifySubscribers(weather: WeatherInfo) {
+function notifySubscribers(weather: WeatherSnapshot) {
   subscribers.forEach((cb) => {
     try {
       cb(weather);
@@ -323,7 +325,7 @@ export async function fetchFreshWeather(force: boolean = false): Promise<Weather
               lastUpdated: weatherData.lastUpdated,
             };
 
-            notifySubscribers(weatherData);
+            notifySubscribers(memoryWeatherCache!);
             return weatherData;
           }
         } catch (_) {
@@ -570,7 +572,7 @@ export async function fetchFreshWeather(force: boolean = false): Promise<Weather
       lastUpdated: newWeather.lastUpdated,
     };
 
-    notifySubscribers(newWeather);
+    notifySubscribers(memoryWeatherCache);
     return newWeather;
   } catch (err) {
     console.error('[weatherService] Failed to fetch mobile weather details:', err);

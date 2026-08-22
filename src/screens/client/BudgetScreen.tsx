@@ -103,8 +103,8 @@ export default function BudgetScreen() {
   // Data states
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
   const [goals, setGoals] = useState<BudgetGoal[]>([]);
-  const [globalLimit, setGlobalLimit] = useState(250000);
-  const [globalExposure, setGlobalExposure] = useState(65000);
+  const [globalLimit, setGlobalLimit] = useState(0);
+  const [globalExposure, setGlobalExposure] = useState(0);
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<RecentTx[]>([]);
   const [plannedPurchases, setPlannedPurchases] = useState<PlannedPurchase[]>([]);
@@ -176,10 +176,19 @@ export default function BudgetScreen() {
       const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
-      // 1. Fetch Global Shared Limits (RPC)
-      const { data: globalStats } = await supabase.rpc('get_global_shared_limits');
-      const limitVal = globalStats && globalStats[0] ? parseFloat(globalStats[0].credit_limit_total) : 250000.0;
-      const exposureVal = globalStats && globalStats[0] ? parseFloat(globalStats[0].unpaid_amount_total) : 65000.0;
+      // 1. Fetch Global Shared Limits (RPC with table fallback)
+      let limitVal = 0;
+      let exposureVal = 0;
+      const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
+      if (!rpcError && globalStats && globalStats[0]) {
+        limitVal = parseFloat(globalStats[0].credit_limit_total) || 0;
+        exposureVal = parseFloat(globalStats[0].unpaid_amount_total) || 0;
+      } else {
+        const { data: limitsData } = await supabase.from('account_limits').select('credit_limit');
+        if (limitsData && limitsData.length > 0) {
+          limitVal = limitsData.reduce((sum: number, l: any) => sum + (parseFloat(l.credit_limit) || 0), 0);
+        }
+      }
       setGlobalLimit(limitVal);
       setGlobalExposure(exposureVal);
 
