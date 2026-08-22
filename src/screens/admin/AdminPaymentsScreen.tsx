@@ -988,6 +988,13 @@ export default function AdminPaymentsScreen() {
     payments: [],
   };
 
+  useEffect(() => {
+    if (selectedScheduleIndex >= unpaidBillingSchedules.length && unpaidBillingSchedules.length > 0) {
+      setSelectedScheduleIndex(Math.max(0, unpaidBillingSchedules.length - 1));
+    }
+  }, [unpaidBillingSchedules.length, selectedScheduleIndex]);
+
+
 
 
   // Tab 1: Filtered payments
@@ -1127,14 +1134,38 @@ export default function AdminPaymentsScreen() {
       return Object.keys(monthData.clients).length > 0;
     });
 
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const parts = getUtc8DateParts(new Date());
+    // If today is past the 5th, the active upcoming billing cycle is next month (e.g. Sept 5 -> '2026-09')
+    let activeYear = parts.year;
+    let activeMonth = parts.month + 1; // 1-indexed current calendar month
+    if (parts.date > 5) {
+      activeMonth += 1;
+      if (activeMonth > 12) {
+        activeMonth = 1;
+        activeYear += 1;
+      }
+    }
+    const activeBillingCycleKey = `${activeYear}-${String(activeMonth).padStart(2, '0')}`;
 
-    const upcoming = validKeys.filter(k => k >= currentMonthKey).sort(); // Ascending
-    const past = validKeys.filter(k => k < currentMonthKey).sort().reverse(); // Descending
+    // 1. Past months that are STILL UNPAID / overdue stay pinned at the very top
+    const overdueUnpaid = validKeys
+      .filter(k => k < activeBillingCycleKey && (monthlyBreakdown[k]?.pendingCount || 0) > 0)
+      .sort(); // Ascending (earliest overdue first)
 
-    return [...upcoming, ...past];
+    // 2. Active & upcoming billing cycles (e.g. September, October, etc.)
+    const upcoming = validKeys
+      .filter(k => k >= activeBillingCycleKey)
+      .sort(); // Ascending
+
+    // 3. Completed / fully paid past months
+    const completedPast = validKeys
+      .filter(k => k < activeBillingCycleKey && (monthlyBreakdown[k]?.pendingCount || 0) === 0)
+      .sort()
+      .reverse(); // Descending (most recent completed first)
+
+    return [...overdueUnpaid, ...upcoming, ...completedPast];
   }, [monthlyBreakdown]);
+
 
   const totalBreakdownListPages = Math.max(1, Math.ceil(sortedMonthKeys.length / BREAKDOWN_PAGE_SIZE));
   const paginatedMonthKeys = useMemo(
@@ -1366,7 +1397,8 @@ export default function AdminPaymentsScreen() {
             try {
               const response = await callAdminApi('bulk-mark-paid', { ids: selectedIds });
               if (response.success) {
-                PremiumAlert.alert('Success', `Successfully cleared ${response.count} payments.`);
+                const clearedCount = (typeof response.count === 'number' && response.count > 0) ? response.count : selectedIds.length;
+                PremiumAlert.alert('Success', `Successfully cleared ${clearedCount} ${clearedCount === 1 ? 'payment' : 'payments'}.`);
                 setSelectedIds([]);
                 setBulkMode(false);
                 queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
@@ -2621,7 +2653,23 @@ export default function AdminPaymentsScreen() {
                                   activeOpacity={0.8}
                                   onPress={() => setExpandedClients(prev => ({ ...prev, [clientExpandedKey]: !isClientExpanded }))}
                                 >
-                                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                    <TouchableOpacity
+                                      disabled={clientUnpaidIds.length === 0}
+                                      onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        toggleSelectClient(clientData);
+                                      }}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      {clientUnpaidIds.length === 0 ? (
+                                        <CheckSquare size={18} color="#10b981" />
+                                      ) : allClientSelected ? (
+                                        <CheckSquare size={18} color={t.accent} />
+                                      ) : (
+                                        <Square size={18} color={t.textSecondary} />
+                                      )}
+                                    </TouchableOpacity>
                                     <View style={{ flex: 1 }}>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                         <Text style={[styles.clientNameText, { color: t.textPrimary }]} numberOfLines={1}>{clientData.name}</Text>
@@ -3266,7 +3314,7 @@ export default function AdminPaymentsScreen() {
 
       {/* Floating Bulk Actions Bar for Ledger */}
       {selectedIds.length > 0 && (
-        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border, paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 24 }]}>
+        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
           <View style={{ flexDirection: 'column', flex: 1, marginRight: 12 }}>
             <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedIds.length} Selected</Text>
             {selectedPaymentsSummary.clientString ? (
@@ -3294,7 +3342,7 @@ export default function AdminPaymentsScreen() {
 
       {/* Floating Bulk Actions Bar for Shopee Imports */}
       {subTab === 'imports' && selectedImportIds.length > 0 && (
-        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border, paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 24 }]}>
+        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
           <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedImportIds.length} Selected</Text>
           <View style={styles.bulkBtnRow}>
             <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => setSelectedImportIds([])}>

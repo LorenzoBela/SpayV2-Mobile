@@ -1,5 +1,41 @@
 import { describe, it, expect, vi } from 'vitest';
 
+vi.mock('lucide-react-native', () => {
+  const DummyIcon = () => null;
+  return {
+    Sun: DummyIcon,
+    CloudSun: DummyIcon,
+    Cloud: DummyIcon,
+    CloudRain: DummyIcon,
+    CloudDrizzle: DummyIcon,
+    CloudLightning: DummyIcon,
+    CloudFog: DummyIcon,
+    Snowflake: DummyIcon,
+    CreditCard: DummyIcon,
+    RefreshCw: DummyIcon,
+    Users: DummyIcon,
+    ChevronRight: DummyIcon,
+    Zap: DummyIcon,
+    Check: DummyIcon,
+    ShoppingBag: DummyIcon,
+    WifiOff: DummyIcon,
+    AlertTriangle: DummyIcon,
+    Download: DummyIcon,
+    ShieldAlert: DummyIcon,
+    Sparkles: DummyIcon,
+    Tag: DummyIcon,
+    User: DummyIcon,
+    Flame: DummyIcon,
+    PartyPopper: DummyIcon,
+    PiggyBank: DummyIcon,
+    TrendingUp: DummyIcon,
+    AlertCircle: DummyIcon,
+    Percent: DummyIcon,
+    Fingerprint: DummyIcon,
+    Send: DummyIcon,
+  };
+});
+
 vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn().mockResolvedValue(null),
   setItemAsync: vi.fn().mockResolvedValue(null),
@@ -12,6 +48,15 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
     setItem: vi.fn().mockResolvedValue(null),
     removeItem: vi.fn().mockResolvedValue(null),
   },
+}));
+
+vi.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: vi.fn(async () => ({ status: 'granted' })),
+  getCurrentPositionAsync: vi.fn(async () => ({
+    coords: { latitude: 14.5995, longitude: 120.9842 },
+  })),
+  getLastKnownPositionAsync: vi.fn(async () => null),
+  Accuracy: { Balanced: 3 },
 }));
 
 vi.mock('react-native-mmkv', () => {

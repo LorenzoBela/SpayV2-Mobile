@@ -336,6 +336,13 @@ export default function AdminDashboardScreen() {
     clients: [],
   };
 
+  useEffect(() => {
+    if (selectedScheduleIndex >= unpaidBillingSchedules.length && unpaidBillingSchedules.length > 0) {
+      setSelectedScheduleIndex(Math.max(0, unpaidBillingSchedules.length - 1));
+    }
+  }, [unpaidBillingSchedules.length, selectedScheduleIndex]);
+
+
   // Parity additions states
   const [operationsTab, setOperationsTab] = useState<'orders' | 'timeline'>('orders');
   const [trendsTab, setTrendsTab] = useState<'categories' | 'installments' | 'cashflow' | 'milestones'>('categories');

@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../utils/supabase';
+import {
+  getLiveWeatherSnapshot,
+  fetchFreshWeather,
+  subscribeToWeatherUpdates,
+  WeatherSnapshot,
+} from '../services/weatherService';
 
 export type DynamicIslandNotificationType =
   | 'payment'
@@ -22,7 +28,8 @@ export type DynamicIslandNotificationType =
   | 'admin_client_payment'
   | 'admin_risk_alert'
   | 'admin_reminder_sent'
-  | 'promo_ad';
+  | 'promo_ad'
+  | 'pro_subscription';
 
 export interface DynamicIslandNotificationPayload {
   id: string;
@@ -93,6 +100,30 @@ export function extractFirstName(rawName?: string, email?: string): string {
   return 'Lorenzo';
 }
 
+const VALID_ISLAND_TYPES: DynamicIslandNotificationType[] = [
+  'payment',
+  'overdue_alert',
+  'payment_success',
+  'order_assigned',
+  'sync',
+  'shared_payment',
+  'payment_streak',
+  'debt_free',
+  'noot_savings',
+  'limit_increase',
+  'low_balance',
+  'zero_interest',
+  'biometric_auth',
+  'offline_queue',
+  'ota_update',
+  'admin_impersonation',
+  'admin_client_payment',
+  'admin_risk_alert',
+  'admin_reminder_sent',
+  'promo_ad',
+  'pro_subscription',
+];
+
 export const DynamicIslandProvider: React.FC<{
   children: React.ReactNode;
   userId?: string;
@@ -113,11 +144,16 @@ export const DynamicIslandProvider: React.FC<{
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
   const [lastOnlineAt, setLastOnlineAt] = useState<string | null>(null);
   const [missedCount, setMissedCount] = useState<number>(0);
-  
+
   const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasShownGreetingRef = useRef<boolean>(false);
   const userNameRef = useRef<string>('Lorenzo');
   const userAvatarRef = useRef<string>('');
+  const currentUserIdRef = useRef<string | undefined>(propUserId);
+
+  useEffect(() => {
+    currentUserIdRef.current = propUserId;
+  }, [propUserId]);
 
   const clearTimer = () => {
     if (dismissTimerRef.current) {
@@ -145,7 +181,6 @@ export const DynamicIslandProvider: React.FC<{
     clearTimer();
     setActiveNotification((prev) => {
       if (prev && prev.id !== payload.id) {
-        // Queue previous notification as secondary
         setTimeout(() => setSecondaryNotification(prev), 0);
       }
       return payload;
@@ -165,6 +200,130 @@ export const DynamicIslandProvider: React.FC<{
     }
   }, []);
 
+  const handleIncomingNotification = useCallback(
+    (newNotif: any) => {
+      if (!newNotif) return;
+
+      const rawType = (newNotif.type || '').toLowerCase();
+      let notifType: DynamicIslandNotificationType = 'sync';
+
+      if (VALID_ISLAND_TYPES.includes(rawType as DynamicIslandNotificationType)) {
+        notifType = rawType as DynamicIslandNotificationType;
+      } else if (rawType.includes('overdue')) {
+        notifType = 'overdue_alert';
+      } else if (rawType.includes('success') || rawType.includes('paid')) {
+        notifType = 'payment_success';
+      } else if (rawType.includes('streak')) {
+        notifType = 'payment_streak';
+      } else if (rawType.includes('promo')) {
+        notifType = 'promo_ad';
+      } else if (rawType.includes('risk')) {
+        notifType = 'admin_risk_alert';
+      } else if (rawType.includes('pay')) {
+        notifType = 'payment';
+      }
+
+      const rawAmount = newNotif.data?.amount ?? newNotif.amount;
+      const formattedAmount =
+        rawAmount !== undefined && rawAmount !== null && rawAmount !== ''
+          ? `₱${Number(rawAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+          : undefined;
+
+      triggerIsland({
+        id: newNotif.id || `notif_${Date.now()}`,
+        type: notifType,
+        title: newNotif.title || 'New Notification',
+        subtitle: newNotif.body || newNotif.subtitle || undefined,
+        amount: formattedAmount,
+        compactText: newNotif.title || 'Notification',
+        compactBadge: formattedAmount || 'New Alert',
+        detailLeft: newNotif.body || newNotif.subtitle || 'Tap to view details',
+        detailRight: 'Review',
+        actionText: (newNotif.data?.actionText as string) || 'View Details',
+        durationMs: 7000,
+        onAction: () => {
+          if (newNotif.id) {
+            void supabase
+              .from('notifications')
+              .update({ read_at: new Date().toISOString() })
+              .eq('id', newNotif.id)
+              .then(() => {});
+          }
+        },
+      });
+    },
+    [triggerIsland]
+  );
+
+  const handleIncomingPayment = useCallback(
+    (newPayment: any) => {
+      if (!newPayment) return;
+
+      const rawAmount = Number(
+        newPayment.amount_due || newPayment.amount_paid || newPayment.amountDue || 0
+      );
+      const formattedAmount = `₱${rawAmount.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+      })}`;
+
+      if (newPayment.is_paid) {
+        const isAdmin = userRole === 'ADMIN' || activeRole === 'admin';
+        triggerIsland({
+          id: `payment_${newPayment.id}_${Date.now()}`,
+          type: isAdmin ? 'admin_client_payment' : 'payment_success',
+          title: isAdmin ? 'Client Payment Received' : 'Payment Successful',
+          subtitle: isAdmin
+            ? 'Client account balance updated'
+            : 'Payment has been processed and cleared',
+          amount: formattedAmount,
+          compactText: isAdmin ? 'Payment Received' : 'Payment Cleared',
+          compactBadge: formattedAmount,
+          detailLeft: 'Status: Paid Clear',
+          detailRight: 'Receipt ✓',
+          durationMs: 7000,
+        });
+      } else if (newPayment.due_date && new Date(newPayment.due_date).getTime() < Date.now()) {
+        const dueFormatted = new Date(newPayment.due_date).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        });
+        triggerIsland({
+          id: `overdue_${newPayment.id}_${Date.now()}`,
+          type: 'overdue_alert',
+          title: 'Payment Overdue Alert',
+          subtitle: `Installment overdue since ${dueFormatted}`,
+          amount: formattedAmount,
+          compactText: 'Overdue Due',
+          compactBadge: 'Overdue',
+          detailLeft: `Due: ${dueFormatted}`,
+          detailRight: 'Pay Now',
+          actionText: 'Review Overdue Due',
+          durationMs: 9000,
+        });
+      } else {
+        const dueFormatted = newPayment.due_date
+          ? new Date(newPayment.due_date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+            })
+          : 'Upcoming';
+        triggerIsland({
+          id: `payment_sched_${newPayment.id}_${Date.now()}`,
+          type: 'payment',
+          title: 'Payment Due Scheduled',
+          subtitle: `Due date on ${dueFormatted}`,
+          amount: formattedAmount,
+          compactText: 'Scheduled Payment',
+          compactBadge: formattedAmount,
+          detailLeft: `Due: ${dueFormatted}`,
+          detailRight: 'View',
+          durationMs: 6000,
+        });
+      }
+    },
+    [userRole, activeRole, triggerIsland]
+  );
+
   const checkMissedNotifications = useCallback(async () => {
     if (!sessionExists || !activeRole) return;
 
@@ -181,6 +340,7 @@ export const DynamicIslandProvider: React.FC<{
 
       const { data: authData } = await supabase.auth.getUser();
       if (authData?.user) {
+        currentUserIdRef.current = authData.user.id;
         try {
           const { data: profile } = await supabase
             .from('profiles')
@@ -250,6 +410,22 @@ export const DynamicIslandProvider: React.FC<{
 
       const nameToDisplay = userFirstName || 'Lorenzo';
 
+      const totalOverdueNum = overdueList.reduce(
+        (acc: number, s: any) =>
+          acc + (Number(s.amount_due || s.amountDue || s.total_amount_due) || 0),
+        0
+      );
+      const totalOverdue = `₱${totalOverdueNum.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+      })}`;
+
+      let greetingDetailLeft = 'All Billing Accounts Clear';
+      if (overdueList.length > 0) {
+        greetingDetailLeft = `${overdueList.length} Overdue Dues (${totalOverdue})`;
+      } else if (paymentsList.length > 0) {
+        greetingDetailLeft = `${paymentsList.length} Recent Payments Clear`;
+      }
+
       // 1. Prioritize Welcome Greeting on session & activeRole start
       if (!hasShownGreetingRef.current) {
         hasShownGreetingRef.current = true;
@@ -259,14 +435,20 @@ export const DynamicIslandProvider: React.FC<{
         const greetingTime = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
         const formattedTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
+        const weatherSnap = getLiveWeatherSnapshot();
+        const weatherBadge =
+          weatherSnap.rainChance !== undefined && weatherSnap.rainChance > 0
+            ? `${weatherSnap.temp}°C • 🌧️ ${weatherSnap.rainChance}%`
+            : `${weatherSnap.temp}°C`;
+
         triggerIsland({
           id: `greeting_${Date.now()}`,
           type: 'sync',
           title: `${greetingTime}, ${nameToDisplay}!`,
           subtitle: isAdmin ? 'SPay Admin Mobile • Operational' : 'SPay Client Mobile • Operational',
           compactText: `${greetingTime}, ${nameToDisplay}`,
-          compactBadge: `${formattedTime} • 30°C`,
-          detailLeft: 'All Billing Accounts Clear',
+          compactBadge: `${formattedTime} • ${weatherBadge}`,
+          detailLeft: greetingDetailLeft,
           detailRight: 'Live Sync Active ✓',
           avatarUrl: avatar || undefined,
           durationMs: 5000,
@@ -347,6 +529,69 @@ export const DynamicIslandProvider: React.FC<{
     checkMissedNotifications();
   }, [sessionExists, activeRole, checkMissedNotifications]);
 
+  // Weather update listener to keep greeting badge fresh
+  useEffect(() => {
+    void fetchFreshWeather().catch(() => {});
+
+    const unsubscribe = subscribeToWeatherUpdates((snapshot: WeatherSnapshot) => {
+      setActiveNotification((curr) => {
+        if (curr && curr.id.startsWith('greeting')) {
+          const formattedTime = new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          const weatherBadge =
+            snapshot.rainChance !== undefined && snapshot.rainChance > 0
+              ? `${snapshot.temp}°C • 🌧️ ${snapshot.rainChance}%`
+              : `${snapshot.temp}°C`;
+
+          return {
+            ...curr,
+            compactBadge: `${formattedTime} • ${weatherBadge}`,
+          };
+        }
+        return curr;
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Supabase Realtime channel subscription for notifications and payments
+  useEffect(() => {
+    if (!sessionExists) return;
+
+    const uniqueChannelId = `dynamic_island_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const channel = supabase.channel(uniqueChannelId);
+
+    channel
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            handleIncomingNotification(payload.new);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payments' },
+        (payload) => {
+          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && payload.new) {
+            handleIncomingPayment(payload.new);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [sessionExists, handleIncomingNotification, handleIncomingPayment]);
+
   // Timer cleanup on unmount
   useEffect(() => {
     return () => clearTimer();
@@ -373,3 +618,5 @@ export const DynamicIslandProvider: React.FC<{
     </DynamicIslandContext.Provider>
   );
 };
+
+export default DynamicIslandProvider;

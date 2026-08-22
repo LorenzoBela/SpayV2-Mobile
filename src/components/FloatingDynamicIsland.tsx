@@ -41,6 +41,14 @@ import {
   Sparkles,
   Tag,
   User,
+  Flame,
+  PartyPopper,
+  PiggyBank,
+  TrendingUp,
+  AlertCircle,
+  Percent,
+  Fingerprint,
+  Send,
 } from 'lucide-react-native';
 
 import { ThemeContext } from '../navigation/navigationTypes';
@@ -62,7 +70,7 @@ const SPRING_PHYSICS = {
 const ICON_COLOR_MAP: Record<string, string> = {
   payment: SPAY_PRIMARY,
   order_assigned: SPAY_PRIMARY,
-  biometric_auth: SPAY_PRIMARY,
+  biometric_auth: '#3b82f6',
   overdue_alert: RED_ALERT,
   admin_risk_alert: RED_ALERT,
   low_balance: RED_ALERT,
@@ -71,11 +79,16 @@ const ICON_COLOR_MAP: Record<string, string> = {
   admin_client_payment: '#10b981',
   ota_update: '#00F2FE',
   sync: '#00F2FE',
-  limit_increase: '#00F2FE',
-  offline_queue: '#00F2FE',
+  limit_increase: '#10b981',
+  offline_queue: '#f59e0b',
   shared_payment: '#a855f7',
   pro_subscription: '#a855f7',
-  zero_interest: '#a855f7',
+  zero_interest: '#10b981',
+  payment_streak: '#f97316',
+  noot_savings: '#ec4899',
+  admin_impersonation: '#8b5cf6',
+  admin_reminder_sent: '#00F2FE',
+  promo_ad: '#f59e0b',
 };
 
 const AnimatedEqBar: React.FC<{ color: string; minH: number; maxH: number; duration: number }> = ({ color, minH, maxH, duration }) => {
@@ -204,35 +217,51 @@ export const FloatingDynamicIsland: React.FC = () => {
   const isGreeting = islandData.id?.startsWith('greeting');
   const showUserPhoto = isGreeting && !!islandData.avatarUrl;
 
-  const renderIcon = (type: string) => {
+  const renderIcon = (type: string, size = 13, strokeWidth = 2.0) => {
     const iconColor = ICON_COLOR_MAP[type] || '#f59e0b';
 
     switch (type) {
+      case 'payment_streak':
+        return <Flame size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'debt_free':
+        return <PartyPopper size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'noot_savings':
+        return <PiggyBank size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'limit_increase':
+        return <TrendingUp size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'low_balance':
+        return <AlertCircle size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'zero_interest':
+        return <Percent size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'biometric_auth':
+        return <Fingerprint size={size} color={iconColor} strokeWidth={strokeWidth} />;
+      case 'admin_reminder_sent':
+        return <Send size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'promo_ad':
-        return <Tag size={13} color={iconColor} strokeWidth={2.0} />;
+        return <Tag size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'ota_update':
-        return <Download size={13} color={iconColor} strokeWidth={2.0} />;
+        return <Download size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'admin_impersonation':
       case 'admin_risk_alert':
-        return <ShieldAlert size={13} color={iconColor} strokeWidth={2.0} />;
+        return <ShieldAlert size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'pro_subscription':
-        return <Sparkles size={13} color={iconColor} strokeWidth={2.0} />;
+        return <Sparkles size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'overdue_alert':
-        return <AlertTriangle size={13} color={iconColor} strokeWidth={2.0} />;
+        return <AlertTriangle size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'payment_success':
       case 'admin_client_payment':
-        return <Check size={13} color={iconColor} strokeWidth={2.2} />;
+        return <Check size={size} color={iconColor} strokeWidth={Math.max(strokeWidth, 2.2)} />;
       case 'order_assigned':
-        return <ShoppingBag size={13} color={iconColor} strokeWidth={2.0} />;
+        return <ShoppingBag size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'sync':
-        return <RefreshCw size={13} color={iconColor} strokeWidth={2.0} />;
+        return <RefreshCw size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'shared_payment':
-        return <Users size={13} color={iconColor} strokeWidth={2.0} />;
+        return <Users size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'offline_queue':
-        return <WifiOff size={13} color={iconColor} strokeWidth={2.0} />;
+        return <WifiOff size={size} color={iconColor} strokeWidth={strokeWidth} />;
       case 'payment':
       default:
-        return <CreditCard size={13} color={iconColor} strokeWidth={2.0} />;
+        return <CreditCard size={size} color={iconColor} strokeWidth={strokeWidth} />;
     }
   };
 
@@ -270,7 +299,7 @@ export const FloatingDynamicIsland: React.FC = () => {
                         ) : isGreeting ? (
                           <User size={13} color="#00F2FE" strokeWidth={2.2} />
                         ) : (
-                          renderIcon(islandData.type)
+                          renderIcon(islandData.type, 13, 2.0)
                         )}
                       </View>
                       <Text style={[styles.compactTitleText, { color: textColor }]} numberOfLines={1} ellipsizeMode="tail">
@@ -297,7 +326,7 @@ export const FloatingDynamicIsland: React.FC = () => {
                           ) : isGreeting ? (
                             <User size={16} color="#00F2FE" strokeWidth={2.2} />
                           ) : (
-                            renderIcon(islandData.type)
+                            renderIcon(islandData.type, 16, 2.0)
                           )}
                         </View>
                         <View style={styles.titleTextGroup}>
@@ -375,7 +404,7 @@ export const FloatingDynamicIsland: React.FC = () => {
           <Pressable onPress={() => triggerIsland(secondaryNotification)}>
             <Animated.View entering={FadeIn.duration(110)} style={[styles.secondaryOrb, { backgroundColor: containerBg, borderColor: containerBorder }]}>
               <View style={styles.lineIconPod}>
-                {renderIcon(secondaryNotification.type)}
+                {renderIcon(secondaryNotification.type, 13, 2.0)}
               </View>
             </Animated.View>
           </Pressable>
