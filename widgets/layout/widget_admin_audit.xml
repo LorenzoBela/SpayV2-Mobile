@@ -1,26 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@drawable/widget_background"
-    android:padding="16dp">
+    android:background="@drawable/widget_glass_card"
+    android:padding="12dp">
 
     <!-- Header -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp">
+        android:layout_marginBottom="8dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SYSTEM ACTION LOGS"
-            android:textColor="#8A99AD"
-            android:textSize="10sp"
+            android:text="ADMIN AUDIT LOGS"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="9sp"
             android:textStyle="bold"
-            android:letterSpacing="0.1"
-            android:layout_alignParentStart="true" />
+            android:letterSpacing="0.08"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true" />
 
         <TextView
             android:id="@+id/offline_dot"
@@ -39,144 +41,28 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center"
-        android:text="No recent system logs."
-        android:textColor="#8A99AD"
-        android:textSize="12sp"
+        android:text="No recent audit logs."
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="11sp"
         android:visibility="gone" />
 
-    <!-- List Container -->
-    <LinearLayout
-        android:id="@+id/logs_list_container"
+    <!-- Scrollable Collection List (RemoteViewsFactory) -->
+    <ListView
+        android:id="@+id/widget_list_view"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="vertical"
-        android:divider="?android:attr/dividerHorizontal"
-        android:showDividers="middle">
-
-        <!-- Row 1 -->
-        <RelativeLayout
-            android:id="@+id/log_row_1"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingVertical="8dp">
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_alignParentStart="true"
-                android:layout_toStartOf="@id/txt_row_1_time"
-                android:layout_marginEnd="8dp">
-
-                <TextView
-                    android:id="@+id/txt_row_1_message"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Action Log"
-                    android:textColor="#FFFFFF"
-                    android:textSize="11sp"
-                    android:ellipsize="end"
-                    android:maxLines="2" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/txt_row_1_time"
-                android:layout_width="50dp"
-                android:layout_height="wrap_content"
-                android:text="--:--"
-                android:textColor="#8A99AD"
-                android:textSize="9sp"
-                android:gravity="end"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true" />
-        </RelativeLayout>
-
-        <!-- Row 2 -->
-        <RelativeLayout
-            android:id="@+id/log_row_2"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingVertical="8dp">
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_alignParentStart="true"
-                android:layout_toStartOf="@id/txt_row_2_time"
-                android:layout_marginEnd="8dp">
-
-                <TextView
-                    android:id="@+id/txt_row_2_message"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Action Log"
-                    android:textColor="#FFFFFF"
-                    android:textSize="11sp"
-                    android:ellipsize="end"
-                    android:maxLines="2" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/txt_row_2_time"
-                android:layout_width="50dp"
-                android:layout_height="wrap_content"
-                android:text="--:--"
-                android:textColor="#8A99AD"
-                android:textSize="9sp"
-                android:gravity="end"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true" />
-        </RelativeLayout>
-
-        <!-- Row 3 -->
-        <RelativeLayout
-            android:id="@+id/log_row_3"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingVertical="8dp">
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_alignParentStart="true"
-                android:layout_toStartOf="@id/txt_row_3_time"
-                android:layout_marginEnd="8dp">
-
-                <TextView
-                    android:id="@+id/txt_row_3_message"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Action Log"
-                    android:textColor="#FFFFFF"
-                    android:textSize="11sp"
-                    android:ellipsize="end"
-                    android:maxLines="2" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/txt_row_3_time"
-                android:layout_width="50dp"
-                android:layout_height="wrap_content"
-                android:text="--:--"
-                android:textColor="#8A99AD"
-                android:textSize="9sp"
-                android:gravity="end"
-                android:layout_alignParentEnd="true"
-                android:layout_centerVertical="true" />
-        </RelativeLayout>
-    </LinearLayout>
+        android:divider="@android:color/transparent"
+        android:dividerHeight="4dp"
+        android:scrollbars="none" />
 
     <!-- Footer -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="Tap to view all system audit logs"
-        android:textColor="#8A99AD"
-        android:textSize="9sp"
-        android:gravity="center"
-        android:textStyle="italic" />
+        android:text="Tap to view complete audit trail"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="8sp"
+        android:gravity="center" />
 </LinearLayout>

@@ -36,24 +36,26 @@ class CreditLimitWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_credit_limit)
 
-            // Setup deep link to dashboard
-            val launchIntent = Intent(Intent.ACTION_VIEW).apply {
+            // Setup deep link to dashboard / App Launch
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 data = Uri.parse("exp+mobile://dashboard")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            } ?: Intent(Intent.ACTION_VIEW, Uri.parse("exp+mobile://dashboard")).apply {
+                setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             val launchPI = PendingIntent.getActivity(
-                context, 3, launchIntent,
+                context, appWidgetId, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            views.setOnClickPendingIntent(R.id.widget_root, launchPI)
             views.setOnClickPendingIntent(R.id.card_chip, launchPI)
-
-            // If tapped on card numbers or name, open the app
             views.setOnClickPendingIntent(R.id.txt_card_number, launchPI)
             views.setOnClickPendingIntent(R.id.txt_cardholder_name, launchPI)
             views.setOnClickPendingIntent(R.id.txt_available_credit, launchPI)
 
             if (dataStr.isEmpty()) {
-                renderEmptyState(views, isLocked)
+                renderEmptyState(views, isLocked, launchPI)
             } else {
                 try {
                     val root = JSONObject(dataStr)
@@ -93,7 +95,7 @@ class CreditLimitWidgetProvider : AppWidgetProvider() {
                     }
 
                 } catch (e: Exception) {
-                    renderEmptyState(views, isLocked)
+                    renderEmptyState(views, isLocked, launchPI)
                 }
             }
 
@@ -101,11 +103,13 @@ class CreditLimitWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun renderEmptyState(views: RemoteViews, isLocked: Boolean) {
+    private fun renderEmptyState(views: RemoteViews, isLocked: Boolean, launchPI: PendingIntent) {
         views.setTextViewText(R.id.txt_available_credit, if (isLocked) "₱*****" else "₱0.00")
         views.setTextViewText(R.id.txt_baseline_limit, if (isLocked) "Global Baseline: ₱*****" else "Global Baseline: ₱0.00")
         views.setTextViewText(R.id.txt_cardholder_name, "S-PAY MEMBER")
         views.setProgressBar(R.id.limit_progress, 100, 0, false)
         views.setViewVisibility(R.id.offline_dot, View.GONE)
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+        views.setOnClickPendingIntent(R.id.txt_available_credit, launchPI)
     }
 }

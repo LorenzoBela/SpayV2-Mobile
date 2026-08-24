@@ -31,19 +31,24 @@ class NootAiWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_noot_ai)
 
-            // Setup deep link to Copilot chat screen
-            val launchIntent = Intent(Intent.ACTION_VIEW).apply {
+            // Setup deep link to Copilot chat screen / App Launch
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 data = Uri.parse("exp+mobile://copilot")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            } ?: Intent(Intent.ACTION_VIEW, Uri.parse("exp+mobile://copilot")).apply {
+                setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             val launchPI = PendingIntent.getActivity(
-                context, 4, launchIntent,
+                context, appWidgetId, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.txt_noot_prompt, launchPI)
+            views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_noot_message, launchPI)
+            views.setOnClickPendingIntent(R.id.img_noot_avatar, launchPI)
 
             if (dataStr.isEmpty()) {
-                views.setTextViewText(R.id.txt_noot_prompt, "Secure & Smart Payments. Add me to home screen!")
+                views.setTextViewText(R.id.txt_noot_message, "Secure & Smart Payments. Tap to chat with Noot AI!")
                 views.setViewVisibility(R.id.offline_dot, View.GONE)
             } else {
                 try {
@@ -54,19 +59,17 @@ class NootAiWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.offline_dot, if (isOffline) View.VISIBLE else View.GONE)
 
                     if (!isLoggedIn) {
-                        views.setTextViewText(R.id.txt_noot_prompt, "Please log in to chat with NootAI.")
+                        views.setTextViewText(R.id.txt_noot_message, "Please log in to chat with Noot AI.")
                     } else {
                         val nootPrompt = root.optString("nootPrompt", "").trim()
                         if (nootPrompt.isEmpty()) {
-                            // If empty prompt, hide widget or show friendly placeholder
-                            views.setTextViewText(R.id.txt_noot_prompt, "No active alerts. Have a great day!")
+                            views.setTextViewText(R.id.txt_noot_message, "No active alerts. Have a great day!")
                         } else {
-                            views.setTextViewText(R.id.txt_noot_prompt, nootPrompt)
+                            views.setTextViewText(R.id.txt_noot_message, nootPrompt)
                         }
                     }
-
                 } catch (e: Exception) {
-                    views.setTextViewText(R.id.txt_noot_prompt, "Secure & Smart Payments")
+                    views.setTextViewText(R.id.txt_noot_message, "Secure & Smart Payments")
                 }
             }
 

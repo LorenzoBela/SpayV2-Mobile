@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="5dp"
+    android:paddingBottom="5dp"
+    android:background="@drawable/widget_glass_pill"
+    android:layout_marginBottom="4dp">
+
+    <TextView
+        android:id="@+id/txt_item_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="2m ago"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:minWidth="44dp" />
+
+    <TextView
+        android:id="@+id/txt_item_message"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Client placed order for iPhone 15"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingStart="4dp" />
+</LinearLayout>

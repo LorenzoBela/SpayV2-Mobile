@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="270dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:minWidth="250dp"
     android:minHeight="110dp"
-    android:minResizeWidth="250dp"
+    android:minResizeWidth="120dp"
+    android:minResizeHeight="60dp"
+    android:maxResizeWidth="580dp"
+    android:maxResizeHeight="450dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_credit_limit"
     android:previewLayout="@layout/widget_credit_limit"
-    android:resizeMode="horizontal"
-    android:widgetCategory="home_screen" />
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen|keyguard"
+    android:description="@string/widget_credit_limit_label"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

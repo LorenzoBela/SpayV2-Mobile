@@ -32,6 +32,7 @@ import { getPersistedTheme, savePersistedTheme, resolveIsDark, type ThemePrefere
 import { supabase } from '../utils/supabase';
 import { posthog } from '../utils/posthog';
 import { getLinkedProfileForUser } from '../utils/authProfile';
+import { syncWidgetData } from '../utils/widgetSync';
 import { useImpersonation } from '../context/ImpersonationContext';
 import { DynamicIslandProvider } from '../context/DynamicIslandContext';
 import FloatingDynamicIsland from '../components/FloatingDynamicIsland';
@@ -824,6 +825,9 @@ export default function AppNavigator() {
           email: session.user.email ?? '',
           platform: 'mobile',
         });
+        void syncWidgetData(true);
+      } else {
+        void syncWidgetData(true);
       }
     });
 
@@ -837,6 +841,7 @@ export default function AppNavigator() {
           email: session.user.email ?? '',
           platform: 'mobile',
         });
+        void syncWidgetData(true);
       }
       if (event === 'SIGNED_OUT') {
         posthog.reset();
@@ -850,6 +855,7 @@ export default function AppNavigator() {
         setUserRole(null);
         setActiveRole(null);
         setLinkedProfileId(null);
+        void syncWidgetData(true);
       }
     });
 

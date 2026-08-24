@@ -75,6 +75,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '../../utils/supabase';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { syncWidgetData } from '../../utils/widgetSync';
 import { useNavigation } from '@react-navigation/native';
 import { RoleContext, ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -471,9 +472,15 @@ export default function AdminDashboardScreen() {
 
   useRealtimeSync(
     ['orders', 'payments', 'account_limits', 'profiles'],
-    undefined,
+    () => { void syncWidgetData(); },
     [['admin-dashboard']]
   );
+
+  useEffect(() => {
+    if (dashboardData) {
+      void syncWidgetData();
+    }
+  }, [dashboardData]);
 
   // Heatmap data derived from dashboard REST API (cached in Redis)
   const allOrdersList = useMemo(() => {

@@ -215,7 +215,7 @@ function Set-ProductionBuildMetadata {
             } catch {}
         }
 
-        $nextVersionCode = [Math]::Max(32, $currentVersionCode)
+        $nextVersionCode = [Math]::Max(34, $currentVersionCode)
         $versionName = if ($config.expo.version) { [string]$config.expo.version } else { "1.0.0" }
         $apkUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$([uri]::EscapeDataString($script:GitHubApkFileName))"
         $manifestUrl = "https://github.com/$($script:GitHubRepo)/releases/latest/download/$($script:GitHubManifestFileName)"
@@ -1386,6 +1386,11 @@ function Invoke-WidgetManifestInjection {
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_audit"/>
     </receiver>
+
+    <service
+        android:name=".SpayListWidgetService"
+        android:permission="android.permission.BIND_REMOTEVIEWS"
+        android:exported="false" />
 '@
 
     # Inject before </application>
@@ -1438,11 +1443,20 @@ function Invoke-ProGuardRulesFix {
 -keepclassmembers class **.R$* {
     public static <fields>;
 }
+
+# S-Pay V2 App Widgets & Native Services
+-keep class * extends android.appwidget.AppWidgetProvider { *; }
+-keep class * extends android.widget.RemoteViewsService { *; }
+-keep class * implements android.widget.RemoteViewsService$RemoteViewsFactory { *; }
+-keep class com.cerberuzz91141.mobile.**WidgetProvider { *; }
+-keep class com.cerberuzz91141.mobile.SpayListWidgetService** { *; }
+-keep class com.cerberuzz91141.mobile.SpayWidgetModule { *; }
+-keep class com.cerberuzz91141.mobile.SpayWidgetPackage { *; }
 "@
-        if ($content -notmatch 'com\.facebook\.react\.R') {
+        if ($content -notmatch 'AppWidgetProvider') {
             $content = $content + "`n" + $rulesToAdd
             Set-Content -Path $pgFile -Value $content
-            Write-Host "[OK] Injected ProGuard R-class keep rules into proguard-rules.pro" -ForegroundColor Green
+            Write-Host "[OK] Injected ProGuard AppWidget and R-class keep rules into proguard-rules.pro" -ForegroundColor Green
         }
     }
 }

@@ -21,6 +21,7 @@ import GlobalProgressBar from './src/components/GlobalProgressBar';
 import RootErrorBoundary from './src/components/RootErrorBoundary';
 import PrivacyCurtain from './src/components/PrivacyCurtain';
 import { useNetworkReconciliation } from './src/hooks/useNetworkReconciliation';
+import { syncWidgetData } from './src/utils/widgetSync';
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
 
@@ -75,6 +76,10 @@ const darkTheme = {
 
 function AppContent() {
   useNetworkReconciliation();
+
+  React.useEffect(() => {
+    void syncWidgetData(true);
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

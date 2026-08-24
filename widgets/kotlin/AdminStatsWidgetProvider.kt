@@ -36,58 +36,60 @@ class AdminStatsWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_admin_stats)
 
-            // Setup deep link to Admin Dashboard
-            val launchIntent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("exp+mobile://admin/dashboard")
+            // Setup deep link to Admin Dashboard / App Launch
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                data = Uri.parse("exp+mobile://admin")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            } ?: Intent(Intent.ACTION_VIEW, Uri.parse("exp+mobile://admin")).apply {
+                setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             val launchPI = PendingIntent.getActivity(
-                context, 70, launchIntent,
+                context, appWidgetId, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.txt_stat_clients, launchPI)
+            views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_active_clients, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_total_orders, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_collection_efficiency, launchPI)
 
             if (dataStr.isEmpty()) {
-                renderDefaultState(views, isLocked)
+                renderDefaultState(views, isLocked, launchPI)
             } else {
                 try {
                     val root = JSONObject(dataStr)
                     val isLoggedIn = root.optBoolean("isLoggedIn", false)
-                    val isOffline = root.optBoolean("isOffline", false)
-
-                    views.setViewVisibility(R.id.offline_dot, if (isOffline) View.VISIBLE else View.GONE)
 
                     if (!isLoggedIn) {
-                        views.setTextViewText(R.id.txt_stat_clients, "--")
-                        views.setTextViewText(R.id.txt_stat_orders, "--")
-                        views.setTextViewText(R.id.txt_stat_efficiency, "--%")
+                        views.setTextViewText(R.id.txt_active_clients, "--")
+                        views.setTextViewText(R.id.txt_total_orders, "--")
+                        views.setTextViewText(R.id.txt_collection_efficiency, "--%")
                     } else {
-                        // Gather stats data
                         val clients = root.optInt("clientsCount", 0)
                         val orders = root.optInt("ordersCount", 0)
                         val efficiency = root.optDouble("globalCollectionRate", 0.0)
 
                         if (isLocked) {
-                            views.setTextViewText(R.id.txt_stat_clients, "**")
-                            views.setTextViewText(R.id.txt_stat_orders, "**")
-                            views.setTextViewText(R.id.txt_stat_efficiency, "**%")
+                            views.setTextViewText(R.id.txt_active_clients, "**")
+                            views.setTextViewText(R.id.txt_total_orders, "**")
+                            views.setTextViewText(R.id.txt_collection_efficiency, "**%")
                         } else {
-                            views.setTextViewText(R.id.txt_stat_clients, clients.toString())
-                            views.setTextViewText(R.id.txt_stat_orders, orders.toString())
-                            views.setTextViewText(R.id.txt_stat_efficiency, String.format(Locale.US, "%.1f%%", efficiency))
+                            views.setTextViewText(R.id.txt_active_clients, clients.toString())
+                            views.setTextViewText(R.id.txt_total_orders, orders.toString())
+                            views.setTextViewText(R.id.txt_collection_efficiency, String.format(Locale.US, "%.1f%%", efficiency))
                             
                             // Adjust efficiency color
                             if (efficiency >= 90.0) {
-                                views.setTextColor(R.id.txt_stat_efficiency, 0xFF34C759.toInt()) // Green
+                                views.setTextColor(R.id.txt_collection_efficiency, 0xFF34C759.toInt())
                             } else if (efficiency >= 75.0) {
-                                views.setTextColor(R.id.txt_stat_efficiency, 0xFFFFCC00.toInt()) // Yellow/Amber
+                                views.setTextColor(R.id.txt_collection_efficiency, 0xFFFFCC00.toInt())
                             } else {
-                                views.setTextColor(R.id.txt_stat_efficiency, 0xFFFF3B30.toInt()) // Red
+                                views.setTextColor(R.id.txt_collection_efficiency, 0xFFFF3B30.toInt())
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    renderDefaultState(views, isLocked)
+                    renderDefaultState(views, isLocked, launchPI)
                 }
             }
 
@@ -95,9 +97,10 @@ class AdminStatsWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun renderDefaultState(views: RemoteViews, isLocked: Boolean) {
-        views.setTextViewText(R.id.txt_stat_clients, if (isLocked) "**" else "0")
-        views.setTextViewText(R.id.txt_stat_orders, if (isLocked) "**" else "0")
-        views.setTextViewText(R.id.txt_stat_efficiency, if (isLocked) "**%" else "0.0%")
+    private fun renderDefaultState(views: RemoteViews, isLocked: Boolean, launchPI: PendingIntent) {
+        views.setTextViewText(R.id.txt_active_clients, if (isLocked) "**" else "0")
+        views.setTextViewText(R.id.txt_total_orders, if (isLocked) "**" else "0")
+        views.setTextViewText(R.id.txt_collection_efficiency, if (isLocked) "**%" else "0.0%")
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
     }
 }

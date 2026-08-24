@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import { onlineManager } from '@tanstack/react-query';
 import { queryClient } from '../utils/queryClient';
+import { syncWidgetData } from '../utils/widgetSync';
 
 /**
  * Connects NetInfo to TanStack Query onlineManager and triggers
@@ -43,6 +44,7 @@ export function useNetworkReconciliation() {
             );
           },
         });
+        void syncWidgetData(true);
       }
     });
 

@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@drawable/widget_background"
+    android:background="@drawable/widget_glass_card"
     android:padding="12dp">
 
     <!-- Header Section -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="6dp">
 
         <LinearLayout
             android:id="@+id/header_nav"
@@ -22,8 +23,8 @@
 
             <ImageButton
                 android:id="@+id/btn_prev_month"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_media_previous"
                 android:contentDescription="Previous Month" />
@@ -33,20 +34,33 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="June 2026"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp"
                 android:textStyle="bold"
-                android:layout_marginLeft="8dp"
-                android:layout_marginRight="8dp" />
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp" />
 
             <ImageButton
                 android:id="@+id/btn_next_month"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_media_next"
                 android:contentDescription="Next Month" />
         </LinearLayout>
+
+        <!-- Hardware Live Chronometer Ticker -->
+        <Chronometer
+            android:id="@+id/chronometer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:countDown="true"
+            android:textColor="@color/widget_brand_accent"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_toStartOf="@+id/offline_dot"
+            android:layout_centerVertical="true"
+            android:layout_marginEnd="8dp" />
 
         <!-- Offline Warning Dot -->
         <TextView
@@ -65,28 +79,28 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="6dp">
 
         <!-- Days -->
         <LinearLayout
             android:layout_width="48dp"
-            android:layout_height="54dp"
+            android:layout_height="52dp"
             android:orientation="vertical"
-            android:background="@drawable/digit_card_background"
+            android:background="@drawable/widget_glass_pill"
             android:gravity="center">
             <TextView
                 android:id="@+id/txt_days"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="00"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="18sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="DAYS"
-                android:textColor="#8A99AD"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="8sp" />
         </LinearLayout>
 
@@ -94,32 +108,32 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text=":"
-            android:textColor="#8A99AD"
-            android:textSize="18sp"
-            android:layout_marginLeft="4dp"
-            android:layout_marginRight="4dp"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="16sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             android:layout_gravity="center_vertical" />
 
         <!-- Hours -->
         <LinearLayout
             android:layout_width="48dp"
-            android:layout_height="54dp"
+            android:layout_height="52dp"
             android:orientation="vertical"
-            android:background="@drawable/digit_card_background"
+            android:background="@drawable/widget_glass_pill"
             android:gravity="center">
             <TextView
                 android:id="@+id/txt_hours"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="00"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="18sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="HOURS"
-                android:textColor="#8A99AD"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="8sp" />
         </LinearLayout>
 
@@ -127,32 +141,32 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text=":"
-            android:textColor="#8A99AD"
-            android:textSize="18sp"
-            android:layout_marginLeft="4dp"
-            android:layout_marginRight="4dp"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="16sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             android:layout_gravity="center_vertical" />
 
         <!-- Min -->
         <LinearLayout
             android:layout_width="48dp"
-            android:layout_height="54dp"
+            android:layout_height="52dp"
             android:orientation="vertical"
-            android:background="@drawable/digit_card_background"
+            android:background="@drawable/widget_glass_pill"
             android:gravity="center">
             <TextView
                 android:id="@+id/txt_minutes"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="00"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="18sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="MIN"
-                android:textColor="#8A99AD"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="8sp" />
         </LinearLayout>
 
@@ -160,32 +174,32 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text=":"
-            android:textColor="#8A99AD"
-            android:textSize="18sp"
-            android:layout_marginLeft="4dp"
-            android:layout_marginRight="4dp"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="16sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             android:layout_gravity="center_vertical" />
 
         <!-- Sec -->
         <LinearLayout
             android:layout_width="48dp"
-            android:layout_height="54dp"
+            android:layout_height="52dp"
             android:orientation="vertical"
-            android:background="@drawable/digit_card_background"
+            android:background="@drawable/widget_glass_pill"
             android:gravity="center">
             <TextView
                 android:id="@+id/txt_seconds"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="00"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="18sp"
                 android:textStyle="bold" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="SEC"
-                android:textColor="#8A99AD"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="8sp" />
         </LinearLayout>
     </LinearLayout>
@@ -196,13 +210,13 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="6dp">
         <TextView
             android:id="@+id/txt_clock_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Time Remaining to Settle Your Bill"
-            android:textColor="#FFEE4D2D"
+            android:textColor="@color/widget_brand_accent"
             android:textSize="11sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -213,9 +227,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginBottom="8dp"
-        android:padding="4dp"
-        android:background="#1AFFFFFF"
+        android:layout_marginBottom="6dp"
+        android:padding="6dp"
+        android:background="@drawable/widget_glass_pill"
         android:visibility="visible">
 
         <!-- Row 1 -->
@@ -230,7 +244,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Item 1"
-                android:textColor="#CFD8DC"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="10sp"
                 android:layout_alignParentStart="true" />
             <TextView
@@ -238,8 +252,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="₱0.00"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="10sp"
+                android:textStyle="bold"
                 android:layout_alignParentEnd="true" />
         </RelativeLayout>
 
@@ -255,7 +270,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Item 2"
-                android:textColor="#CFD8DC"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="10sp"
                 android:layout_alignParentStart="true" />
             <TextView
@@ -263,8 +278,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="₱0.00"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="10sp"
+                android:textStyle="bold"
                 android:layout_alignParentEnd="true" />
         </RelativeLayout>
 
@@ -279,7 +295,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Item 3"
-                android:textColor="#CFD8DC"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="10sp"
                 android:layout_alignParentStart="true" />
             <TextView
@@ -287,13 +303,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="₱0.00"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="10sp"
+                android:textStyle="bold"
                 android:layout_alignParentEnd="true" />
         </RelativeLayout>
     </LinearLayout>
 
-    <!-- Vertical Spacer to push footer to the bottom -->
+    <!-- Vertical Spacer -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -303,7 +320,7 @@
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp">
+        android:layout_marginTop="4dp">
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -315,14 +332,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="YOUR AMOUNT DUE"
-                android:textColor="#8A99AD"
+                android:textColor="@color/widget_text_secondary"
                 android:textSize="8sp" />
             <TextView
                 android:id="@+id/txt_amount_due"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="₱0.00"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="16sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -330,14 +347,14 @@
         <Button
             android:id="@+id/btn_pay_now"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="34dp"
             android:background="@drawable/pay_now_button_background"
             android:text="Pay Now"
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:paddingLeft="12dp"
-            android:paddingRight="12dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true" />
     </RelativeLayout>

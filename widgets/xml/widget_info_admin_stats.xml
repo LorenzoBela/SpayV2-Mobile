@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="270dp"
-    android:minHeight="110dp"
-    android:minResizeWidth="250dp"
-    android:minResizeHeight="80dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:minWidth="250dp"
+    android:minHeight="70dp"
+    android:minResizeWidth="120dp"
+    android:minResizeHeight="50dp"
+    android:maxResizeWidth="580dp"
+    android:maxResizeHeight="450dp"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_admin_stats"
     android:previewLayout="@layout/widget_admin_stats"
     android:resizeMode="horizontal|vertical"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen|keyguard"
+    android:description="@string/widget_admin_stats_label"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

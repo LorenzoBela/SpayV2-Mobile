@@ -43,6 +43,7 @@ import {
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
+import { syncWidgetData } from '../../utils/widgetSync';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -1176,6 +1177,7 @@ export default function DashboardScreen() {
         refetchPayments();
         refetchOrders();
         fetchGlobalLimits();
+        void syncWidgetData();
       }
     });
     return () => subscription.remove();
@@ -1185,12 +1187,14 @@ export default function DashboardScreen() {
     refetchPayments();
     refetchOrders();
     fetchGlobalLimits();
+    void syncWidgetData();
   });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.allSettled([refetchPayments(), refetchOrders(), fetchGlobalLimits()]);
+      void syncWidgetData();
     } catch (err) {
       console.warn('Dashboard pull-to-refresh error:', err);
     } finally {

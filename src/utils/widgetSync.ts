@@ -14,15 +14,15 @@ const { SpayWidgetModule } = NativeModules;
 let lastSyncTimestamp = 0;
 const SYNC_THROTTLE_MS = 3000;
 
-export async function syncWidgetData() {
+export async function syncWidgetData(force: boolean = false) {
   // Guard for platform and module existence
   if (Platform.OS !== 'android' || !SpayWidgetModule) {
     return;
   }
 
-  // Throttle sync operations to prevent rapid redundant executions
+  // Throttle sync operations to prevent rapid redundant executions unless forced
   const now = Date.now();
-  if (now - lastSyncTimestamp < SYNC_THROTTLE_MS) {
+  if (!force && now - lastSyncTimestamp < SYNC_THROTTLE_MS) {
     return;
   }
   lastSyncTimestamp = now;
@@ -43,7 +43,8 @@ export async function syncWidgetData() {
 
     // Resolve profile details securely using Google SSO or email identity
     const { profile, profileId } = await getLinkedProfileForCurrentUser();
-    if (!profileId) {
+    const effectiveProfileId = profileId || session.user.id;
+    if (!effectiveProfileId) {
       SpayWidgetModule.updateWidgetData(JSON.stringify({
         isLoggedIn: false,
         isOffline
@@ -51,7 +52,7 @@ export async function syncWidgetData() {
       return;
     }
 
-    const firstName = profile?.name || session.user.user_metadata?.full_name || 'Premium Member';
+    const firstName = profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Premium Member';
     const role = (profile?.role || 'client').toLowerCase();
 
     // Fetch limits
@@ -113,7 +114,7 @@ export async function syncWidgetData() {
         const { data } = await supabase
           .from('orders')
           .select('id, item_name, amount, installment_months, order_date, is_paid')
-          .eq('user_id', profileId);
+          .eq('user_id', effectiveProfileId);
         dbOrders = data;
       }
 
@@ -225,8 +226,8 @@ export async function syncWidgetData() {
             };
           });
 
-          // Map Upcoming Installments (first 3 unpaid installments)
-          const unpaidList = dbPayments.filter(p => !p.is_paid).slice(0, 3);
+          // Map Upcoming Installments (up to 50 active installments)
+          const unpaidList = dbPayments.filter(p => !p.is_paid).slice(0, 50);
           upcomingInstallments = unpaidList.map(inst => {
             const order = ordersMap.get(inst.order_id);
             const dueDate = new Date(inst.due_date);
@@ -246,11 +247,11 @@ export async function syncWidgetData() {
             };
           });
 
-          // Map Recent Transactions (last 3 paid payments)
+          // Map Recent Transactions (up to 50 paid repayments)
           const paidList = dbPayments
             .filter(p => p.is_paid)
             .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime())
-            .slice(0, 3);
+            .slice(0, 50);
 
           recentTransactions = paidList.map(tx => {
             const order = ordersMap.get(tx.order_id);
@@ -300,7 +301,7 @@ export async function syncWidgetData() {
         .select('title, body, created_at, read_at')
         .eq('user_id', profileId)
         .order('created_at', { ascending: false })
-        .limit(3);
+        .limit(30);
 
       const unreadCount = (dbNotifications || []).filter(n => !n.read_at).length;
       const notifications = (dbNotifications || []).map(n => ({
@@ -427,8 +428,8 @@ export async function syncWidgetData() {
           priority: 'low'
         });
 
-        // Map Admin Audit Logs (recent system activities)
-        const adminAuditLogs = (dashboardRes?.activities || []).slice(0, 3).map((act: any) => {
+        // Map Admin Audit Logs (recent system activities - up to 30 items)
+        const adminAuditLogs = (dashboardRes?.activities || []).slice(0, 30).map((act: any) => {
           const formattedAmount = `₱${parseFloat(act.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
           return {
             message: act.type === 'order' 

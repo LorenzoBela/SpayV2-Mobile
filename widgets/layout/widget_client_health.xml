@@ -1,86 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@drawable/widget_background"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_glass_card"
     android:padding="12dp"
-    android:gravity="center">
+    android:gravity="center_vertical">
 
-    <!-- Header / Brand info -->
-    <RelativeLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="4dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="CREDIT HEALTH"
-            android:textColor="#8A99AD"
-            android:textSize="9sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.05"
-            android:layout_alignParentStart="true" />
-
-        <TextView
-            android:id="@+id/offline_dot"
-            android:layout_width="5dp"
-            android:layout_height="5dp"
-            android:background="@drawable/offline_dot_red"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:visibility="gone" />
-    </RelativeLayout>
-
-    <!-- Score display inside a circular card -->
+    <!-- Score Circle Card -->
     <LinearLayout
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:background="@drawable/score_card_background"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
         android:orientation="vertical"
+        android:background="@drawable/widget_glass_pill"
         android:gravity="center"
-        android:layout_margin="4dp">
+        android:layout_marginEnd="10dp">
 
         <TextView
-            android:id="@+id/txt_score_value"
+            android:id="@+id/txt_health_score"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="--"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
+            android:text="100"
+            android:textColor="@color/widget_status_verified"
+            android:textSize="18sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/txt_score_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Score"
-            android:textColor="#8A99AD"
-            android:textSize="8sp"
-            android:textAllCaps="true" />
+            android:text="SCORE"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="7sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Streak Indicator -->
-    <TextView
-        android:id="@+id/txt_streak_value"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Streak: -- months"
-        android:textColor="#FFFFFF"
-        android:textSize="9sp"
-        android:textStyle="bold"
-        android:layout_marginTop="2dp" />
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-    <!-- Health Tier Badge -->
-    <TextView
-        android:id="@+id/txt_health_tier"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="N/A"
-        android:textColor="#d4af37"
-        android:textSize="10sp"
-        android:textStyle="bold"
-        android:layout_marginTop="2dp"
-        android:letterSpacing="0.05" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/txt_tier_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/widget_glass_pill"
+                android:text="PLATINUM"
+                android:textColor="@color/widget_brand_accent"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp" />
+
+            <TextView
+                android:id="@+id/offline_dot"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:background="@drawable/offline_dot_red"
+                android:layout_marginStart="6dp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/txt_streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔥 12-month on-time streak"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:id="@+id/txt_health_tip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Excellent repayment standing."
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="9sp" />
+    </LinearLayout>
 </LinearLayout>

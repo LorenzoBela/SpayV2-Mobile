@@ -932,6 +932,11 @@ function Invoke-WidgetManifestInjection {
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info_admin_audit"/>
     </receiver>
+
+    <service
+        android:name=".SpayListWidgetService"
+        android:permission="android.permission.BIND_REMOTEVIEWS"
+        android:exported="false" />
 '@
 
     $raw = $raw -replace '</application>', "$widgetReceivers`n  </application>"

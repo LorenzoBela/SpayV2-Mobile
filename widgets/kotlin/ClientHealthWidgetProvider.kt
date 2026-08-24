@@ -12,6 +12,7 @@ import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONObject
+import java.util.Locale
 
 class ClientHealthWidgetProvider : AppWidgetProvider() {
 
@@ -35,19 +36,25 @@ class ClientHealthWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_client_health)
 
-            // Setup deep link to ReportsScreen
-            val launchIntent = Intent(Intent.ACTION_VIEW).apply {
+            // Setup deep link to ReportsScreen / App Launch
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 data = Uri.parse("exp+mobile://reports")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            } ?: Intent(Intent.ACTION_VIEW, Uri.parse("exp+mobile://reports")).apply {
+                setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             val launchPI = PendingIntent.getActivity(
-                context, 20, launchIntent,
+                context, appWidgetId, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.txt_score_value, launchPI)
+            views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_health_score, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_streak, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_tier_badge, launchPI)
 
             if (dataStr.isEmpty()) {
-                renderDefaultState(views, isLocked)
+                renderDefaultState(views, isLocked, launchPI)
             } else {
                 try {
                     val root = JSONObject(dataStr)
@@ -57,38 +64,26 @@ class ClientHealthWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.offline_dot, if (isOffline) View.VISIBLE else View.GONE)
 
                     if (!isLoggedIn) {
-                        views.setTextViewText(R.id.txt_score_value, "--")
-                        views.setTextViewText(R.id.txt_streak_value, "Logged Out")
-                        views.setTextViewText(R.id.txt_health_tier, "N/A")
+                        views.setTextViewText(R.id.txt_health_score, "--")
+                        views.setTextViewText(R.id.txt_streak, "Logged Out")
+                        views.setTextViewText(R.id.txt_tier_badge, "N/A")
                     } else {
-                        // Extract credit health data
                         val score = root.optInt("creditHealthScore", 85)
                         val streak = root.optInt("repaymentStreak", 0)
                         val tier = root.optString("healthTier", "Bronze")
 
                         if (isLocked) {
-                            views.setTextViewText(R.id.txt_score_value, "**")
-                            views.setTextViewText(R.id.txt_streak_value, "Streak: ** months")
-                            views.setTextViewText(R.id.txt_health_tier, "****")
+                            views.setTextViewText(R.id.txt_health_score, "**")
+                            views.setTextViewText(R.id.txt_streak, "Streak: ** months")
+                            views.setTextViewText(R.id.txt_tier_badge, "****")
                         } else {
-                            views.setTextViewText(R.id.txt_score_value, score.toString())
-                            views.setTextViewText(R.id.txt_streak_value, "Streak: $streak months")
-                            views.setTextViewText(R.id.txt_health_tier, tier.uppercase())
-
-                            // Set tier-specific color
-                            val tierColor = when (tier.lowercase()) {
-                                "diamond" -> 0xFF8BE9FD.toInt() // Cyan/Light Blue
-                                "platinum" -> 0xFFE2E8F0.toInt() // Platinum/Silver
-                                "gold" -> 0xFFFFD700.toInt() // Golden
-                                "silver" -> 0xFFC0C0C0.toInt() // Silver
-                                "bronze" -> 0xFFCD7F32.toInt() // Bronze
-                                else -> 0xFFFFEE4D2D.toInt() // Brand Orange
-                            }
-                            views.setTextColor(R.id.txt_health_tier, tierColor)
+                            views.setTextViewText(R.id.txt_health_score, score.toString())
+                            views.setTextViewText(R.id.txt_streak, "🔥 $streak-month on-time streak")
+                            views.setTextViewText(R.id.txt_tier_badge, tier.uppercase(Locale.US))
                         }
                     }
                 } catch (e: Exception) {
-                    renderDefaultState(views, isLocked)
+                    renderDefaultState(views, isLocked, launchPI)
                 }
             }
 
@@ -96,10 +91,10 @@ class ClientHealthWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun renderDefaultState(views: RemoteViews, isLocked: Boolean) {
-        views.setTextViewText(R.id.txt_score_value, "--")
-        views.setTextViewText(R.id.txt_streak_value, if (isLocked) "Streak: ** months" else "Streak: 0 months")
-        views.setTextViewText(R.id.txt_health_tier, "BRONZE")
-        views.setTextColor(R.id.txt_health_tier, 0xFFCD7F32.toInt())
+    private fun renderDefaultState(views: RemoteViews, isLocked: Boolean, launchPI: PendingIntent) {
+        views.setTextViewText(R.id.txt_health_score, "--")
+        views.setTextViewText(R.id.txt_streak, if (isLocked) "Streak: ** months" else "Streak: 0 months")
+        views.setTextViewText(R.id.txt_tier_badge, "BRONZE")
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
     }
 }

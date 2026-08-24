@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="5dp"
+    android:paddingBottom="5dp"
+    android:background="@drawable/widget_glass_pill"
+    android:layout_marginBottom="4dp">
+
+    <ImageView
+        android:id="@+id/img_priority_dot"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:src="@drawable/priority_dot_amber"
+        android:layout_marginEnd="6dp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/txt_item_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Overdue Collections"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:ellipsize="end"
+            android:maxLines="1" />
+
+        <TextView
+            android:id="@+id/txt_item_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="5 client payments are overdue."
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="9sp"
+            android:ellipsize="end"
+            android:maxLines="1" />
+    </LinearLayout>
+</LinearLayout>

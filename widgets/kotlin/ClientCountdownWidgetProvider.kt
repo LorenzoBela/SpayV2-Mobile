@@ -1,6 +1,5 @@
 package com.cerberuzz91141.mobile
 
-import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -10,9 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.os.PowerManager
+import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
@@ -24,51 +21,6 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_NEXT_MONTH = "com.cerberuzz91141.mobile.ACTION_NEXT_MONTH"
         const val ACTION_PREV_MONTH = "com.cerberuzz91141.mobile.ACTION_PREV_MONTH"
-
-        private val handler = Handler(Looper.getMainLooper())
-        private var tickingRunnable: Runnable? = null
-        private var isTicking = false
-
-        fun startTicking(context: Context) {
-            if (isTicking) return
-            val appContext = context.applicationContext
-
-            tickingRunnable = object : Runnable {
-                override fun run() {
-                    val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-                    val isInteractive = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
-                        powerManager.isInteractive
-                    } else {
-                        @Suppress("DEPRECATION")
-                        powerManager.isScreenOn
-                    }
-
-                    if (!isInteractive) {
-                        stopTicking()
-                        return
-                    }
-
-                    val appWidgetManager = AppWidgetManager.getInstance(appContext)
-                    val componentName = ComponentName(appContext.packageName, ClientCountdownWidgetProvider::class.java.name)
-                    val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
-
-                    if (appWidgetIds.isNotEmpty()) {
-                        val provider = ClientCountdownWidgetProvider()
-                        provider.updateWidget(appContext, appWidgetManager, appWidgetIds)
-                        handler.postDelayed(this, 1000)
-                    } else {
-                        stopTicking()
-                    }
-                }
-            }
-            isTicking = true
-            handler.post(tickingRunnable!!)
-        }
-
-        fun stopTicking() {
-            tickingRunnable?.let { handler.removeCallbacks(it) }
-            isTicking = false
-        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -103,7 +55,6 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
             }
             prefs.edit().putInt("client_selected_month_index", currentIndex).apply()
 
-            // Update widget view
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val thisAppWidgetComponentName = ComponentName(context.packageName, javaClass.name)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidgetComponentName)
@@ -118,18 +69,6 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         updateWidget(context, appWidgetManager, appWidgetIds)
-        startTicking(context)
-        scheduleNextUpdate(context)
-    }
-
-    override fun onEnabled(context: Context) {
-        super.onEnabled(context)
-        startTicking(context)
-    }
-
-    override fun onDisabled(context: Context) {
-        super.onDisabled(context)
-        stopTicking()
     }
 
     fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -163,28 +102,31 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.btn_prev_month, prevPI)
             views.setOnClickPendingIntent(R.id.btn_next_month, nextPI)
 
-            // Setup Deep Link intent for "Pay Now" and General Card click
-            val launchIntent = Intent(Intent.ACTION_VIEW).apply {
+            // Deep Link intent for "Pay Now" / App Launch
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                 data = Uri.parse("exp+mobile://payments")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            } ?: Intent(Intent.ACTION_VIEW, Uri.parse("exp+mobile://payments")).apply {
+                setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             val launchPI = PendingIntent.getActivity(
-                context, 2, launchIntent,
+                context, appWidgetId, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            views.setOnClickPendingIntent(R.id.widget_root, launchPI)
             views.setOnClickPendingIntent(R.id.btn_pay_now, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_clock_status, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_amount_due, launchPI)
 
             if (dataStr.isEmpty()) {
-                // Render Empty / Default State
-                renderEmptyState(views, isLocked)
+                renderEmptyState(views, isLocked, launchPI)
             } else {
                 try {
                     val root = JSONObject(dataStr)
-                    
                     val isLoggedIn = root.optBoolean("isLoggedIn", false)
                     val isOffline = root.optBoolean("isOffline", false)
                     
-                    // Toggle Offline warning dot
                     views.setViewVisibility(R.id.offline_dot, if (isOffline) View.VISIBLE else View.GONE)
 
                     if (!isLoggedIn) {
@@ -192,9 +134,8 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
                     } else {
                         val cycles = root.optJSONArray("billingCycles")
                         if (cycles == null || cycles.length() == 0) {
-                            renderAllCaughtUp(views)
+                            renderAllCaughtUp(views, launchPI)
                         } else {
-                            // Boundary check on selected index
                             val idx = if (selectedMonthIndex >= cycles.length()) cycles.length() - 1 else selectedMonthIndex
                             val cycle = cycles.getJSONObject(idx)
 
@@ -208,8 +149,8 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
                             var seconds = 0
                             var isOverdue = cycle.optBoolean("isOverdue", false)
 
+                            val now = System.currentTimeMillis()
                             if (targetTimestamp > 0L) {
-                                val now = System.currentTimeMillis()
                                 val diffMs = targetTimestamp - now
                                 if (diffMs > 0) {
                                     days = (diffMs / (1000 * 60 * 60 * 24)).toInt()
@@ -217,43 +158,45 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
                                     minutes = ((diffMs % (1000 * 60 * 60)) / (1000 * 60)).toInt()
                                     seconds = ((diffMs % (1000 * 60)) / 1000).toInt()
                                     isOverdue = false
+
+                                    // Hardware Zero-CPU Chronometer Hand-off to Android SystemUI
+                                    val baseTime = SystemClock.elapsedRealtime() + diffMs
+                                    views.setChronometer(R.id.chronometer, baseTime, null, true)
+                                    views.setViewVisibility(R.id.chronometer, View.VISIBLE)
                                 } else {
                                     isOverdue = true
+                                    views.setViewVisibility(R.id.chronometer, View.GONE)
                                 }
                             } else {
                                 days = cycle.optInt("days", 0)
                                 hours = cycle.optInt("hours", 0)
                                 minutes = cycle.optInt("minutes", 0)
                                 seconds = cycle.optInt("seconds", 0)
+                                views.setViewVisibility(R.id.chronometer, View.GONE)
                             }
 
                             val items = cycle.optJSONArray("items")
 
                             views.setTextViewText(R.id.txt_billing_cycle, monthName)
-                            
-                            // Map countdown digits
                             views.setTextViewText(R.id.txt_days, String.format(Locale.US, "%02d", days))
                             views.setTextViewText(R.id.txt_hours, String.format(Locale.US, "%02d", hours))
                             views.setTextViewText(R.id.txt_minutes, String.format(Locale.US, "%02d", minutes))
                             views.setTextViewText(R.id.txt_seconds, String.format(Locale.US, "%02d", seconds))
 
-                            // Overdue Accent border and text colors
                             if (isOverdue) {
                                 views.setTextViewText(R.id.txt_clock_status, "YOUR BILL IS OVERDUE")
-                                views.setTextColor(R.id.txt_clock_status, 0xFFFF3B30.toInt())
+                                views.setTextColor(R.id.txt_clock_status, 0xFFEF4444.toInt())
                             } else {
                                 views.setTextViewText(R.id.txt_clock_status, "Time Remaining to Settle Your Bill")
-                                views.setTextColor(R.id.txt_clock_status, 0xFFFFEE4D2D.toInt())
+                                views.setTextColor(R.id.txt_clock_status, 0xFFEE4D2D.toInt())
                             }
 
-                            // Secure Lock Screen Masking
                             if (isLocked) {
                                 views.setTextViewText(R.id.txt_amount_due, "₱*****")
                             } else {
                                 views.setTextViewText(R.id.txt_amount_due, String.format(Locale.US, "₱%,.2f", amountDue))
                             }
 
-                            // Dynamic breakdown list rendering
                             views.setViewVisibility(R.id.breakdown_container, View.VISIBLE)
                             views.setViewVisibility(R.id.breakdown_row_1, View.GONE)
                             views.setViewVisibility(R.id.breakdown_row_2, View.GONE)
@@ -286,7 +229,7 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
                         }
                     }
                 } catch (e: Exception) {
-                    renderEmptyState(views, isLocked)
+                    renderEmptyState(views, isLocked, launchPI)
                 }
             }
 
@@ -294,49 +237,7 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun scheduleNextUpdate(context: Context) {
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val isScreenOn = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
-            powerManager.isInteractive
-        } else {
-            @Suppress("DEPRECATION")
-            powerManager.isScreenOn
-        }
-
-        if (!isScreenOn) {
-            return
-        }
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, ClientCountdownWidgetProvider::class.java).apply {
-            action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-        }
-
-        val appWidgetManager = AppWidgetManager.getInstance(context)
-        val thisAppWidgetComponentName = ComponentName(context.packageName, javaClass.name)
-        val appWidgetIds = appWidgetManager.getAppWidgetIds(thisAppWidgetComponentName)
-        if (appWidgetIds.isEmpty()) return
-
-        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds)
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context, 999, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val now = System.currentTimeMillis()
-        val delayMs = 60000 - (now % 60000)
-        val finalDelay = if (delayMs < 5000) delayMs + 60000 else delayMs
-        val triggerAt = now + finalDelay
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pendingIntent)
-        } else {
-            alarmManager.set(AlarmManager.RTC, triggerAt, pendingIntent)
-        }
-    }
-
-    private fun renderEmptyState(views: RemoteViews, isLocked: Boolean) {
+    private fun renderEmptyState(views: RemoteViews, isLocked: Boolean, launchPI: PendingIntent) {
         views.setTextViewText(R.id.txt_billing_cycle, "S-Pay V2")
         views.setTextViewText(R.id.txt_days, "00")
         views.setTextViewText(R.id.txt_hours, "00")
@@ -345,6 +246,10 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.txt_clock_status, "Connect to sync your payments")
         views.setTextViewText(R.id.txt_amount_due, if (isLocked) "₱*****" else "₱0.00")
         views.setViewVisibility(R.id.breakdown_container, View.GONE)
+        views.setViewVisibility(R.id.chronometer, View.GONE)
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+        views.setOnClickPendingIntent(R.id.txt_clock_status, launchPI)
+        views.setOnClickPendingIntent(R.id.btn_pay_now, launchPI)
     }
 
     private fun renderLoggedOutState(views: RemoteViews, launchPI: PendingIntent) {
@@ -356,10 +261,13 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.txt_clock_status, "Please log in to S-Pay V2 App")
         views.setTextViewText(R.id.txt_amount_due, "₱*****")
         views.setViewVisibility(R.id.breakdown_container, View.GONE)
+        views.setViewVisibility(R.id.chronometer, View.GONE)
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
         views.setOnClickPendingIntent(R.id.btn_pay_now, launchPI)
+        views.setOnClickPendingIntent(R.id.txt_clock_status, launchPI)
     }
 
-    private fun renderAllCaughtUp(views: RemoteViews) {
+    private fun renderAllCaughtUp(views: RemoteViews, launchPI: PendingIntent) {
         views.setTextViewText(R.id.txt_billing_cycle, "S-Pay Active")
         views.setTextViewText(R.id.txt_days, "00")
         views.setTextViewText(R.id.txt_hours, "00")
@@ -368,5 +276,9 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.txt_clock_status, "All Accounts Caught Up")
         views.setTextViewText(R.id.txt_amount_due, "₱0.00")
         views.setViewVisibility(R.id.breakdown_container, View.GONE)
+        views.setViewVisibility(R.id.chronometer, View.GONE)
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+        views.setOnClickPendingIntent(R.id.btn_pay_now, launchPI)
+        views.setOnClickPendingIntent(R.id.txt_clock_status, launchPI)
     }
 }

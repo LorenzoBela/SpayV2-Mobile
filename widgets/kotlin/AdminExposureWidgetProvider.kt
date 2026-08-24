@@ -36,19 +36,25 @@ class AdminExposureWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_admin_exposure)
 
-            // Setup deep link to Admin Reports
-            val launchIntent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse("exp+mobile://admin/reports")
+            // Setup deep link to Admin Reports / App Launch
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                data = Uri.parse("exp+mobile://admin")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            } ?: Intent(Intent.ACTION_VIEW, Uri.parse("exp+mobile://admin")).apply {
+                setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             val launchPI = PendingIntent.getActivity(
-                context, 50, launchIntent,
+                context, appWidgetId, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            views.setOnClickPendingIntent(R.id.widget_root, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_outstanding_exposure, launchPI)
+            views.setOnClickPendingIntent(R.id.txt_exposure_limit, launchPI)
             views.setOnClickPendingIntent(R.id.exposure_progress, launchPI)
 
             if (dataStr.isEmpty()) {
-                renderDefaultState(views, isLocked)
+                renderDefaultState(views, isLocked, launchPI)
             } else {
                 try {
                     val root = JSONObject(dataStr)
@@ -58,41 +64,32 @@ class AdminExposureWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.offline_dot, if (isOffline) View.VISIBLE else View.GONE)
 
                     if (!isLoggedIn) {
-                        views.setTextViewText(R.id.txt_outstanding_amount, "--")
-                        views.setTextViewText(R.id.txt_efficiency_pct, "--")
-                        views.setTextViewText(R.id.txt_total_cap_exposure, "Please log in.")
+                        views.setTextViewText(R.id.txt_outstanding_exposure, "--")
+                        views.setTextViewText(R.id.txt_exposure_limit, "Please log in.")
                         views.setProgressBar(R.id.exposure_progress, 100, 0, false)
                     } else {
-                        // Gather Exposure data
                         val outstanding = root.optDouble("outstandingCapital", 0.0)
-                        val efficiency = root.optDouble("collectionEfficiency", 0.0)
                         val totalCap = root.optDouble("totalExposureCap", 0.0)
+                        val efficiency = root.optDouble("collectionEfficiency", 0.0)
 
                         if (isLocked) {
-                            views.setTextViewText(R.id.txt_outstanding_amount, "₱*****")
-                            views.setTextViewText(R.id.txt_efficiency_pct, "**%")
-                            views.setTextViewText(R.id.txt_total_cap_exposure, "Total Capital Baseline Limit: ₱*****")
+                            views.setTextViewText(R.id.txt_outstanding_exposure, "₱*****")
+                            views.setTextViewText(R.id.txt_exposure_limit, "Exposure Cap: ₱*****")
                             views.setProgressBar(R.id.exposure_progress, 100, 0, false)
                         } else {
-                            views.setTextViewText(R.id.txt_outstanding_amount, String.format(Locale.US, "₱%,.2f", outstanding))
-                            views.setTextViewText(R.id.txt_efficiency_pct, String.format(Locale.US, "%.1f%%", efficiency))
-                            views.setTextViewText(R.id.txt_total_cap_exposure, String.format(Locale.US, "Total Capital Baseline Limit: ₱%,.2f", totalCap))
+                            views.setTextViewText(R.id.txt_outstanding_exposure, String.format(Locale.US, "₱%,.2f", outstanding))
+                            views.setTextViewText(R.id.txt_exposure_limit, String.format(Locale.US, "Exposure Cap: ₱%,.2f", totalCap))
                             
-                            val progress = Math.min(efficiency.toInt(), 100)
-                            views.setProgressBar(R.id.exposure_progress, 100, progress, false)
-                            
-                            // Adjust efficiency color
-                            if (efficiency >= 90.0) {
-                                views.setTextColor(R.id.txt_efficiency_pct, 0xFF34C759.toInt()) // Green
-                            } else if (efficiency >= 75.0) {
-                                views.setTextColor(R.id.txt_efficiency_pct, 0xFFFFCC00.toInt()) // Yellow/Amber
+                            val progress = if (totalCap > 0) {
+                                ((outstanding / totalCap) * 100).toInt().coerceIn(0, 100)
                             } else {
-                                views.setTextColor(R.id.txt_efficiency_pct, 0xFFFF3B30.toInt()) // Red
+                                0
                             }
+                            views.setProgressBar(R.id.exposure_progress, 100, progress, false)
                         }
                     }
                 } catch (e: Exception) {
-                    renderDefaultState(views, isLocked)
+                    renderDefaultState(views, isLocked, launchPI)
                 }
             }
 
@@ -100,10 +97,10 @@ class AdminExposureWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun renderDefaultState(views: RemoteViews, isLocked: Boolean) {
-        views.setTextViewText(R.id.txt_outstanding_amount, if (isLocked) "₱*****" else "₱0.00")
-        views.setTextViewText(R.id.txt_efficiency_pct, if (isLocked) "**%" else "0.0%")
-        views.setTextViewText(R.id.txt_total_cap_exposure, if (isLocked) "Total Capital Baseline Limit: ₱*****" else "Total Capital Baseline Limit: ₱0.00")
+    private fun renderDefaultState(views: RemoteViews, isLocked: Boolean, launchPI: PendingIntent) {
+        views.setTextViewText(R.id.txt_outstanding_exposure, if (isLocked) "₱*****" else "₱0.00")
+        views.setTextViewText(R.id.txt_exposure_limit, if (isLocked) "Exposure Cap: ₱*****" else "Exposure Cap: ₱0.00")
         views.setProgressBar(R.id.exposure_progress, 100, 0, false)
+        views.setOnClickPendingIntent(R.id.widget_root, launchPI)
     }
 }
