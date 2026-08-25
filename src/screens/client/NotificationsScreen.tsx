@@ -189,16 +189,28 @@ export default function NotificationsScreen() {
   }, [load]);
 
   useEffect(() => {
+    let isMounted = true;
     let unsubscribe: (() => void) | undefined;
 
-    getLinkedProfileForCurrentUser().then(({ profileId }) => {
-      if (!profileId) return;
-      unsubscribe = subscribeToRealtimeNotifications(profileId, (notification) => {
-        setItems((current) => [notification, ...current]);
+    getLinkedProfileForCurrentUser()
+      .then(({ profileId }) => {
+        if (!isMounted) return;
+        if (!profileId) return;
+        unsubscribe = subscribeToRealtimeNotifications(profileId, (notification) => {
+          if (!isMounted) return;
+          setItems((current) => [notification, ...current]);
+        });
+        if (!isMounted) {
+          unsubscribe();
+          unsubscribe = undefined;
+        }
+      })
+      .catch((err) => {
+        console.warn('[NotificationsScreen] realtime subscription error:', err);
       });
-    });
 
     return () => {
+      isMounted = false;
       unsubscribe?.();
     };
   }, []);

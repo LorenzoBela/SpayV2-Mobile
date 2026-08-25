@@ -299,7 +299,151 @@ function formatLogTime(value: string | null) {
   }
 }
 
+function computeCooldownTimeLeft(lastSentAt: string | null, intervalHours: number) {
+  if (!lastSentAt) return null;
+  const nextAllowedTime = new Date(parseUtcDate(lastSentAt).getTime() + intervalHours * 60 * 60 * 1000);
+  
+  // Aligns the next allowed run to the next hourly scheduler execution boundary (top of the hour)
+  const nextTrigger = new Date(nextAllowedTime);
+  if (nextTrigger.getMinutes() > 0 || nextTrigger.getSeconds() > 0 || nextTrigger.getMilliseconds() > 0) {
+    nextTrigger.setHours(nextTrigger.getHours() + 1, 0, 0, 0);
+  } else {
+    nextTrigger.setMinutes(0, 0, 0);
+  }
 
+  const diffMs = nextTrigger.getTime() - Date.now();
+  if (diffMs <= 0) return null;
+  
+  const totalSec = Math.floor(diffMs / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  return { hours, minutes, seconds };
+}
+
+const CronCountdownBadge = React.memo(function CronCountdownBadge() {
+  const [timeLeft, setTimeLeft] = useState(() => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(now.getHours() + 1, 0, 0, 0);
+    const diffMs = next.getTime() - now.getTime();
+    return {
+      minutes: Math.max(0, Math.floor(diffMs / 60000)),
+      seconds: Math.max(0, Math.floor((diffMs % 60000) / 1000)),
+    };
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(now.getHours() + 1, 0, 0, 0);
+      const diffMs = next.getTime() - now.getTime();
+      setTimeLeft({
+        minutes: Math.max(0, Math.floor(diffMs / 60000)),
+        seconds: Math.max(0, Math.floor((diffMs % 60000) / 1000)),
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <View style={styles.cronBadge}>
+      <Text style={styles.cronBadgeText}>
+        Next Auto-run in: {timeLeft.minutes}m {timeLeft.seconds}s
+      </Text>
+    </View>
+  );
+});
+
+interface CooldownCountdownCardProps {
+  title: string;
+  lastSentAt: string | null;
+  intervalHours: number;
+  channel: 'emailAd' | 'fcmAd' | 'emailReminder' | 'fcmReminder';
+  isActiveChannel: boolean;
+  onToggleRecipients: () => void;
+  eligibleBadgeText?: string;
+  lastSentFormatted: string;
+  theme: {
+    cardBg: string;
+    cardBorder: string;
+    textPrimary: string;
+    textSecondary: string;
+    accent: string;
+  };
+}
+
+const CooldownCountdownCard = React.memo(function CooldownCountdownCard({
+  title,
+  lastSentAt,
+  intervalHours,
+  isActiveChannel,
+  onToggleRecipients,
+  eligibleBadgeText,
+  lastSentFormatted,
+  theme: t,
+}: CooldownCountdownCardProps) {
+  const [timeLeft, setTimeLeft] = useState<{ hours: number; minutes: number; seconds: number } | null>(() =>
+    computeCooldownTimeLeft(lastSentAt, intervalHours)
+  );
+
+  useEffect(() => {
+    setTimeLeft(computeCooldownTimeLeft(lastSentAt, intervalHours));
+
+    const timer = setInterval(() => {
+      setTimeLeft(computeCooldownTimeLeft(lastSentAt, intervalHours));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [lastSentAt, intervalHours]);
+
+  const isCooldown = !!timeLeft;
+
+  return (
+    <View style={[styles.automationGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
+      <View style={styles.gridCardHeader}>
+        <Text style={styles.gridCardLabel} numberOfLines={1}>{title}</Text>
+        <View style={[styles.statusIndicator, { backgroundColor: isCooldown ? '#eab308' : '#10b981' }]} />
+      </View>
+      
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>
+          {isCooldown ? `Cooldown (${intervalHours}h):` : 'Eligible Now'}
+        </Text>
+        {timeLeft ? (
+          <View style={styles.countdownRow}>
+            <FlipCard value={timeLeft.hours} label="HR" />
+            <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
+            <FlipCard value={timeLeft.minutes} label="MIN" />
+            <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
+            <FlipCard value={timeLeft.seconds} label="SEC" />
+          </View>
+        ) : (
+          <View style={[styles.countdownRow, { justifyContent: 'center', marginVertical: 8 }]}>
+            <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11, letterSpacing: 1 }}>READY TO DISPATCH</Text>
+          </View>
+        )}
+        {eligibleBadgeText && (
+          <View style={styles.cardInfoBadge}>
+            <Text style={styles.cardInfoBadgeText}>{eligibleBadgeText}</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.gridCardFooter}>
+        <Text style={[styles.gridCardFooterText, { color: t.textSecondary, flex: 1 }]} numberOfLines={1}>
+          Last: {lastSentFormatted}
+        </Text>
+        <TouchableOpacity onPress={onToggleRecipients}>
+          <Text style={{ fontSize: 9.5, fontWeight: 'bold', color: t.accent, marginLeft: 4 }}>
+            {isActiveChannel ? 'Hide' : 'Recipients'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
 
 export default function AdminRemindersScreen() {
   const { isDarkMode } = useContext(ThemeContext);
@@ -316,7 +460,6 @@ export default function AdminRemindersScreen() {
   const [activeSubFilter, setActiveSubFilter] = useState<'all' | 'overdue' | 'due-soon' | 'scheduled'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [currentLogsPage, setCurrentLogsPage] = useState(1);
-  const [timeNow, setTimeNow] = useState<Date>(new Date());
   const PAGE_SIZE = 10;
 
   // Logs Filter States
@@ -331,13 +474,6 @@ export default function AdminRemindersScreen() {
   const [recipientsSearchQuery, setRecipientsSearchQuery] = useState('');
 
   const terminalScrollRef = useRef<ScrollView>(null);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeNow(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Bulk Reminders Modal State
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -648,7 +784,7 @@ export default function AdminRemindersScreen() {
   };
 
   const eligibleCount = useMemo(() => {
-    const nowMs = timeNow.getTime();
+    const nowMs = Date.now();
     const intervalMs = 42 * 60 * 60 * 1000;
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
     return reminderTargets.filter((t: any) => {
@@ -656,10 +792,10 @@ export default function AdminRemindersScreen() {
       const isThrottleOk = !t.lastSentAt || (nowMs - parseUtcDate(t.lastSentAt).getTime()) > intervalMs;
       return isWithinHorizon && isThrottleOk;
     }).length;
-  }, [reminderTargets, timeNow]);
+  }, [reminderTargets]);
 
   const eligibleFcmCount = useMemo(() => {
-    const nowMs = timeNow.getTime();
+    const nowMs = Date.now();
     const intervalMs = 4 * 60 * 60 * 1000;
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
     return reminderTargets.filter((t: any) => {
@@ -668,109 +804,40 @@ export default function AdminRemindersScreen() {
       const isThrottleOk = !lastFcm || (nowMs - parseUtcDate(lastFcm).getTime()) > intervalMs;
       return isWithinHorizon && isThrottleOk;
     }).length;
-  }, [reminderTargets, timeNow]);
-
-  const nextCronTime = useMemo(() => {
-    const next = new Date(timeNow);
-    next.setHours(timeNow.getHours() + 1, 0, 0, 0);
-    return next;
-  }, [timeNow]);
-
-  const cronTimeLeft = useMemo(() => {
-    const diffMs = nextCronTime.getTime() - timeNow.getTime();
-    if (diffMs <= 0) return { minutes: 0, seconds: 0 };
-    const minutes = Math.floor(diffMs / 60000);
-    const seconds = Math.floor((diffMs % 60000) / 1000);
-    return { minutes, seconds };
-  }, [nextCronTime, timeNow]);
-
-  const getTimeLeft = (lastSentAt: string | null, intervalHours: number) => {
-    if (!lastSentAt) return null;
-    const nextAllowedTime = new Date(parseUtcDate(lastSentAt).getTime() + intervalHours * 60 * 60 * 1000);
-    
-    // Aligns the next allowed run to the next hourly scheduler execution boundary (top of the hour)
-    const nextTrigger = new Date(nextAllowedTime);
-    if (nextTrigger.getMinutes() > 0 || nextTrigger.getSeconds() > 0 || nextTrigger.getMilliseconds() > 0) {
-      nextTrigger.setHours(nextTrigger.getHours() + 1, 0, 0, 0);
-    } else {
-      nextTrigger.setMinutes(0, 0, 0);
-    }
-
-    const diffMs = nextTrigger.getTime() - timeNow.getTime();
-    if (diffMs <= 0) return null;
-    
-    const totalSec = Math.floor(diffMs / 1000);
-    const hours = Math.floor(totalSec / 3600);
-    const minutes = Math.floor((totalSec % 3600) / 60);
-    const seconds = totalSec % 60;
-    return { hours, minutes, seconds };
-  };
-
-  const getNextDispatchDate = (lastSentAt: string | null, intervalHours: number) => {
-    if (!lastSentAt) return 'Ready Now';
-    const nextAllowedTime = new Date(parseUtcDate(lastSentAt).getTime() + intervalHours * 60 * 60 * 1000);
-    
-    // Align next allowed run to the next hourly scheduler run (top of the hour)
-    const nextTrigger = new Date(nextAllowedTime);
-    if (nextTrigger.getMinutes() > 0 || nextTrigger.getSeconds() > 0 || nextTrigger.getMilliseconds() > 0) {
-      nextTrigger.setHours(nextTrigger.getHours() + 1, 0, 0, 0);
-    } else {
-      nextTrigger.setMinutes(0, 0, 0);
-    }
-    
-    if (nextTrigger.getTime() <= timeNow.getTime()) {
-      return 'Ready Now';
-    }
-    
-    return nextTrigger.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Manila',
-    });
-  };
-
-  const adEmailTimeLeft = useMemo(() => getTimeLeft(lastAdEmailSentAt, 24), [lastAdEmailSentAt, timeNow]);
-  const adFcmTimeLeft = useMemo(() => getTimeLeft(lastAdFcmSentAt, 3), [lastAdFcmSentAt, timeNow]);
-  const reminderEmailTimeLeft = useMemo(() => getTimeLeft(lastReminderEmailSentAt, 42), [lastReminderEmailSentAt, timeNow]);
-  const reminderFcmTimeLeft = useMemo(() => getTimeLeft(lastReminderFcmSentAt, 4), [lastReminderFcmSentAt, timeNow]);
+  }, [reminderTargets]);
 
   const emailAdClients = useMemo(() => {
-    return allClients.map((client: any) => {
-      const isThrottled = !!adEmailTimeLeft;
-      return {
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        status: isThrottled ? 'throttled' : 'eligible',
-        timeLeft: adEmailTimeLeft,
-        totalDue: 0,
-        dueCount: 0,
-        dueItems: [],
-      };
-    });
-  }, [allClients, adEmailTimeLeft]);
+    const isThrottled = !computeCooldownTimeLeft(lastAdEmailSentAt, 24);
+    const timeLeft = computeCooldownTimeLeft(lastAdEmailSentAt, 24);
+    return allClients.map((client: any) => ({
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      status: isThrottled ? 'throttled' : 'eligible',
+      timeLeft,
+      totalDue: 0,
+      dueCount: 0,
+      dueItems: [],
+    }));
+  }, [allClients, lastAdEmailSentAt]);
 
   const fcmAdClients = useMemo(() => {
-    return allClients.map((client: any) => {
-      const isThrottled = !!adFcmTimeLeft;
-      return {
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        status: isThrottled ? 'throttled' : 'eligible',
-        timeLeft: adFcmTimeLeft,
-        totalDue: 0,
-        dueCount: 0,
-        dueItems: [],
-      };
-    });
-  }, [allClients, adFcmTimeLeft]);
+    const isThrottled = !computeCooldownTimeLeft(lastAdFcmSentAt, 3);
+    const timeLeft = computeCooldownTimeLeft(lastAdFcmSentAt, 3);
+    return allClients.map((client: any) => ({
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      status: isThrottled ? 'throttled' : 'eligible',
+      timeLeft,
+      totalDue: 0,
+      dueCount: 0,
+      dueItems: [],
+    }));
+  }, [allClients, lastAdFcmSentAt]);
 
   const emailReminderClients = useMemo(() => {
-    const nowMs = timeNow.getTime();
+    const nowMs = Date.now();
     const throttleMs = 42 * 60 * 60 * 1000;
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
 
@@ -832,10 +899,10 @@ export default function AdminRemindersScreen() {
         dueItems: dueTargets.map((t: any) => `${t.itemName} (${formatCurrency(t.amountDue)} due ${formatDate(t.dueDate)})`),
       };
     });
-  }, [allClients, reminderTargets, timeNow]);
+  }, [allClients, reminderTargets]);
 
   const fcmReminderClients = useMemo(() => {
-    const nowMs = timeNow.getTime();
+    const nowMs = Date.now();
     const throttleMs = 4 * 60 * 60 * 1000;
     const horizonMs = nowMs + 45 * 24 * 60 * 60 * 1000;
 
@@ -897,7 +964,7 @@ export default function AdminRemindersScreen() {
         dueItems: dueTargets.map((t: any) => `${t.itemName} (${formatCurrency(t.amountDue)} due ${formatDate(t.dueDate)})`),
       };
     });
-  }, [allClients, reminderTargets, timeNow]);
+  }, [allClients, reminderTargets]);
 
   const eligibleClientsCount = useMemo(() => {
     return emailReminderClients.filter((c: any) => c.status === 'eligible').length;
@@ -910,7 +977,7 @@ export default function AdminRemindersScreen() {
   const formatRelativeTimeAgo = (sentAt: string | null) => {
     if (!sentAt) return 'Never';
     try {
-      const diffMs = timeNow.getTime() - parseUtcDate(sentAt).getTime();
+      const diffMs = Date.now() - parseUtcDate(sentAt).getTime();
       if (diffMs < 0) return 'Just now';
       const totalMin = Math.floor(diffMs / 60000);
       if (totalMin < 60) {
@@ -932,166 +999,66 @@ export default function AdminRemindersScreen() {
         {/* Grid of countdowns */}
         <View style={styles.automationGrid}>
           {/* 1. Email Ads Card */}
-          <View style={[styles.automationGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <View style={styles.gridCardHeader}>
-              <Text style={styles.gridCardLabel} numberOfLines={1}>Email Ads</Text>
-              <View style={[styles.statusIndicator, { backgroundColor: adEmailTimeLeft ? '#eab308' : '#10b981' }]} />
-            </View>
-            
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>Cooldown (24h):</Text>
-              {adEmailTimeLeft ? (
-                <View style={styles.countdownRow}>
-                  <FlipCard value={adEmailTimeLeft.hours} label="HR" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={adEmailTimeLeft.minutes} label="MIN" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={adEmailTimeLeft.seconds} label="SEC" />
-                </View>
-              ) : (
-                <View style={[styles.countdownRow, { justifyContent: 'center', marginVertical: 8 }]}>
-                  <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11, letterSpacing: 1 }}>READY TO DISPATCH</Text>
-                </View>
-              )}
-            </View>
-            
-            <View style={styles.gridCardFooter}>
-              <Text style={[styles.gridCardFooterText, { color: t.textSecondary }]} numberOfLines={1}>
-                Last: {formatDate(lastAdEmailSentAt)}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setActiveRecipientsChannel(activeRecipientsChannel === 'emailAd' ? null : 'emailAd');
-                setRecipientsSearchQuery('');
-              }}>
-                <Text style={{ fontSize: 9.5, fontWeight: 'bold', color: t.accent }}>
-                  {activeRecipientsChannel === 'emailAd' ? 'Hide' : 'Recipients'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <CooldownCountdownCard
+            title="Email Ads"
+            lastSentAt={lastAdEmailSentAt}
+            intervalHours={24}
+            channel="emailAd"
+            isActiveChannel={activeRecipientsChannel === 'emailAd'}
+            onToggleRecipients={() => {
+              setActiveRecipientsChannel(activeRecipientsChannel === 'emailAd' ? null : 'emailAd');
+              setRecipientsSearchQuery('');
+            }}
+            lastSentFormatted={formatDate(lastAdEmailSentAt)}
+            theme={t}
+          />
 
           {/* 2. FCM Push Ads Card */}
-          <View style={[styles.automationGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <View style={styles.gridCardHeader}>
-              <Text style={styles.gridCardLabel} numberOfLines={1}>FCM Ads</Text>
-              <View style={[styles.statusIndicator, { backgroundColor: adFcmTimeLeft ? '#eab308' : '#10b981' }]} />
-            </View>
-            
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>Cooldown (3h):</Text>
-              {adFcmTimeLeft ? (
-                <View style={styles.countdownRow}>
-                  <FlipCard value={adFcmTimeLeft.hours} label="HR" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={adFcmTimeLeft.minutes} label="MIN" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={adFcmTimeLeft.seconds} label="SEC" />
-                </View>
-              ) : (
-                <View style={[styles.countdownRow, { justifyContent: 'center', marginVertical: 8 }]}>
-                  <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11, letterSpacing: 1 }}>READY TO DISPATCH</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.gridCardFooter}>
-              <Text style={[styles.gridCardFooterText, { color: t.textSecondary }]} numberOfLines={1}>
-                Last: {formatDate(lastAdFcmSentAt)}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setActiveRecipientsChannel(activeRecipientsChannel === 'fcmAd' ? null : 'fcmAd');
-                setRecipientsSearchQuery('');
-              }}>
-                <Text style={{ fontSize: 9.5, fontWeight: 'bold', color: t.accent }}>
-                  {activeRecipientsChannel === 'fcmAd' ? 'Hide' : 'Recipients'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <CooldownCountdownCard
+            title="FCM Ads"
+            lastSentAt={lastAdFcmSentAt}
+            intervalHours={3}
+            channel="fcmAd"
+            isActiveChannel={activeRecipientsChannel === 'fcmAd'}
+            onToggleRecipients={() => {
+              setActiveRecipientsChannel(activeRecipientsChannel === 'fcmAd' ? null : 'fcmAd');
+              setRecipientsSearchQuery('');
+            }}
+            lastSentFormatted={formatDate(lastAdFcmSentAt)}
+            theme={t}
+          />
 
           {/* 3. Email Reminders Card */}
-          <View style={[styles.automationGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <View style={styles.gridCardHeader}>
-              <Text style={styles.gridCardLabel} numberOfLines={1}>Email Reminders</Text>
-              <View style={[styles.statusIndicator, { backgroundColor: reminderEmailTimeLeft ? '#eab308' : '#10b981' }]} />
-            </View>
-            
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>{reminderEmailTimeLeft ? 'Cooldown (42h):' : 'Eligible Now'}</Text>
-              {reminderEmailTimeLeft ? (
-                <View style={styles.countdownRow}>
-                  <FlipCard value={reminderEmailTimeLeft.hours} label="HR" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={reminderEmailTimeLeft.minutes} label="MIN" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={reminderEmailTimeLeft.seconds} label="SEC" />
-                </View>
-              ) : (
-                <View style={[styles.countdownRow, { justifyContent: 'center', marginVertical: 8 }]}>
-                  <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11, letterSpacing: 1 }}>READY TO DISPATCH</Text>
-                </View>
-              )}
-              <View style={styles.cardInfoBadge}>
-                <Text style={styles.cardInfoBadgeText}>{eligibleClientsCount} targets eligible</Text>
-              </View>
-            </View>
-
-            <View style={styles.gridCardFooter}>
-              <Text style={[styles.gridCardFooterText, { color: t.textSecondary, flex: 1 }]} numberOfLines={1}>
-                Last: {formatRelativeTimeAgo(lastReminderEmailSentAt)}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setActiveRecipientsChannel(activeRecipientsChannel === 'emailReminder' ? null : 'emailReminder');
-                setRecipientsSearchQuery('');
-              }}>
-                <Text style={{ fontSize: 9.5, fontWeight: 'bold', color: t.accent, marginLeft: 4 }}>
-                  {activeRecipientsChannel === 'emailReminder' ? 'Hide' : 'Recipients'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <CooldownCountdownCard
+            title="Email Reminders"
+            lastSentAt={lastReminderEmailSentAt}
+            intervalHours={42}
+            channel="emailReminder"
+            isActiveChannel={activeRecipientsChannel === 'emailReminder'}
+            onToggleRecipients={() => {
+              setActiveRecipientsChannel(activeRecipientsChannel === 'emailReminder' ? null : 'emailReminder');
+              setRecipientsSearchQuery('');
+            }}
+            eligibleBadgeText={`${eligibleClientsCount} targets eligible`}
+            lastSentFormatted={formatRelativeTimeAgo(lastReminderEmailSentAt)}
+            theme={t}
+          />
 
           {/* 4. FCM Reminders Card */}
-          <View style={[styles.automationGridCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <View style={styles.gridCardHeader}>
-              <Text style={styles.gridCardLabel} numberOfLines={1}>FCM Reminders</Text>
-              <View style={[styles.statusIndicator, { backgroundColor: reminderFcmTimeLeft ? '#eab308' : '#10b981' }]} />
-            </View>
-            
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Text style={[styles.gridCardValueLabel, { color: t.textSecondary, marginBottom: 4 }]}>{reminderFcmTimeLeft ? 'Cooldown (4h):' : 'Eligible Now'}</Text>
-              {reminderFcmTimeLeft ? (
-                <View style={styles.countdownRow}>
-                  <FlipCard value={reminderFcmTimeLeft.hours} label="HR" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={reminderFcmTimeLeft.minutes} label="MIN" />
-                  <Text style={[styles.countdownColon, { color: t.textPrimary }]}>:</Text>
-                  <FlipCard value={reminderFcmTimeLeft.seconds} label="SEC" />
-                </View>
-              ) : (
-                <View style={[styles.countdownRow, { justifyContent: 'center', marginVertical: 8 }]}>
-                  <Text style={{ color: '#10b981', fontWeight: '800', fontSize: 11, letterSpacing: 1 }}>READY TO DISPATCH</Text>
-                </View>
-              )}
-              <View style={styles.cardInfoBadge}>
-                <Text style={styles.cardInfoBadgeText}>{eligibleFcmClientsCount} targets eligible</Text>
-              </View>
-            </View>
-
-            <View style={styles.gridCardFooter}>
-              <Text style={[styles.gridCardFooterText, { color: t.textSecondary, flex: 1 }]} numberOfLines={1}>
-                Last: {formatRelativeTimeAgo(lastReminderFcmSentAt)}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setActiveRecipientsChannel(activeRecipientsChannel === 'fcmReminder' ? null : 'fcmReminder');
-                setRecipientsSearchQuery('');
-              }}>
-                <Text style={{ fontSize: 9.5, fontWeight: 'bold', color: t.accent, marginLeft: 4 }}>
-                  {activeRecipientsChannel === 'fcmReminder' ? 'Hide' : 'Recipients'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <CooldownCountdownCard
+            title="FCM Reminders"
+            lastSentAt={lastReminderFcmSentAt}
+            intervalHours={4}
+            channel="fcmReminder"
+            isActiveChannel={activeRecipientsChannel === 'fcmReminder'}
+            onToggleRecipients={() => {
+              setActiveRecipientsChannel(activeRecipientsChannel === 'fcmReminder' ? null : 'fcmReminder');
+              setRecipientsSearchQuery('');
+            }}
+            eligibleBadgeText={`${eligibleFcmClientsCount} targets eligible`}
+            lastSentFormatted={formatRelativeTimeAgo(lastReminderFcmSentAt)}
+            theme={t}
+          />
         </View>
 
         {/* Collapsible Accordion Recipients Drawer */}
@@ -1296,11 +1263,7 @@ export default function AdminRemindersScreen() {
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={[styles.automationCardTitle, { color: t.textPrimary }]}>Scheduler Execution Operations</Text>
               <View style={{ flexDirection: 'row', marginTop: 4 }}>
-                <View style={styles.cronBadge}>
-                  <Text style={styles.cronBadgeText}>
-                    Next Auto-run in: {cronTimeLeft.minutes}m {cronTimeLeft.seconds}s
-                  </Text>
-                </View>
+                <CronCountdownBadge />
               </View>
             </View>
           </View>

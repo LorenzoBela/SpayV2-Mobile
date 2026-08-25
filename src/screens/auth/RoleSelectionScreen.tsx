@@ -66,21 +66,35 @@ function useEntryAnimation(delay = 0, duration = 300) {
   };
 }
 
+const RoleClock = React.memo(function RoleClock({ isDarkMode }: { isDarkMode: boolean }) {
+  const [time, setTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <View style={styles.clockWidget}>
+      <Text style={[styles.timeText, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>
+        {time.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'Asia/Manila',
+        })}
+      </Text>
+      <WeatherWidget />
+    </View>
+  );
+});
+
 export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSelectionScreenProps) {
   const layout = useResponsiveLayout();
-  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [userName, setUserName] = useState('Administrator');
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-
-
-
-  // Live clock
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const fetchUserData = async () => {
     setLoading(true);
@@ -196,17 +210,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
               </View>
             </View>
 
-            <View style={styles.clockWidget}>
-              <Text style={[styles.timeText, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>
-                {currentTime.toLocaleTimeString('en-US', {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                  hour12: true,
-                  timeZone: 'Asia/Manila',
-                })}
-              </Text>
-              <WeatherWidget />
-            </View>
+            <RoleClock isDarkMode={isDarkMode} />
           </Animated.View>
 
           {/* Section Subtitle */}
