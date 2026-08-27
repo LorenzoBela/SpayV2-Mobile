@@ -342,7 +342,7 @@ const PaymentListItem = React.memo(function PaymentListItem({
   };
 
   return (
-    <Reanimated.View layout={Layout.duration(200)} exiting={FadeOut}>
+    <View>
       <Swipeable
         renderRightActions={payment.is_paid ? undefined : renderRightActions}
         onSwipeableRightOpen={handleSwipeableOpen}
@@ -407,7 +407,7 @@ const PaymentListItem = React.memo(function PaymentListItem({
           </View>
         </TouchableOpacity>
       </Swipeable>
-    </Reanimated.View>
+    </View>
   );
 });
 
@@ -1199,9 +1199,11 @@ export default function AdminPaymentsScreen() {
 
   const getUnpaidIdsForMonth = (monthData: any): string[] => {
     const ids: string[] = [];
+    if (!monthData?.clients) return ids;
     Object.values(monthData.clients).forEach((client: any) => {
+      if (!client?.payments) return;
       client.payments.forEach((payment: any) => {
-        if (!payment.is_paid) {
+        if (!payment?.is_paid && payment?.id) {
           ids.push(payment.id);
         }
       });
@@ -1210,7 +1212,8 @@ export default function AdminPaymentsScreen() {
   };
 
   const getUnpaidIdsForClient = (clientData: any): string[] => {
-    return clientData.payments.filter((p: any) => !p.is_paid).map((p: any) => p.id);
+    if (!clientData?.payments) return [];
+    return clientData.payments.filter((p: any) => p && !p.is_paid && p.id).map((p: any) => p.id);
   };
 
   const toggleSelectMonth = (monthData: any) => {
@@ -1385,9 +1388,10 @@ export default function AdminPaymentsScreen() {
   const handleBulkClear = async () => {
     if (selectedIds.length === 0) return;
 
+    const idsToClear = [...selectedIds];
     PremiumAlert.alert(
       'Bulk Mark Paid',
-      `Clear installment dues for all ${selectedIds.length} selected items?`,
+      `Clear installment dues for all ${idsToClear.length} selected items?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1395,15 +1399,15 @@ export default function AdminPaymentsScreen() {
           onPress: async () => {
             setActionLoading(true);
             try {
-              const response = await callAdminApi('bulk-mark-paid', { ids: selectedIds });
-              if (response.success) {
-                const clearedCount = (typeof response.count === 'number' && response.count > 0) ? response.count : selectedIds.length;
-                PremiumAlert.alert('Success', `Successfully cleared ${clearedCount} ${clearedCount === 1 ? 'payment' : 'payments'}.`);
+              const response = await callAdminApi('bulk-mark-paid', { ids: idsToClear });
+              if (response && response.success) {
+                const clearedCount = (typeof response.count === 'number' && response.count > 0) ? response.count : idsToClear.length;
                 setSelectedIds([]);
                 setBulkMode(false);
                 queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+                PremiumAlert.alert('Success', `Successfully cleared ${clearedCount} ${clearedCount === 1 ? 'payment' : 'payments'}.`);
               } else {
-                PremiumAlert.alert('Error', response.error || 'Failed bulk marks.');
+                PremiumAlert.alert('Error', response?.error || 'Failed bulk marks.');
               }
             } catch (e: any) {
               PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
@@ -1863,8 +1867,8 @@ export default function AdminPaymentsScreen() {
     let total = 0;
     const clientSet = new Set<string>();
     
-    processedPayments.forEach((p: any) => {
-      if (selectedIdsSet.has(p.id)) {
+    (processedPayments || []).forEach((p: any) => {
+      if (p && selectedIdsSet.has(p.id)) {
         total += Number(p.amount_due) || 0;
         if (p.clientName) {
           clientSet.add(p.clientName);
@@ -1903,7 +1907,7 @@ export default function AdminPaymentsScreen() {
       onSelectToggle={handleSelectToggle}
       onMarkPaid={handleMarkPaid}
     />
-  ), [selectedIdsSet, bulkMode, t, handlePaymentPress, handleSelectToggle]);
+  ), [selectedIdsSet, bulkMode, t, handlePaymentPress, handleSelectToggle, handleMarkPaid]);
 
   if (loading && !paymentsData) {
     return (
@@ -2394,12 +2398,14 @@ export default function AdminPaymentsScreen() {
                 {paymentsList.length > 0 ? (
                   <AnyFlashList
                     data={paymentsList}
+                    extraData={selectedIds}
+                    keyExtractor={(item: any) => item?.id || String(Math.random())}
                     estimatedItemSize={100}
                     scrollEnabled={false}
                     initialNumToRender={10}
                     maxToRenderPerBatch={10}
                     windowSize={5}
-                    removeClippedSubviews={true}
+                    removeClippedSubviews={false}
                     renderItem={renderPaymentItem}
                   />
                 ) : (
@@ -2584,13 +2590,15 @@ export default function AdminPaymentsScreen() {
               sortedMonthKeys.length > 0 ? (
                 paginatedMonthKeys.map(mKey => {
                   const monthData = monthlyBreakdown[mKey];
+                  if (!monthData) return null;
                   const isMonthExpanded = expandedMonths[mKey] === true; // defaults to collapsed (hidden)
                   const monthUnpaidIds = getUnpaidIdsForMonth(monthData);
                   const allMonthSelected = monthUnpaidIds.length > 0 && monthUnpaidIds.every(id => selectedIdsSet.has(id));
-                  const monthStatus = monthData.pendingCount === 0 ? 'paid' : (Object.values(monthData.clients).some((c: any) => c.payments.some((p: any) => p.isOverdue)) ? 'overdue' : 'pending');
+                  const clientsList = monthData.clients ? Object.values(monthData.clients) : [];
+                  const monthStatus = monthData.pendingCount === 0 ? 'paid' : (clientsList.some((c: any) => (c?.payments || []).some((p: any) => p?.isOverdue)) ? 'overdue' : 'pending');
 
                   // If filtering makes a month empty of matching elements, hide it!
-                  const clientKeys = Object.keys(monthData.clients);
+                  const clientKeys = monthData.clients ? Object.keys(monthData.clients) : [];
                   if (clientKeys.length === 0) return null;
 
                   return (
@@ -2636,15 +2644,16 @@ export default function AdminPaymentsScreen() {
                       {isMonthExpanded && (
                         <View style={styles.monthClientsList}>
                           {clientKeys.map(clientId => {
-                            const clientData = monthData.clients[clientId];
+                            const clientData = monthData.clients?.[clientId];
+                            if (!clientData) return null;
                             const clientExpandedKey = `${mKey}-${clientId}`;
                             const isClientExpanded = expandedClients[clientExpandedKey] === true; // defaults to collapsed
                             const clientUnpaidIds = getUnpaidIdsForClient(clientData);
                             const allClientSelected = clientUnpaidIds.length > 0 && clientUnpaidIds.every(id => selectedIdsSet.has(id));
 
-                            const itemNames = Array.from(new Set((clientData.payments || []).map((p: any) => p.itemName).filter(Boolean)));
+                            const itemNames = Array.from(new Set((clientData.payments || []).map((p: any) => p?.itemName).filter(Boolean)));
                             const itemsSummary = itemNames.slice(0, 2).join(', ') + (itemNames.length > 2 ? ` +${itemNames.length - 2} more` : '');
-                            const hasShared = (clientData.payments || []).some((p: any) => p.is_shared);
+                            const hasShared = (clientData.payments || []).some((p: any) => p?.is_shared);
 
                             return (
                               <View key={clientId} style={[styles.clientSectionContainer, { borderColor: t.border }]}>

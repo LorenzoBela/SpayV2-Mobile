@@ -34,7 +34,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="32dp"
         android:background="@color/widget_divider" />
@@ -65,7 +65,7 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <View
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="32dp"
         android:background="@color/widget_divider" />

@@ -57,6 +57,18 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
         }),
       });
 
+      if (!response.ok) {
+        const errText = await response.text();
+        let errMsg = 'Failed to execute admin action.';
+        try {
+          const parsed = JSON.parse(errText);
+          errMsg = parsed.error || parsed.message || errMsg;
+        } catch {
+          if (errText) errMsg = errText.slice(0, 100);
+        }
+        return { success: false, error: errMsg };
+      }
+
       const result = await response.json();
       return result;
     } catch (error: any) {

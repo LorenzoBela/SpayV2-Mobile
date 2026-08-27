@@ -76,8 +76,8 @@ class ClientCountdownWidgetProvider : AppWidgetProvider() {
         val dataStr = prefs.getString("spay_widget_data", "") ?: ""
         val selectedMonthIndex = prefs.getInt("client_selected_month_index", 0)
         
-        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        val isLocked = keyguardManager.isKeyguardLocked
+        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        val isLocked = keyguardManager?.isKeyguardLocked ?: false
 
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_client_countdown)

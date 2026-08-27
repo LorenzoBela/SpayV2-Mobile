@@ -83,7 +83,7 @@ function AppContent() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PostHogProvider client={posthog}>
+      <PostHogProvider client={posthog} autocapture={{ captureScreens: false }}>
         <ImpersonationProvider>
           <PersistQueryClientProvider
             client={queryClient}

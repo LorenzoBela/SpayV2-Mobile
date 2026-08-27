@@ -16,14 +16,14 @@ export async function setupNotifeeChannels() {
     [ANDROID_CHANNELS.PAYMENT_UPDATES]: {
       name: 'S-Pay Payments & Reminders',
       importance: AndroidImportance.HIGH,
-      vibrationPattern: [150, 100, 150], // Crisp fintech double-tap
+      vibrationPattern: [0, 150, 100, 150], // Crisp fintech double-tap (even length)
       lightColor: '#22c55e',
       showBadge: true,
     },
     [ANDROID_CHANNELS.ALERTS]: {
       name: 'S-Pay Security & Alerts',
       importance: AndroidImportance.HIGH,
-      vibrationPattern: [300, 100, 300], // High urgency buzz
+      vibrationPattern: [0, 300, 100, 300], // High urgency buzz (even length)
       lightColor: '#ef4444',
       showBadge: true,
     },
@@ -37,7 +37,7 @@ export async function setupNotifeeChannels() {
     [ANDROID_CHANNELS.SYSTEM]: {
       name: 'S-Pay System Updates',
       importance: AndroidImportance.HIGH,
-      vibrationPattern: [250, 150, 250],
+      vibrationPattern: [0, 250, 150, 250], // Even length (delay, vibrate, delay, vibrate)
       lightColor: '#e11d48',
       showBadge: true,
     },
@@ -144,32 +144,36 @@ export async function incrementAppBadge() {
 }
 
 export async function displayFcmRemoteMessage(remoteMessage: FirebaseMessagingTypes.RemoteMessage) {
-  // Data-only FCM: title/body are in remoteMessage.data, not remoteMessage.notification
-  const input = buildDisplayNotificationInput(remoteMessage);
-  if (!input) return;
+  try {
+    // Data-only FCM: title/body are in remoteMessage.data, not remoteMessage.notification
+    const input = buildDisplayNotificationInput(remoteMessage);
+    if (!input) return;
 
-  await setupNotifeeChannels();
-  const category = String(input.data?.category || 'SYSTEM');
-  const type = String(input.data?.type || '');
-  const androidOpts = getNotificationAndroidOptions(category, type);
+    await setupNotifeeChannels();
+    const category = String(input.data?.category || 'SYSTEM');
+    const type = String(input.data?.type || '');
+    const androidOpts = getNotificationAndroidOptions(category, type);
 
-  await notifee.displayNotification({
-    title: input.title,
-    body: input.body,
-    data: input.data as Record<string, string>,
-    android: {
-      channelId: input.channelId,
-      importance: AndroidImportance.HIGH,
-      sound: 'default',
-      pressAction: { id: 'default' },
-      groupId: androidOpts.groupId,
-      groupAlertBehavior: androidOpts.groupAlertBehavior,
-      actions: androidOpts.actions,
-    },
-  });
+    await notifee.displayNotification({
+      title: input.title,
+      body: input.body,
+      data: input.data as Record<string, string>,
+      android: {
+        channelId: input.channelId,
+        importance: AndroidImportance.HIGH,
+        sound: 'default',
+        pressAction: { id: 'default' },
+        groupId: androidOpts.groupId,
+        groupAlertBehavior: androidOpts.groupAlertBehavior,
+        actions: androidOpts.actions,
+      },
+    });
 
-  if (category !== 'ADS') {
-    void incrementAppBadge();
+    if (category !== 'ADS') {
+      void incrementAppBadge();
+    }
+  } catch (err) {
+    console.warn('[FCM] displayFcmRemoteMessage caught error:', err);
   }
 }
 
@@ -319,7 +323,9 @@ export async function ensureDeviceRegistration(userId: string, maxRetries = 3): 
 
 export function subscribeToFcmTokenRefresh(userId: string) {
   return messaging().onTokenRefresh((fcmToken) => {
-    void upsertFcmToken(userId, fcmToken);
+    upsertFcmToken(userId, fcmToken).catch((err) => {
+      console.warn('[FCM] Error updating token on refresh:', err);
+    });
   });
 }
 

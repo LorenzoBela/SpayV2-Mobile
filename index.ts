@@ -10,24 +10,33 @@ void setupAndroidNotificationChannels();
 void setupNotifeeChannels();
 
 notifee.onBackgroundEvent(async ({ type, detail }) => {
-  if (type === EventType.DISMISSED) {
-    return;
-  }
-
-  if (type === EventType.ACTION_PRESS && detail.pressAction?.id === 'mark_read') {
-    try {
-      await notifee.decrementBadgeCount();
-      if (detail.notification?.id) {
-        await notifee.cancelNotification(detail.notification.id);
-      }
-    } catch {
-      // Non-blocking
+  try {
+    if (type === EventType.DISMISSED) {
+      return;
     }
+
+    if (type === EventType.ACTION_PRESS && detail.pressAction?.id === 'mark_read') {
+      try {
+        await notifee.decrementBadgeCount();
+        if (detail.notification?.id) {
+          await notifee.cancelNotification(detail.notification.id);
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+  } catch (err) {
+    console.warn('[Notifee] Background event handler handled error:', err);
   }
 });
 
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-  await displayFcmRemoteMessage(remoteMessage);
+  try {
+    if (!remoteMessage) return;
+    await displayFcmRemoteMessage(remoteMessage);
+  } catch (err) {
+    console.warn('[FCM] Background message handler handled error:', err);
+  }
 });
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);

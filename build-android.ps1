@@ -958,20 +958,48 @@ function Invoke-ReactNativeRClassFix {
     $idsContent = @"
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- React Native View Tags & Fabric IDs -->
+    <item type="id" name="react_test_id" />
+    <item type="id" name="view_tag_native_id" />
+    <item type="id" name="view_tag_instance_handle" />
     <item type="id" name="important_for_accessibility_subview" />
     <item type="id" name="important_for_interaction" />
     <item type="id" name="important_for_interaction_subview" />
     <item type="id" name="catalyst_react_js_error_view" />
-    <item type="id" name="react_test_id" />
-    <item type="id" name="view_tag_native_id" />
-    <item type="id" name="view_tag_instance_handle" />
+    <item type="id" name="accessibility_order" />
+    <item type="id" name="accessibility_order_parent" />
+    <item type="id" name="original_focusability" />
+    <item type="id" name="accessibility_hint" />
+    <item type="id" name="accessibility_role" />
+    <item type="id" name="accessibility_collection" />
+    <item type="id" name="accessibility_collection_item" />
+    <item type="id" name="accessibility_state" />
+    <item type="id" name="accessibility_state_expanded" />
+    <item type="id" name="accessibility_label" />
+    <item type="id" name="accessibility_actions" />
+    <item type="id" name="accessibility_value" />
+    <item type="id" name="accessibility_links" />
+    <item type="id" name="labelled_by" />
+    <item type="id" name="pointer_events" />
+    <item type="id" name="transform" />
+    <item type="id" name="transform_origin" />
+    <item type="id" name="role" />
+    <item type="id" name="invalidate_transform" />
+    <item type="id" name="use_hardware_layer" />
+    <item type="id" name="filter" />
+    <item type="id" name="mix_blend_mode" />
+    <item type="id" name="view_clipped" />
 </resources>
 "@
-    [System.IO.File]::WriteAllText($idsXml, $idsContent, [System.Text.Encoding]::ASCII)
+    # Copy modal animation XMLs
+    $resAnimDir = Join-Path $appMainDir "res\anim"
+    if (-not (Test-Path $resAnimDir)) { New-Item -ItemType Directory -Path $resAnimDir -Force | Out-Null }
+    $modalAnimSrc = Join-Path $ProjectRoot "node_modules\react-native\ReactAndroid\src\main\res\views\modal\anim"
+    if (Test-Path $modalAnimSrc) {
+        Copy-Item -Path "$modalAnimSrc\*" -Destination $resAnimDir -Force -ErrorAction SilentlyContinue
+    }
 
-    $rJava = Join-Path $appMainDir "java\com\facebook\react\R.java"
-    if (Test-Path $rJava) { Remove-Item -Path $rJava -Force -ErrorAction SilentlyContinue }
-    Write-Host "[OK] Injected ids.xml resource definitions for React Native view tags" -ForegroundColor Green
+    Write-Host "[OK] Injected ids.xml and modal anims for AGP R.jar generation" -ForegroundColor Green
 }
 Invoke-ReactNativeRClassFix -ProjectRoot $PROJECT_ROOT
 
