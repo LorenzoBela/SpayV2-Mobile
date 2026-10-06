@@ -23,6 +23,7 @@ import Animated, {
 import { BlurView } from 'expo-blur';
 import { Fingerprint, Lock, ShieldAlert, X } from 'lucide-react-native';
 import { useSecurityPin } from '../hooks/useSecurityPin';
+import { useDynamicIsland } from '../context/DynamicIslandContext';
 import { getKeypadBottomPadding } from '../utils/safeArea';
 import {
   triggerSuccessHaptic,
@@ -32,6 +33,8 @@ import {
 } from '../utils/haptics';
 
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minutes (Fintech standard grace window)
+const PRE_LOCK_WARNING_MS = 4.5 * 60 * 1000; // 4.5 Minutes (triggers 30s pre-lock warning)
+const PRE_LOCK_DURATION_MS = 30 * 1000; // 30s warning window
 
 interface BiometricLockOverlayProps {
   children: React.ReactNode;
@@ -53,6 +56,7 @@ const KeypadButton: React.FC<{ val: string; onPress: (val: string) => void }> = 
 
 export default function BiometricLockOverlay({ children, sessionExists }: BiometricLockOverlayProps) {
   const insets = useSafeAreaInsets();
+  const { triggerIsland, dismissIsland } = useDynamicIsland();
   const [isLocked, setIsLocked] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -123,8 +127,35 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
         setIsLocked(false);
         setPin('');
         setPinError(false);
+        triggerIsland({
+          id: `bio_${Date.now()}`,
+          type: 'biometric_auth',
+          title: 'Identity Confirmed',
+          subtitle: `${biometricType} Authentication Verified`,
+          compactText: 'Verified',
+          compactBadge: 'Secure ✓',
+          detailLeft: 'Zero-Trust Session Active',
+          detailRight: 'Unlocked',
+          durationMs: 3500,
+        });
       } else {
         try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {}); } catch {}
+        triggerIsland({
+          id: `bio_fail_${Date.now()}`,
+          type: 'biometric_auth',
+          title: 'Authentication Failed',
+          subtitle: `${biometricType} verification failed. Tap to retry.`,
+          compactText: 'Auth Failed',
+          compactBadge: 'Retry',
+          detailLeft: `${biometricType} rejected`,
+          detailRight: 'Retry',
+          actionText: 'Retry Biometrics',
+          durationMs: 5000,
+          onAction: () => {
+            isPromptingRef.current = false;
+            void triggerBiometrics();
+          },
+        });
       }
     } catch (err) {
       console.warn('[BiometricLockOverlay] Auth error:', err);
@@ -134,10 +165,97 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
         isPromptingRef.current = false;
       }, 1000);
     }
-  }, [isSupported, isEnrolled]);
+  }, [isSupported, isEnrolled, biometricType, triggerIsland]);
 
   const pinLengthRef = useRef(pin.length);
   pinLengthRef.current = pin.length;
+
+  const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lockTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const preLockWarningActiveRef = useRef<boolean>(false);
+
+  const lockApp = useCallback(() => {
+    const shouldLock = (isSupported && isEnrolled) || hasPin;
+    if (shouldLock) {
+      setIsLocked(true);
+      setPin('');
+      setPinError(false);
+      setTimeout(() => {
+        void triggerBiometrics();
+      }, 400);
+    }
+  }, [isSupported, isEnrolled, hasPin, triggerBiometrics]);
+
+  const triggerPreLockWarning = useCallback(
+    (remainingMs: number = PRE_LOCK_DURATION_MS) => {
+      preLockWarningActiveRef.current = true;
+      const expiresAt = Date.now() + remainingMs;
+
+      triggerIsland({
+        id: `pre_lock_${Date.now()}`,
+        type: 'biometric_auth',
+        title: 'Session Expiring Soon',
+        subtitle: 'Inactivity detected. Locking in 30s.',
+        compactText: 'Lock Warning',
+        detailLeft: 'Auto-lock in 30s',
+        detailRight: 'Extend',
+        actionText: 'Extend Session',
+        durationMs: remainingMs,
+        expiresAt,
+        onAction: () => {
+          dismissIsland();
+          resetInactivityTimer();
+        },
+      });
+
+      if (lockTimerRef.current) {
+        clearTimeout(lockTimerRef.current);
+      }
+      lockTimerRef.current = setTimeout(() => {
+        preLockWarningActiveRef.current = false;
+        lockApp();
+      }, remainingMs);
+    },
+    [triggerIsland, dismissIsland, lockApp]
+  );
+
+  const resetInactivityTimer = useCallback(() => {
+    preLockWarningActiveRef.current = false;
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+    if (lockTimerRef.current) {
+      clearTimeout(lockTimerRef.current);
+      lockTimerRef.current = null;
+    }
+
+    if (!sessionExists || isLocked) return;
+
+    warningTimerRef.current = setTimeout(() => {
+      triggerPreLockWarning(PRE_LOCK_DURATION_MS);
+    }, PRE_LOCK_WARNING_MS);
+  }, [sessionExists, isLocked, triggerPreLockWarning]);
+
+  useEffect(() => {
+    if (!sessionExists || isLocked) {
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+      warningTimerRef.current = null;
+      lockTimerRef.current = null;
+      preLockWarningActiveRef.current = false;
+      return;
+    }
+
+    resetInactivityTimer();
+
+    return () => {
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+      warningTimerRef.current = null;
+      lockTimerRef.current = null;
+    };
+  }, [sessionExists, isLocked, resetInactivityTimer]);
 
   useEffect(() => {
     if (!sessionExists) {
@@ -184,16 +302,13 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
           lastBackgroundTime.current
         ) {
           const elapsed = Date.now() - lastBackgroundTime.current;
-          if (elapsed > INACTIVITY_TIMEOUT_MS) {
-            const shouldLock = (isSupported && isEnrolled) || hasPin;
-            if (shouldLock) {
-              setIsLocked(true);
-              setPin('');
-              setPinError(false);
-              setTimeout(() => {
-                void triggerBiometrics();
-              }, 400);
-            }
+          if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+            lockApp();
+          } else if (elapsed >= PRE_LOCK_WARNING_MS) {
+            const remaining = Math.max(1000, INACTIVITY_TIMEOUT_MS - elapsed);
+            triggerPreLockWarning(remaining);
+          } else {
+            resetInactivityTimer();
           }
         }
       }
@@ -204,7 +319,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
     return () => {
       subscription.remove();
     };
-  }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
+  }, [sessionExists, isSupported, isEnrolled, hasPin, lockApp, triggerPreLockWarning, resetInactivityTimer]);
 
   const handleKeyPress = useCallback((num: string) => {
     if (pinLengthRef.current >= 6) return;
@@ -230,6 +345,17 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
         try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); } catch {}
         setIsLocked(false);
         setPin('');
+        triggerIsland({
+          id: `pin_${Date.now()}`,
+          type: 'biometric_auth',
+          title: 'Security PIN Verified',
+          subtitle: 'Access Authorized',
+          compactText: 'Verified',
+          compactBadge: 'PIN ✓',
+          detailLeft: 'Authenticated Session',
+          detailRight: 'Unlocked',
+          durationMs: 3500,
+        });
       } else {
         try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}); } catch {}
         triggerShake();
@@ -249,7 +375,19 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
   }, [pin, isLocked, verifyPin]);
 
   if (!isLocked) {
-    return <>{children}</>;
+    return (
+      <View
+        style={styles.rootWrapper}
+        onStartShouldSetResponderCapture={() => {
+          if (!preLockWarningActiveRef.current) {
+            resetInactivityTimer();
+          }
+          return false;
+        }}
+      >
+        {children}
+      </View>
+    );
   }
 
   const dots = Array(6).fill(0);
@@ -346,6 +484,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
 }
 
 const styles = StyleSheet.create({
+  rootWrapper: { flex: 1 },
   container: { flex: 1, backgroundColor: '#000000' },
   content: { flex: 1, justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24 },
   header: { alignItems: 'center', marginTop: 12 },

@@ -37,6 +37,7 @@ vi.mock('expo-location', () => ({
 
 import {
   getWeatherDetails,
+  getDiurnalEstimatedTemp,
   getLiveWeatherSnapshot,
   fetchFreshWeather,
   subscribeToWeatherUpdates,
@@ -58,6 +59,13 @@ describe('weatherService', () => {
     vi.clearAllMocks();
   });
 
+  it('calculates diurnal estimated temp across hours', () => {
+    expect(getDiurnalEstimatedTemp(15)).toBe(32);
+    expect(getDiurnalEstimatedTemp(3)).toBe(24);
+    expect(getDiurnalEstimatedTemp(9)).toBe(28);
+    expect(getDiurnalEstimatedTemp(21)).toBe(28);
+  });
+
   it('correctly maps WMO weather codes to details and Lucide icons', () => {
     const clear = getWeatherDetails(0);
     expect(clear.label).toBe('Clear Sky');
@@ -76,10 +84,11 @@ describe('weatherService', () => {
   });
 
   it('returns default snapshot when MMKV cache is empty', () => {
+    const expectedTemp = getDiurnalEstimatedTemp();
     const snapshot = getLiveWeatherSnapshot();
     expect(snapshot).toBeDefined();
-    expect(snapshot.temp).toBe(29);
-    expect(snapshot.tempStr).toBe('29°C');
+    expect(snapshot.temp).toBe(expectedTemp);
+    expect(snapshot.tempStr).toBe(`${expectedTemp}°C`);
     expect(snapshot.isFresh).toBe(false);
   });
 

@@ -30,6 +30,7 @@ export default defineConfig({
       'react-native-calendars': path.resolve(__dirname, './src/tests/__mocks__/ui-libs.js'),
       'react-native-safe-area-context': path.resolve(__dirname, './src/tests/__mocks__/ui-libs.js'),
       'expo-secure-store': path.resolve(__dirname, './src/tests/__mocks__/expo.js'),
+      '@react-native-community/netinfo': path.resolve(__dirname, './src/tests/__mocks__/netinfo.js'),
     },
   },
   define: {

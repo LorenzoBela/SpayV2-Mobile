@@ -1,4 +1,4 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -138,10 +138,12 @@ export const FloatingDynamicIsland: React.FC = () => {
     dismissIsland,
     toggleExpand,
     triggerIsland,
+    swapEvents,
   } = useDynamicIsland();
 
   const translateY = useSharedValue(0);
   const translateX = useSharedValue(0);
+  const lastSwapRef = useRef<number>(0);
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle) => {
     try {
@@ -150,6 +152,14 @@ export const FloatingDynamicIsland: React.FC = () => {
       // Safe fallback
     }
   };
+
+  const handleSecondaryOrbPress = useCallback(() => {
+    const now = Date.now();
+    if (now - lastSwapRef.current < 300) return;
+    lastSwapRef.current = now;
+    triggerHaptic(MEDIUM_HAPTIC);
+    swapEvents();
+  }, [swapEvents]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((event) => {
@@ -177,6 +187,7 @@ export const FloatingDynamicIsland: React.FC = () => {
   const activeId = activeNotification?.id ?? '';
   const secondaryId = secondaryNotification?.id ?? '';
   const hasSecondary = !!secondaryNotification && secondaryId !== activeId;
+  const isGreeting = activeId.startsWith('greeting');
 
   const animatedContainerStyle = useAnimatedStyle(() => {
     'worklet';
@@ -189,8 +200,10 @@ export const FloatingDynamicIsland: React.FC = () => {
     const targetWidth = isExpanded
       ? Math.min(SCREEN_WIDTH - 24, 380)
       : showSecondary
-      ? 180
-      : 250;
+      ? Math.min(SCREEN_WIDTH - 24, 180)
+      : isGreeting
+      ? Math.min(SCREEN_WIDTH - 24, 340)
+      : Math.min(SCREEN_WIDTH - 24, 250);
 
     return {
       width: withSpring(targetWidth, SPRING_PHYSICS),
@@ -203,6 +216,30 @@ export const FloatingDynamicIsland: React.FC = () => {
     };
   });
 
+  const [countdown, setCountdown] = useState<string>('');
+
+  useEffect(() => {
+    const expiresAt = activeNotification?.expiresAt;
+    if (!expiresAt) {
+      setCountdown('');
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingMs = Math.max(0, expiresAt - Date.now());
+      const totalSecs = Math.ceil(remainingMs / 1000);
+      const mm = String(Math.floor(totalSecs / 60)).padStart(2, '0');
+      const ss = String(totalSecs % 60).padStart(2, '0');
+      setCountdown(`${mm}:${ss}`);
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [activeNotification?.expiresAt]);
+
   if (!activeNotification) {
     return null;
   }
@@ -214,7 +251,6 @@ export const FloatingDynamicIsland: React.FC = () => {
     !isExpanded &&
     secondaryNotification.id !== islandData.id;
 
-  const isGreeting = islandData.id?.startsWith('greeting');
   const showUserPhoto = isGreeting && !!islandData.avatarUrl;
 
   const renderIcon = (type: string, size = 13, strokeWidth = 2.0) => {
@@ -266,14 +302,20 @@ export const FloatingDynamicIsland: React.FC = () => {
   };
 
   const compactTextDisplay = islandData.compactText || islandData.title || 'SPayV2 Wallet';
-  const compactBadgeDisplay = islandData.compactBadge || islandData.amount || 'Info';
+  const compactBadgeDisplay = islandData.compactBadge || countdown || islandData.amount || 'Info';
 
+  const isDebtFree = islandData.type === 'debt_free';
   const textColor = isDarkMode ? '#FFFFFF' : '#0F172A';
   const subtitleColor = isDarkMode ? '#94A3B8' : '#64748B';
   const containerBg = isDarkMode ? 'rgba(8, 9, 12, 0.96)' : 'rgba(255, 255, 255, 0.96)';
   const containerBorder = isDarkMode ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.12)';
   const boxBg = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)';
   const boxBorder = isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+  const specularRimColor = isDebtFree
+    ? '#f59e0b'
+    : isDarkMode
+    ? 'rgba(255,255,255,0.22)'
+    : 'rgba(255,255,255,0.85)';
 
   return (
     <View style={[styles.wrapper, { top: Math.max(insets.top, 12) }]} pointerEvents="box-none">
@@ -287,7 +329,13 @@ export const FloatingDynamicIsland: React.FC = () => {
                 animatedContainerStyle,
               ]}
             >
-              <View style={[styles.topSpecularRim, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.85)' }]} />
+              <View
+                style={[
+                  styles.topSpecularRim,
+                  { backgroundColor: specularRimColor },
+                  isDebtFree && styles.debtFreeRim,
+                ]}
+              />
 
               <BlurView intensity={Platform.OS === 'ios' ? 85 : 100} tint={isDarkMode ? 'dark' : 'light'} style={styles.blurFill}>
                 {!isExpanded ? (
@@ -340,9 +388,9 @@ export const FloatingDynamicIsland: React.FC = () => {
                           )}
                         </View>
                       </View>
-                      {islandData.amount && (
+                      {(islandData.amount || countdown) && (
                         <Text style={[styles.amountText, styles.tabularNum]} numberOfLines={1}>
-                          {islandData.amount}
+                          {islandData.amount || countdown}
                         </Text>
                       )}
                     </View>
@@ -372,7 +420,7 @@ export const FloatingDynamicIsland: React.FC = () => {
                     {/* Progress Bar */}
                     {islandData.hasProgress && (
                       <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: `${islandData.progressPct || 68}%` }]} />
+                        <View style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, islandData.progressPct ?? 0))}%` }]} />
                       </View>
                     )}
 
@@ -401,7 +449,7 @@ export const FloatingDynamicIsland: React.FC = () => {
 
         {/* Secondary Orb Badge */}
         {showSecondaryOrb && secondaryNotification && (
-          <Pressable onPress={() => triggerIsland(secondaryNotification)}>
+          <Pressable onPress={handleSecondaryOrbPress}>
             <Animated.View entering={FadeIn.duration(110)} style={[styles.secondaryOrb, { backgroundColor: containerBg, borderColor: containerBorder }]}>
               <View style={styles.lineIconPod}>
                 {renderIcon(secondaryNotification.type, 13, 2.0)}
@@ -427,6 +475,15 @@ const styles = StyleSheet.create({
     shadowColor: '#000000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 8,
   },
   topSpecularRim: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, zIndex: 10 },
+  debtFreeRim: {
+    height: 1.5,
+    backgroundColor: '#f59e0b',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.8,
+    shadowRadius: 3,
+    elevation: 3,
+  },
   blurFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingVertical: 6, justifyContent: 'center' },
   tabularNum: { fontVariant: ['tabular-nums'], fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   

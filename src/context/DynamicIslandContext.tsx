@@ -1,6 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useReducer,
+} from 'react';
+import { Linking } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../utils/supabase';
+import { parseShopeeShareText } from '../utils/shopeeParser';
 import {
   getLiveWeatherSnapshot,
   fetchFreshWeather,
@@ -31,6 +42,13 @@ export type DynamicIslandNotificationType =
   | 'promo_ad'
   | 'pro_subscription';
 
+export enum IslandPriority {
+  LOW = 0,
+  NORMAL = 1,
+  HIGH = 2,
+  CRITICAL = 3,
+}
+
 export interface DynamicIslandNotificationPayload {
   id: string;
   type: DynamicIslandNotificationType;
@@ -48,9 +66,271 @@ export interface DynamicIslandNotificationPayload {
   progressPct?: number;
   durationMs?: number;
   isDualEvent?: boolean;
+  startedAt?: number;
+  expiresAt?: number;
+  priority?: IslandPriority;
 }
 
-interface DynamicIslandContextType {
+export interface IslandState {
+  activeNotification: DynamicIslandNotificationPayload | null;
+  secondaryNotification: DynamicIslandNotificationPayload | null;
+  isExpanded: boolean;
+}
+
+export type IslandAction =
+  | { type: 'TRIGGER'; payload: DynamicIslandNotificationPayload }
+  | { type: 'DISMISS'; id?: string }
+  | { type: 'DISMISS_ACTIVE' }
+  | { type: 'DISMISS_ALL' }
+  | { type: 'SET_SECONDARY'; payload: DynamicIslandNotificationPayload | null }
+  | { type: 'SWAP_EVENTS' }
+  | { type: 'TOGGLE_EXPAND' }
+  | { type: 'SET_EXPANDED'; payload: boolean }
+  | { type: 'EXPIRE'; id: string }
+  | { type: 'UPDATE_WEATHER_BADGE'; badge: string };
+
+export function getVariantPriority(type: DynamicIslandNotificationType): IslandPriority {
+  switch (type) {
+    case 'overdue_alert':
+    case 'admin_risk_alert':
+    case 'biometric_auth':
+      return IslandPriority.CRITICAL;
+
+    case 'payment':
+    case 'payment_success':
+    case 'admin_client_payment':
+    case 'order_assigned':
+    case 'shared_payment':
+    case 'low_balance':
+    case 'admin_impersonation':
+      return IslandPriority.HIGH;
+
+    case 'limit_increase':
+    case 'debt_free':
+    case 'payment_streak':
+    case 'noot_savings':
+    case 'zero_interest':
+    case 'offline_queue':
+    case 'ota_update':
+    case 'admin_reminder_sent':
+      return IslandPriority.NORMAL;
+
+    case 'sync':
+    case 'promo_ad':
+    case 'pro_subscription':
+    default:
+      return IslandPriority.LOW;
+  }
+}
+
+export function swapEvents(state?: IslandState): any {
+  if (state && ('activeNotification' in state || 'secondaryNotification' in state || 'isExpanded' in state)) {
+    return {
+      ...state,
+      activeNotification: state.secondaryNotification,
+      secondaryNotification: state.activeNotification,
+      isExpanded: false,
+    };
+  }
+  return { type: 'SWAP_EVENTS' as const };
+}
+
+export const initialIslandState: IslandState = {
+  activeNotification: null,
+  secondaryNotification: null,
+  isExpanded: false,
+};
+
+export function islandReducer(state: IslandState, action: IslandAction): IslandState {
+  switch (action.type) {
+    case 'TRIGGER': {
+      const startedAt = action.payload.startedAt ?? Date.now();
+      const durationMs = action.payload.durationMs ?? 5000;
+      const expiresAt = action.payload.expiresAt ?? (startedAt + durationMs);
+      const priority = action.payload.priority ?? getVariantPriority(action.payload.type);
+
+      const incoming: DynamicIslandNotificationPayload = {
+        ...action.payload,
+        startedAt,
+        expiresAt,
+        priority,
+        durationMs,
+      };
+
+      if (!state.activeNotification) {
+        return {
+          ...state,
+          activeNotification: incoming,
+          isExpanded: false,
+        };
+      }
+
+      if (state.activeNotification.id === incoming.id) {
+        return {
+          ...state,
+          activeNotification: incoming,
+        };
+      }
+
+      if (state.secondaryNotification && state.secondaryNotification.id === incoming.id) {
+        const activePri = state.activeNotification.priority ?? getVariantPriority(state.activeNotification.type);
+        if (priority > activePri) {
+          return {
+            ...state,
+            activeNotification: incoming,
+            secondaryNotification: state.activeNotification,
+            isExpanded: false,
+          };
+        }
+        return {
+          ...state,
+          secondaryNotification: incoming,
+        };
+      }
+
+      const activePri = state.activeNotification.priority ?? getVariantPriority(state.activeNotification.type);
+      let incomingWins = false;
+
+      if (priority > activePri) {
+        incomingWins = true;
+      } else if (priority < activePri) {
+        incomingWins = false;
+      } else {
+        const incomingTime = incoming.startedAt ?? 0;
+        const activeTime = state.activeNotification.startedAt ?? 0;
+        if (incomingTime > activeTime) {
+          incomingWins = true;
+        } else if (incomingTime < activeTime) {
+          incomingWins = false;
+        } else {
+          incomingWins = incoming.id >= state.activeNotification.id;
+        }
+      }
+
+      if (incomingWins) {
+        return {
+          ...state,
+          activeNotification: incoming,
+          secondaryNotification: state.activeNotification,
+          isExpanded: false,
+        };
+      } else {
+        return {
+          ...state,
+          secondaryNotification: incoming,
+        };
+      }
+    }
+
+    case 'EXPIRE': {
+      if (action.id && state.activeNotification?.id === action.id) {
+        return {
+          ...state,
+          activeNotification: state.secondaryNotification,
+          secondaryNotification: null,
+          isExpanded: false,
+        };
+      }
+
+      if (action.id && state.secondaryNotification?.id === action.id) {
+        return {
+          ...state,
+          secondaryNotification: null,
+        };
+      }
+
+      return state;
+    }
+
+    case 'DISMISS': {
+      if (action.id) {
+        if (state.activeNotification?.id === action.id) {
+          return {
+            ...state,
+            activeNotification: state.secondaryNotification,
+            secondaryNotification: null,
+            isExpanded: false,
+          };
+        }
+        if (state.secondaryNotification?.id === action.id) {
+          return {
+            ...state,
+            secondaryNotification: null,
+          };
+        }
+        return state;
+      }
+
+      return {
+        ...state,
+        activeNotification: state.secondaryNotification,
+        secondaryNotification: null,
+        isExpanded: false,
+      };
+    }
+
+    case 'DISMISS_ACTIVE': {
+      return {
+        ...state,
+        activeNotification: state.secondaryNotification,
+        secondaryNotification: null,
+        isExpanded: false,
+      };
+    }
+
+    case 'DISMISS_ALL': {
+      return {
+        ...state,
+        activeNotification: null,
+        secondaryNotification: null,
+        isExpanded: false,
+      };
+    }
+
+    case 'SET_SECONDARY': {
+      return {
+        ...state,
+        secondaryNotification: action.payload,
+      };
+    }
+
+    case 'SWAP_EVENTS': {
+      return swapEvents(state);
+    }
+
+    case 'TOGGLE_EXPAND': {
+      return {
+        ...state,
+        isExpanded: !state.isExpanded,
+      };
+    }
+
+    case 'SET_EXPANDED': {
+      return {
+        ...state,
+        isExpanded: action.payload,
+      };
+    }
+
+    case 'UPDATE_WEATHER_BADGE': {
+      if (state.activeNotification && state.activeNotification.id.startsWith('greeting')) {
+        return {
+          ...state,
+          activeNotification: {
+            ...state.activeNotification,
+            compactBadge: action.badge,
+          },
+        };
+      }
+      return state;
+    }
+
+    default:
+      return state;
+  }
+}
+
+export interface DynamicIslandContextType {
   activeNotification: DynamicIslandNotificationPayload | null;
   secondaryNotification: DynamicIslandNotificationPayload | null;
   isExpanded: boolean;
@@ -63,6 +343,7 @@ interface DynamicIslandContextType {
   toggleExpand: () => void;
   setSecondaryEvent: (payload: DynamicIslandNotificationPayload | null) => void;
   checkMissedNotifications: () => Promise<void>;
+  swapEvents: () => void;
 }
 
 const DynamicIslandContext = createContext<DynamicIslandContextType>({
@@ -78,6 +359,7 @@ const DynamicIslandContext = createContext<DynamicIslandContextType>({
   toggleExpand: () => {},
   setSecondaryEvent: () => {},
   checkMissedNotifications: async () => {},
+  swapEvents: () => {},
 });
 
 export const useDynamicIsland = () => useContext(DynamicIslandContext);
@@ -137,15 +419,15 @@ export const DynamicIslandProvider: React.FC<{
   activeRole,
   sessionExists = false,
 }) => {
-  const [activeNotification, setActiveNotification] = useState<DynamicIslandNotificationPayload | null>(null);
-  const [secondaryNotification, setSecondaryNotification] = useState<DynamicIslandNotificationPayload | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [state, dispatch] = useReducer(islandReducer, initialIslandState);
   const [userName, setUserName] = useState<string>('Lorenzo');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
   const [lastOnlineAt, setLastOnlineAt] = useState<string | null>(null);
   const [missedCount, setMissedCount] = useState<number>(0);
 
-  const dismissTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const netDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const wasOfflineRef = useRef<boolean>(false);
   const hasShownGreetingRef = useRef<boolean>(false);
   const userNameRef = useRef<string>('Lorenzo');
   const userAvatarRef = useRef<string>('');
@@ -155,72 +437,169 @@ export const DynamicIslandProvider: React.FC<{
     currentUserIdRef.current = propUserId;
   }, [propUserId]);
 
-  const clearTimer = () => {
-    if (dismissTimerRef.current) {
-      clearTimeout(dismissTimerRef.current);
-      dismissTimerRef.current = null;
+  // activeTimerRef lifecycle sync with activeNotification
+  useEffect(() => {
+    if (activeTimerRef.current) {
+      clearTimeout(activeTimerRef.current);
+      activeTimerRef.current = null;
     }
-  };
+
+    const active = state.activeNotification;
+    if (!active) return;
+
+    const now = Date.now();
+    let remainingMs = 5000;
+    if (typeof active.expiresAt === 'number') {
+      remainingMs = Math.max(0, active.expiresAt - now);
+    } else if (typeof active.durationMs === 'number') {
+      remainingMs = active.durationMs;
+    }
+
+    if (remainingMs > 0) {
+      activeTimerRef.current = setTimeout(() => {
+        dispatch({ type: 'EXPIRE', id: active.id });
+      }, remainingMs);
+    } else {
+      dispatch({ type: 'EXPIRE', id: active.id });
+    }
+
+    return () => {
+      if (activeTimerRef.current) {
+        clearTimeout(activeTimerRef.current);
+        activeTimerRef.current = null;
+      }
+    };
+  }, [state.activeNotification]);
 
   const dismissIsland = useCallback(() => {
-    clearTimer();
-    setActiveNotification(null);
-    setSecondaryNotification(null);
-    setIsExpanded(false);
+    dispatch({ type: 'DISMISS' });
   }, []);
 
   const toggleExpand = useCallback(() => {
-    setIsExpanded((prev) => !prev);
+    dispatch({ type: 'TOGGLE_EXPAND' });
   }, []);
 
   const setSecondaryEvent = useCallback((payload: DynamicIslandNotificationPayload | null) => {
-    setSecondaryNotification(payload);
+    dispatch({ type: 'SET_SECONDARY', payload });
   }, []);
 
   const triggerIsland = useCallback((payload: DynamicIslandNotificationPayload) => {
-    clearTimer();
-    setActiveNotification((prev) => {
-      if (prev && prev.id !== payload.id) {
-        setTimeout(() => setSecondaryNotification(prev), 0);
-      }
-      return payload;
-    });
-    setIsExpanded(false);
+    dispatch({ type: 'TRIGGER', payload });
+  }, []);
 
-    const autoDismissMs = payload.durationMs || 5000;
-    if (autoDismissMs > 0) {
-      dismissTimerRef.current = setTimeout(() => {
-        setActiveNotification((current) => {
-          if (current?.id === payload.id) {
-            return null;
-          }
-          return current;
-        });
-      }, autoDismissMs);
-    }
+  const handleSwapEvents = useCallback(() => {
+    dispatch({ type: 'SWAP_EVENTS' });
+  }, []);
+
+  // 1,500ms debounced NetInfo listener
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((netState) => {
+      if (netDebounceTimerRef.current) {
+        clearTimeout(netDebounceTimerRef.current);
+      }
+
+      netDebounceTimerRef.current = setTimeout(() => {
+        const isOffline = !Boolean(netState.isConnected && netState.isInternetReachable !== false);
+
+        if (isOffline) {
+          wasOfflineRef.current = true;
+          dispatch({
+            type: 'TRIGGER',
+            payload: {
+              id: `netinfo_offline_${Date.now()}`,
+              type: 'offline_queue',
+              title: 'Offline Mode Active',
+              subtitle: 'Network disconnected. Actions queued.',
+              compactText: 'Offline Mode',
+              compactBadge: 'Queued',
+              detailLeft: 'Auto-syncs when online',
+              detailRight: 'Offline',
+              durationMs: 5000,
+              priority: IslandPriority.NORMAL,
+            },
+          });
+        } else if (wasOfflineRef.current) {
+          wasOfflineRef.current = false;
+          dispatch({
+            type: 'TRIGGER',
+            payload: {
+              id: `netinfo_online_${Date.now()}`,
+              type: 'sync',
+              title: 'Connection Restored',
+              subtitle: 'Realtime network connection restored',
+              compactText: 'Back Online',
+              compactBadge: 'Connected',
+              detailLeft: 'Sync active',
+              detailRight: 'Online ✓',
+              durationMs: 4000,
+              priority: IslandPriority.LOW,
+            },
+          });
+        }
+      }, 1500);
+    });
+
+    return () => {
+      unsubscribe();
+      if (netDebounceTimerRef.current) {
+        clearTimeout(netDebounceTimerRef.current);
+        netDebounceTimerRef.current = null;
+      }
+    };
   }, []);
 
   const handleIncomingNotification = useCallback(
     (newNotif: any) => {
       if (!newNotif) return;
 
-      const rawType = (newNotif.type || '').toLowerCase();
+      const textToScan = [
+        newNotif.body,
+        newNotif.subtitle,
+        newNotif.title,
+        newNotif.data?.url,
+        newNotif.data?.product_url,
+        newNotif.data?.link,
+        newNotif.data?.text,
+        newNotif.data?.shared_text,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const parsedShopee = parseShopeeShareText(textToScan);
+      const isShopeeNotification =
+        parsedShopee.isShopee ||
+        String(newNotif.type || '').toLowerCase().includes('shopee') ||
+        String(newNotif.island_type || '').toLowerCase().includes('shopee');
+
+      const rawType = String(newNotif.type || newNotif.island_type || '').toLowerCase();
       let notifType: DynamicIslandNotificationType = 'sync';
 
-      if (VALID_ISLAND_TYPES.includes(rawType as DynamicIslandNotificationType)) {
+      if (isShopeeNotification) {
+        notifType = 'order_assigned';
+      } else if (VALID_ISLAND_TYPES.includes(rawType as DynamicIslandNotificationType)) {
         notifType = rawType as DynamicIslandNotificationType;
-      } else if (rawType.includes('overdue')) {
-        notifType = 'overdue_alert';
-      } else if (rawType.includes('success') || rawType.includes('paid')) {
-        notifType = 'payment_success';
-      } else if (rawType.includes('streak')) {
-        notifType = 'payment_streak';
-      } else if (rawType.includes('promo')) {
-        notifType = 'promo_ad';
-      } else if (rawType.includes('risk')) {
-        notifType = 'admin_risk_alert';
-      } else if (rawType.includes('pay')) {
-        notifType = 'payment';
+      } else {
+        const upper = rawType.toUpperCase();
+        if (['ORDER_ASSIGNED', 'ORDER_UPDATED', 'BUY_REQUEST'].includes(upper)) notifType = 'order_assigned';
+        else if (['BUDGET_ALERT', 'RISK_ALERT', 'ADMIN_RISK_ALERT'].includes(upper)) notifType = 'admin_risk_alert';
+        else if (['PAYMENT_CONFIRMED', 'PAYMENT_SUCCESS', 'CASHBACK', 'REWARD_EARNED'].includes(upper)) notifType = 'payment_success';
+        else if (['SHARED_ORDER_ASSIGNED', 'SHARED_PAYMENT'].includes(upper)) notifType = 'shared_payment';
+        else if (['PRO_SUBSCRIPTION', 'PRO_UPGRADE'].includes(upper)) notifType = 'pro_subscription';
+        else if (['ADMIN_IMPERSONATION', 'IMPERSONATION'].includes(upper)) notifType = 'admin_impersonation';
+        else if (['ADMIN_CLIENT_PAYMENT', 'CLIENT_PAYMENT'].includes(upper)) notifType = 'admin_client_payment';
+        else if (['OTA_UPDATE', 'APP_UPDATE'].includes(upper)) notifType = 'ota_update';
+        else if (['PROMO_AD', 'PROMOTION'].includes(upper)) notifType = 'promo_ad';
+        else if (['ZERO_INTEREST', 'ZERO_FEE'].includes(upper)) notifType = 'zero_interest';
+        else if (['LIMIT_INCREASE', 'CREDIT_LIMIT_INCREASE'].includes(upper)) notifType = 'limit_increase';
+        else if (['LOW_BALANCE', 'BALANCE_WARNING'].includes(upper)) notifType = 'low_balance';
+        else if (['OFFLINE_QUEUE', 'QUEUE_SYNCED'].includes(upper)) notifType = 'offline_queue';
+        else if (['BIOMETRIC_AUTH', 'BIOMETRICS'].includes(upper)) notifType = 'biometric_auth';
+        else if (['DEBT_FREE', 'LOAN_CLEARED'].includes(upper)) notifType = 'debt_free';
+        else if (['PAYMENT_STREAK', 'STREAK'].includes(upper)) notifType = 'payment_streak';
+        else if (['NOOT_SAVINGS', 'IPON_GOAL', 'SAVINGS'].includes(upper)) notifType = 'noot_savings';
+        else if (['ADMIN_REMINDER_SENT', 'REMINDER_SENT'].includes(upper)) notifType = 'admin_reminder_sent';
+        else if (['OVERDUE_ALERT', 'OVERDUE'].includes(upper)) notifType = 'overdue_alert';
+        else if (['PAYMENT', 'INSTALLMENT_DUE'].includes(upper)) notifType = 'payment';
       }
 
       const rawAmount = newNotif.data?.amount ?? newNotif.amount;
@@ -229,27 +608,55 @@ export const DynamicIslandProvider: React.FC<{
           ? `₱${Number(rawAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
           : undefined;
 
+      const title = isShopeeNotification
+        ? newNotif.title || (parsedShopee.title ? `Shopee: ${parsedShopee.title}` : 'Shopee Item Intercepted')
+        : newNotif.title || 'New Notification';
+
+      const subtitle = isShopeeNotification
+        ? newNotif.body || parsedShopee.title || 'Shopee product link detected'
+        : newNotif.body || newNotif.subtitle || undefined;
+
+      const compactText = isShopeeNotification
+        ? newNotif.compact_text || (parsedShopee.title ? parsedShopee.title.slice(0, 22) : 'Shopee Order')
+        : newNotif.title || 'Notification';
+
+      const compactBadge = isShopeeNotification
+        ? formattedAmount || 'Shopee 🛍️'
+        : formattedAmount || 'New Alert';
+
+      const actionText = isShopeeNotification
+        ? (newNotif.data?.actionText as string) || (parsedShopee.url ? 'View Product' : 'View Details')
+        : (newNotif.data?.actionText as string) || 'View Details';
+
+      const onAction = () => {
+        if (newNotif.id) {
+          void supabase
+            .from('notifications')
+            .update({ read_at: new Date().toISOString() })
+            .eq('id', newNotif.id)
+            .then(() => {});
+        }
+        if (isShopeeNotification && parsedShopee.url) {
+          void Linking.openURL(parsedShopee.url).catch(() => {});
+        }
+      };
+
       triggerIsland({
         id: newNotif.id || `notif_${Date.now()}`,
         type: notifType,
-        title: newNotif.title || 'New Notification',
-        subtitle: newNotif.body || newNotif.subtitle || undefined,
+        title,
+        subtitle,
         amount: formattedAmount,
-        compactText: newNotif.title || 'Notification',
-        compactBadge: formattedAmount || 'New Alert',
+        compactText,
+        compactBadge,
         detailLeft: newNotif.body || newNotif.subtitle || 'Tap to view details',
-        detailRight: 'Review',
-        actionText: (newNotif.data?.actionText as string) || 'View Details',
+        detailRight: isShopeeNotification ? 'Shopee ✓' : 'Review',
+        actionText,
         durationMs: 7000,
-        onAction: () => {
-          if (newNotif.id) {
-            void supabase
-              .from('notifications')
-              .update({ read_at: new Date().toISOString() })
-              .eq('id', newNotif.id)
-              .then(() => {});
-          }
-        },
+        hasProgress: Boolean(newNotif.has_progress || newNotif.hasProgress),
+        progressPct: typeof newNotif.progress_pct === 'number' ? newNotif.progress_pct : newNotif.progressPct,
+        priority: isShopeeNotification ? IslandPriority.HIGH : undefined,
+        onAction,
       });
     },
     [triggerIsland]
@@ -433,7 +840,6 @@ export const DynamicIslandProvider: React.FC<{
 
         const hour = new Date().getHours();
         const greetingTime = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
-        const formattedTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
         const weatherSnap = getLiveWeatherSnapshot();
         const weatherBadge =
@@ -447,7 +853,7 @@ export const DynamicIslandProvider: React.FC<{
           title: `${greetingTime}, ${nameToDisplay}!`,
           subtitle: isAdmin ? 'SPay Admin Mobile • Operational' : 'SPay Client Mobile • Operational',
           compactText: `${greetingTime}, ${nameToDisplay}`,
-          compactBadge: `${formattedTime} • ${weatherBadge}`,
+          compactBadge: weatherBadge,
           detailLeft: greetingDetailLeft,
           detailRight: 'Live Sync Active ✓',
           avatarUrl: avatar || undefined,
@@ -467,7 +873,7 @@ export const DynamicIslandProvider: React.FC<{
             day: 'numeric',
           });
 
-          setSecondaryNotification({
+          setSecondaryEvent({
             id: `catchup_${Date.now()}`,
             type: 'sync',
             title: `${totalMissed + unreadTotal} Updates & Notifs Missed!`,
@@ -518,7 +924,7 @@ export const DynamicIslandProvider: React.FC<{
     } catch (err) {
       console.warn('[Mobile DynamicIsland] Catch-up error:', err);
     }
-  }, [sessionExists, activeRole, userRole, triggerIsland]);
+  }, [sessionExists, activeRole, userRole, triggerIsland, setSecondaryEvent]);
 
   // Trigger check ONLY when sessionExists and activeRole transition to valid
   useEffect(() => {
@@ -531,27 +937,15 @@ export const DynamicIslandProvider: React.FC<{
 
   // Weather update listener to keep greeting badge fresh
   useEffect(() => {
-    void fetchFreshWeather().catch(() => {});
+    void fetchFreshWeather(true).catch(() => {});
 
     const unsubscribe = subscribeToWeatherUpdates((snapshot: WeatherSnapshot) => {
-      setActiveNotification((curr) => {
-        if (curr && curr.id.startsWith('greeting')) {
-          const formattedTime = new Date().toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-          const weatherBadge =
-            snapshot.rainChance !== undefined && snapshot.rainChance > 0
-              ? `${snapshot.temp}°C • 🌧️ ${snapshot.rainChance}%`
-              : `${snapshot.temp}°C`;
+      const weatherBadge =
+        snapshot.rainChance !== undefined && snapshot.rainChance > 0
+          ? `${snapshot.temp}°C • 🌧️ ${snapshot.rainChance}%`
+          : `${snapshot.temp}°C`;
 
-          return {
-            ...curr,
-            compactBadge: `${formattedTime} • ${weatherBadge}`,
-          };
-        }
-        return curr;
-      });
+      dispatch({ type: 'UPDATE_WEATHER_BADGE', badge: weatherBadge });
     });
 
     return () => {
@@ -594,15 +988,24 @@ export const DynamicIslandProvider: React.FC<{
 
   // Timer cleanup on unmount
   useEffect(() => {
-    return () => clearTimer();
+    return () => {
+      if (activeTimerRef.current) {
+        clearTimeout(activeTimerRef.current);
+        activeTimerRef.current = null;
+      }
+      if (netDebounceTimerRef.current) {
+        clearTimeout(netDebounceTimerRef.current);
+        netDebounceTimerRef.current = null;
+      }
+    };
   }, []);
 
   return (
     <DynamicIslandContext.Provider
       value={{
-        activeNotification,
-        secondaryNotification,
-        isExpanded,
+        activeNotification: state.activeNotification,
+        secondaryNotification: state.secondaryNotification,
+        isExpanded: state.isExpanded,
         lastOnlineAt,
         missedCount,
         userName,
@@ -612,6 +1015,7 @@ export const DynamicIslandProvider: React.FC<{
         toggleExpand,
         setSecondaryEvent,
         checkMissedNotifications,
+        swapEvents: handleSwapEvents,
       }}
     >
       {children}

@@ -93,6 +93,8 @@ import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminDashboardData, callAdminApi } from '../../services/adminService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
+import { useDynamicIsland } from '../../context/DynamicIslandContext';
+import { fetchFreshWeather } from '../../services/weatherService';
 
 
 // Helper functions
@@ -288,6 +290,7 @@ export default function AdminDashboardScreen() {
   const navigation = useNavigation<any>();
   const { userRole, setActiveRole } = useContext(RoleContext);
   const { isDarkMode, toggleTheme } = useContext(ThemeContext);
+  const { triggerIsland } = useDynamicIsland();
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
@@ -620,16 +623,26 @@ export default function AdminDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    triggerIsland({
+      id: `refresh_${Date.now()}`,
+      type: 'sync',
+      title: 'Refreshing Live Ledgers...',
+      subtitle: 'Syncing open payments and credit limits',
+      compactText: 'Syncing',
+      compactBadge: 'Live',
+      durationMs: 3000,
+    });
     try {
       await Promise.allSettled([
         refetch(),
+        fetchFreshWeather(true),
       ]);
     } catch (err) {
       console.warn('AdminDashboard pull-to-refresh error:', err);
     } finally {
       setRefreshing(false);
     }
-  }, [refetch]);
+  }, [refetch, triggerIsland]);
 
   // Flip countdown updater
 
@@ -859,7 +872,11 @@ export default function AdminDashboardScreen() {
       <AdminHeader title="Dashboard Overview" subtitle="S-Pay Admin" />
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, layout.scrollContentStyle]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          layout.scrollContentStyle,
+          { paddingBottom: getFooterPadding(insets.bottom) + 90 },
+        ]}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
@@ -2823,7 +2840,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     gap: 16,
   },
   alertBanner: {

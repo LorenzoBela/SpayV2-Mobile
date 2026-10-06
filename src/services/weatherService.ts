@@ -124,12 +124,19 @@ export function parseLocalDate(dateStr: string): Date {
   return new Date(dateStr);
 }
 
+export function getDiurnalEstimatedTemp(hour?: number): number {
+  const safeHour = Math.max(0, Math.min(23, Math.floor(hour ?? new Date().getHours())));
+  const temp = Math.round(28 + 4 * Math.sin(((safeHour - 9) / 24) * 2 * Math.PI));
+  return Math.max(18, Math.min(42, temp));
+}
+
 export function generateFallbackDailyForecast(): DailyForecast[] {
   const now = new Date();
   const days: DailyForecast[] = [];
   const codes = [2, 1, 61, 3, 0, 1, 2];
-  const maxTemps = [31, 32, 29, 30, 33, 31, 30];
-  const minTemps = [25, 25, 24, 24, 26, 25, 24];
+  const diurnal = getDiurnalEstimatedTemp();
+  const maxOffsets = [3, 4, 1, 2, 5, 3, 2];
+  const minOffsets = [-3, -3, -4, -4, -2, -3, -4];
   const rainMax = [40, 20, 70, 30, 10, 25, 35];
 
   for (let i = 0; i < 7; i++) {
@@ -138,8 +145,8 @@ export function generateFallbackDailyForecast(): DailyForecast[] {
       day: i === 0 ? 'Today' : d.toLocaleDateString([], { weekday: 'short' }),
       dateLabel: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
       code: codes[i % codes.length],
-      tempMax: maxTemps[i % maxTemps.length],
-      tempMin: minTemps[i % minTemps.length],
+      tempMax: diurnal + maxOffsets[i % maxOffsets.length],
+      tempMin: diurnal + minOffsets[i % minOffsets.length],
       precipSum: i === 2 ? 12.5 : 0,
       rainChanceMax: rainMax[i % rainMax.length],
       windMax: 12 + (i % 5),
@@ -157,7 +164,7 @@ export function generateFallbackHourlyRain(): HourlyRainSlot[] {
       hour: d.toLocaleTimeString([], { hour: 'numeric', hour12: true }),
       prob: Math.max(10, Math.min(80, Math.round(30 + Math.sin(i) * 30))),
       code: 2,
-      temp: 30,
+      temp: getDiurnalEstimatedTemp(d.getHours()),
     });
   }
   return slots;
@@ -227,7 +234,8 @@ export function getLiveWeatherSnapshot(): WeatherSnapshot {
       const timestamp = parsed.timestamp || cachedTime || 0;
       const isFresh = timestamp > 0 && Date.now() - timestamp < WEATHER_CACHE_TTL_MS;
 
-      const temp = weatherData.temp !== undefined ? weatherData.temp : 29;
+      const temp =
+        weatherData.temp !== undefined ? weatherData.temp : getDiurnalEstimatedTemp();
       const code = weatherData.code !== undefined ? weatherData.code : 1;
       const details = getWeatherDetails(code);
       const label = weatherData.label || details.label;
@@ -266,9 +274,10 @@ export function getLiveWeatherSnapshot(): WeatherSnapshot {
     return memoryWeatherCache;
   }
 
+  const fallbackTemp = getDiurnalEstimatedTemp();
   const defaultSnapshot: WeatherSnapshot = {
-    temp: 29,
-    tempStr: '29°C',
+    temp: fallbackTemp,
+    tempStr: `${fallbackTemp}°C`,
     rainChance: 20,
     rainStr: '🌧️ 20%',
     code: 1,

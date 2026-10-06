@@ -1,12 +1,34 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShieldAlert, LogOut, UserCheck } from 'lucide-react-native';
 import { useImpersonation } from '../context/ImpersonationContext';
+import { useDynamicIsland } from '../context/DynamicIslandContext';
 
 export function ImpersonationBanner() {
   const { isImpersonating, impersonatedUser, exitImpersonation } = useImpersonation();
+  const { triggerIsland } = useDynamicIsland();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (isImpersonating && impersonatedUser) {
+      triggerIsland({
+        id: `impersonate_${impersonatedUser.id}_${Date.now()}`,
+        type: 'admin_impersonation',
+        title: 'Admin Impersonation Active',
+        subtitle: `Acting as ${impersonatedUser.name}`,
+        compactText: 'Impersonating',
+        compactBadge: impersonatedUser.name,
+        detailLeft: impersonatedUser.email || 'Client Account',
+        detailRight: 'Active',
+        actionText: 'Exit Impersonation',
+        onAction: () => {
+          void exitImpersonation();
+        },
+        durationMs: 8000,
+      });
+    }
+  }, [isImpersonating, impersonatedUser?.id, triggerIsland, exitImpersonation]);
 
   if (!isImpersonating || !impersonatedUser) {
     return null;

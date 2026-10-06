@@ -66,6 +66,8 @@ import {
 } from '../../services/changelogService';
 import { ReleaseChangelog } from '../../types/changelog';
 import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
+import { useDynamicIsland } from '../../context/DynamicIslandContext';
+import { fetchFreshWeather } from '../../services/weatherService';
 
 
 // Interfaces
@@ -564,6 +566,7 @@ function SpendingTrendChart({ data }: { data: MonthlyTrend[] }) {
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = React.useContext(ThemeContext);
+  const { triggerIsland } = useDynamicIsland();
   const { showExitModal, setShowExitModal, handleExit } = useExitAppConfirmation();
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
@@ -1192,15 +1195,29 @@ export default function DashboardScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    triggerIsland({
+      id: `refresh_${Date.now()}`,
+      type: 'sync',
+      title: 'Refreshing Dashboard...',
+      subtitle: 'Updating live installments & weather',
+      compactText: 'Syncing',
+      compactBadge: 'Live',
+      durationMs: 3000,
+    });
     try {
-      await Promise.allSettled([refetchPayments(), refetchOrders(), fetchGlobalLimits()]);
+      await Promise.allSettled([
+        refetchPayments(),
+        refetchOrders(),
+        fetchGlobalLimits(),
+        fetchFreshWeather(true),
+      ]);
       void syncWidgetData();
     } catch (err) {
       console.warn('Dashboard pull-to-refresh error:', err);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchPayments, refetchOrders, fetchGlobalLimits]);
+  }, [refetchPayments, refetchOrders, fetchGlobalLimits, triggerIsland]);
 
 
 
