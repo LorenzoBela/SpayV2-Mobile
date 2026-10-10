@@ -192,21 +192,81 @@ export default function BudgetScreen() {
       setGlobalLimit(limitVal);
       setGlobalExposure(exposureVal);
 
-      // 2. Fetch Orders & Payments
-      const { data: dbOrders } = await supabase
+      // 2. Fetch Orders & Payments (Owned + Shared Participations)
+      const { data: participations } = await supabase
+        .from('order_participants')
+        .select('id, order_id, split_amount, is_paid')
+        .eq('user_id', profileId);
+
+      const participantOrderIds = (participations || []).map((p: any) => p.order_id);
+      const participantByOrderId = new Map<string, any>();
+      (participations || []).forEach((p: any) => participantByOrderId.set(p.order_id, p));
+
+      const { data: ownedOrders } = await supabase
         .from('orders')
         .select('id, item_name, amount, installment_months, order_date, is_paid')
         .eq('user_id', profileId);
 
-      const orderIds = dbOrders ? dbOrders.map(o => o.id) : [];
-      let dbPayments: any[] = [];
+      let sharedOrders: any[] = [];
+      if (participantOrderIds.length > 0) {
+        const { data: fetchedShared } = await supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, is_paid')
+          .in('id', participantOrderIds);
+        if (fetchedShared) sharedOrders = fetchedShared;
+      }
+
+      const combinedOrdersMap = new Map<string, any>();
+      (ownedOrders || []).forEach((o: any) => combinedOrdersMap.set(o.id, o));
+      sharedOrders.forEach((o: any) => {
+        if (!combinedOrdersMap.has(o.id)) {
+          const part = participantByOrderId.get(o.id);
+          combinedOrdersMap.set(o.id, {
+            ...o,
+            amount: part ? parseFloat(part.split_amount) || o.amount : o.amount,
+            is_paid: part ? part.is_paid : o.is_paid,
+            is_participant: true,
+            participant_id: part?.id,
+          });
+        }
+      });
+
+      const dbOrders = Array.from(combinedOrdersMap.values());
+      const orderIds = dbOrders.map(o => o.id);
+      let rawPayments: any[] = [];
       if (orderIds.length > 0) {
         const { data: paymentsData } = await supabase
           .from('payments')
           .select('id, order_id, due_date, amount_due, is_paid, payment_date')
           .in('order_id', orderIds);
-        if (paymentsData) dbPayments = paymentsData;
+        if (paymentsData) rawPayments = paymentsData;
       }
+
+      const participantIds = (participations || []).map((p: any) => p.id);
+      const participantPaymentsMap = new Map<string, any>();
+      if (participantIds.length > 0) {
+        const { data: partPayments } = await supabase
+          .from('order_participant_payments')
+          .select('id, participant_id, payment_id, amount_due, is_paid, paid_at')
+          .in('participant_id', participantIds);
+        (partPayments || []).forEach((pp: any) => {
+          participantPaymentsMap.set(pp.payment_id, pp);
+        });
+      }
+
+      const dbPayments = rawPayments.map((p: any) => {
+        const order = combinedOrdersMap.get(p.order_id);
+        const pp = participantPaymentsMap.get(p.id);
+        if (order?.is_participant && pp) {
+          return {
+            ...p,
+            amount_due: pp.amount_due,
+            is_paid: pp.is_paid,
+            payment_date: pp.paid_at || p.payment_date,
+          };
+        }
+        return p;
+      });
 
       // Group unpaid payments by billing month
       const unpaidMap: Record<string, number> = {};

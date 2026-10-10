@@ -108,26 +108,89 @@ export default function ReportsScreen() {
       const { user, profileId } = await getLinkedProfileForCurrentUser();
       if (!user) return;
 
-      // 1. Fetch Orders
+      // 1. Fetch Orders (Owned + Shared Participations)
+      const { data: participations, error: partErr } = await supabase
+        .from('order_participants')
+        .select('id, order_id, split_amount, is_paid')
+        .eq('user_id', profileId);
+
+      if (partErr) throw partErr;
+
+      const participantOrderIds = (participations || []).map((p: any) => p.order_id);
+      const participantByOrderId = new Map<string, any>();
+      (participations || []).forEach((p: any) => participantByOrderId.set(p.order_id, p));
+
       const { data: dbOrders, error: ordersErr } = await supabase
         .from('orders')
         .select('id, item_name, amount, installment_months, order_date, is_paid')
         .eq('user_id', profileId);
 
       if (ordersErr) throw ordersErr;
-      const ordersList = dbOrders || [];
+
+      let sharedOrders: any[] = [];
+      if (participantOrderIds.length > 0) {
+        const { data: fetchedShared, error: sharedErr } = await supabase
+          .from('orders')
+          .select('id, item_name, amount, installment_months, order_date, is_paid')
+          .in('id', participantOrderIds);
+        if (sharedErr) throw sharedErr;
+        if (fetchedShared) sharedOrders = fetchedShared;
+      }
+
+      const combinedOrdersMap = new Map<string, any>();
+      (dbOrders || []).forEach((o: any) => combinedOrdersMap.set(o.id, o));
+      sharedOrders.forEach((o: any) => {
+        if (!combinedOrdersMap.has(o.id)) {
+          const part = participantByOrderId.get(o.id);
+          combinedOrdersMap.set(o.id, {
+            ...o,
+            amount: part ? parseFloat(part.split_amount) || o.amount : o.amount,
+            is_paid: part ? part.is_paid : o.is_paid,
+            is_participant: true,
+            participant_id: part?.id,
+          });
+        }
+      });
+
+      const ordersList = Array.from(combinedOrdersMap.values());
 
       // 2. Fetch Payments
       const orderIds = ordersList.map((o) => o.id);
-      let paymentsList: any[] = [];
+      let rawPaymentsList: any[] = [];
       if (orderIds.length > 0) {
         const { data: paymentsData, error: paymentsErr } = await supabase
           .from('payments')
           .select('id, order_id, month_number, amount_due, due_date, is_paid, payment_date')
           .in('order_id', orderIds);
         if (paymentsErr) throw paymentsErr;
-        if (paymentsData) paymentsList = paymentsData;
+        if (paymentsData) rawPaymentsList = paymentsData;
       }
+
+      const participantIds = (participations || []).map((p: any) => p.id);
+      const participantPaymentsMap = new Map<string, any>();
+      if (participantIds.length > 0) {
+        const { data: partPayments } = await supabase
+          .from('order_participant_payments')
+          .select('id, participant_id, payment_id, amount_due, is_paid, paid_at')
+          .in('participant_id', participantIds);
+        (partPayments || []).forEach((pp: any) => {
+          participantPaymentsMap.set(pp.payment_id, pp);
+        });
+      }
+
+      const paymentsList = rawPaymentsList.map((p: any) => {
+        const order = combinedOrdersMap.get(p.order_id);
+        const pp = participantPaymentsMap.get(p.id);
+        if (order?.is_participant && pp) {
+          return {
+            ...p,
+            amount_due: pp.amount_due,
+            is_paid: pp.is_paid,
+            payment_date: pp.paid_at || p.payment_date,
+          };
+        }
+        return p;
+      });
 
       // Map payments with parent order context
       const ordersMap = new Map<string, any>();

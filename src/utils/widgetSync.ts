@@ -111,11 +111,45 @@ export async function syncWidgetData(force: boolean = false) {
           is_paid: o.isPaid ?? o.is_paid,
         }));
       } else {
-        const { data } = await supabase
+        const { data: participations } = await supabase
+          .from('order_participants')
+          .select('id, order_id, split_amount, is_paid')
+          .eq('user_id', effectiveProfileId);
+
+        const participantOrderIds = (participations || []).map((p: any) => p.order_id);
+        const participantByOrderId = new Map<string, any>();
+        (participations || []).forEach((p: any) => participantByOrderId.set(p.order_id, p));
+
+        const { data: owned } = await supabase
           .from('orders')
           .select('id, item_name, amount, installment_months, order_date, is_paid')
           .eq('user_id', effectiveProfileId);
-        dbOrders = data;
+
+        let shared: any[] = [];
+        if (participantOrderIds.length > 0) {
+          const { data: fetchedShared } = await supabase
+            .from('orders')
+            .select('id, item_name, amount, installment_months, order_date, is_paid')
+            .in('id', participantOrderIds);
+          if (fetchedShared) shared = fetchedShared;
+        }
+
+        const combinedMap = new Map<string, any>();
+        (owned || []).forEach((o: any) => combinedMap.set(o.id, o));
+        shared.forEach((o: any) => {
+          if (!combinedMap.has(o.id)) {
+            const part = participantByOrderId.get(o.id);
+            combinedMap.set(o.id, {
+              ...o,
+              amount: part ? parseFloat(part.split_amount) || o.amount : o.amount,
+              is_paid: part ? part.is_paid : o.is_paid,
+              is_participant: true,
+              participant_id: part?.id,
+            });
+          }
+        });
+
+        dbOrders = Array.from(combinedMap.values());
       }
 
       let billingCycles: any[] = [];
@@ -147,7 +181,32 @@ export async function syncWidgetData(force: boolean = false) {
             .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
             .in('order_id', orderIds)
             .order('due_date', { ascending: true });
-          dbPayments = data;
+
+          const participantOrders = (dbOrders || []).filter((o: any) => o.is_participant && o.participant_id);
+          const participantIds = participantOrders.map((o: any) => o.participant_id);
+          let participantPaymentsMap = new Map<string, any>();
+          if (participantIds.length > 0) {
+            const { data: partPayments } = await supabase
+              .from('order_participant_payments')
+              .select('id, participant_id, payment_id, amount_due, is_paid, paid_at')
+              .in('participant_id', participantIds);
+            (partPayments || []).forEach((pp: any) => {
+              participantPaymentsMap.set(pp.payment_id, pp);
+            });
+          }
+
+          dbPayments = (data || []).map((p: any) => {
+            const pp = participantPaymentsMap.get(p.id);
+            if (pp) {
+              return {
+                ...p,
+                amount_due: pp.amount_due,
+                is_paid: pp.is_paid,
+                payment_date: pp.paid_at || p.payment_date,
+              };
+            }
+            return p;
+          });
         }
 
         if (dbPayments && dbPayments.length > 0) {

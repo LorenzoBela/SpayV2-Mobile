@@ -676,7 +676,7 @@ export default function DashboardScreen() {
         queryOrdersData.orders.slice(0, 4).map((o: any) => ({
           id: o.id,
           itemName: o.itemName,
-          amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : o.amount,
+          amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : (o.myParticipantInfo?.splitAmount ?? o.amount),
           installmentMonths: o.installmentMonths,
           orderDate: o.orderDate,
           isPaid: o.isPaid,
@@ -919,16 +919,23 @@ export default function DashboardScreen() {
       const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
       if (!rpcError && globalStats && globalStats[0]) {
         const dynamicLimit = parseFloat(globalStats[0].credit_limit_total) || 0;
+        const dynamicUnpaid = parseFloat(globalStats[0].unpaid_amount_total) || 0;
         setGlobalCreditLimit(dynamicLimit);
-        return dynamicLimit;
+        setGlobalAvailableCredit(Math.max(0, dynamicLimit - dynamicUnpaid));
+        return { limit: dynamicLimit, unpaid: dynamicUnpaid };
       }
-      const { data: limitsData } = await supabase
-        .from('account_limits')
-        .select('credit_limit');
+      const [limitsRes, unpaidRes] = await Promise.all([
+        supabase.from('account_limits').select('credit_limit'),
+        supabase.from('payments').select('amount_due').eq('is_paid', false),
+      ]);
+      const limitsData = limitsRes.data;
+      const unpaidData = unpaidRes.data;
       if (limitsData && limitsData.length > 0) {
         const sumLimit = limitsData.reduce((acc: number, curr: any) => acc + (parseFloat(curr.credit_limit) || 0), 0);
+        const sumUnpaid = (unpaidData || []).reduce((acc: number, curr: any) => acc + (parseFloat(curr.amount_due) || 0), 0);
         setGlobalCreditLimit(sumLimit);
-        return sumLimit;
+        setGlobalAvailableCredit(Math.max(0, sumLimit - sumUnpaid));
+        return { limit: sumLimit, unpaid: sumUnpaid };
       }
     } catch (err) {
       console.warn('Failed to fetch global credit limits:', err);
@@ -973,10 +980,7 @@ export default function DashboardScreen() {
           });
           setSpendingCategories([]);
           setMonthlyTrends([]);
-          fetchGlobalLimits().then((fetchedLimit) => {
-            const limit = fetchedLimit ?? 0;
-            setGlobalAvailableCredit(limit);
-          });
+          fetchGlobalLimits();
           setLoading(false);
           return;
         }
@@ -1020,11 +1024,8 @@ export default function DashboardScreen() {
     );
 
     // Global credit limit calculations
-    const unpaidAmountTotal = paymentsList.reduce((sum: number, p: any) => (p.isPaid ? sum : sum + p.amountDue), 0);
-    fetchGlobalLimits().then((fetchedLimit) => {
-      const limitToUse = fetchedLimit !== null && fetchedLimit !== undefined ? fetchedLimit : globalCreditLimit;
-      setGlobalAvailableCredit(Math.max(0, limitToUse - unpaidAmountTotal));
-    });
+    fetchGlobalLimits();
+    const personalUnpaidTotal = paymentsList.reduce((sum: number, p: any) => (p.isPaid ? sum : sum + p.amountDue), 0);
 
     // 2. Orders & Recent Orders
     const ordersList = queryOrdersData?.orders || [];
@@ -1032,7 +1033,7 @@ export default function DashboardScreen() {
       ordersList.slice(0, 4).map((o: any) => ({
         id: o.id,
         itemName: o.itemName,
-        amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : o.amount,
+        amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : (o.myParticipantInfo?.splitAmount ?? o.amount),
         installmentMonths: o.installmentMonths,
         orderDate: o.orderDate,
         isPaid: o.isPaid,
@@ -1044,7 +1045,7 @@ export default function DashboardScreen() {
       ordersList.map((o: any) => ({
         id: o.id,
         itemName: o.itemName,
-        amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : o.amount,
+        amount: o.isShared && o.splitAmount !== undefined ? o.splitAmount : (o.myParticipantInfo?.splitAmount ?? o.amount),
         orderDate: parseUtcDate(o.orderDate),
       }))
     );
@@ -1099,7 +1100,7 @@ export default function DashboardScreen() {
       }
     }
 
-    const recommendedMonthlyBudget = unpaidAmountTotal > 0 ? Math.ceil(unpaidAmountTotal / 6) : 0;
+    const recommendedMonthlyBudget = personalUnpaidTotal > 0 ? Math.ceil(personalUnpaidTotal / 6) : 0;
 
     setFinancialMetrics({
       healthScore,
@@ -1112,7 +1113,7 @@ export default function DashboardScreen() {
     const categoriesMap = new Map();
     ordersList.forEach((order: any) => {
       const category = getCategory(order.itemName);
-      const amount = order.isShared && order.splitAmount !== undefined ? order.splitAmount : order.amount;
+      const amount = order.isShared && order.splitAmount !== undefined ? order.splitAmount : (order.myParticipantInfo?.splitAmount ?? order.amount);
       const current = categoriesMap.get(category) || { count: 0, spent: 0 };
       categoriesMap.set(category, {
         count: current.count + 1,
@@ -1151,7 +1152,7 @@ export default function DashboardScreen() {
       const monthKey = `${parts.year}-${String(parts.month + 1).padStart(2, '0')}`;
       if (trendsMap.has(monthKey)) {
         const current = trendsMap.get(monthKey);
-        const amount = order.isShared && order.splitAmount !== undefined ? order.splitAmount : order.amount;
+        const amount = order.isShared && order.splitAmount !== undefined ? order.splitAmount : (order.myParticipantInfo?.splitAmount ?? order.amount);
         trendsMap.set(monthKey, {
           ...current,
           totalSpent: current.totalSpent + amount,
