@@ -30,7 +30,9 @@ const BIOMETRIC_EMAIL_KEY = 'biometric_email';
 const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
 const BIOMETRIC_PROVIDER_KEY = 'biometric_provider';
 const BIOMETRIC_PIN_KEY = 'biometric_pin';
-const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+const GOOGLE_WEB_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  '1060678352430-8nn0b116tp82k050gl930vdjj794r6v7.apps.googleusercontent.com';
 
 interface LastAccount {
   name: string;

@@ -14,8 +14,12 @@ export const expoSecureStorage = {
   },
 }
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co'
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key'
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  'https://drzqsptxeqsgnkythenv.supabase.co'
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyenFzcHR4ZXFzZ25reXRoZW52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1MzIzMDAsImV4cCI6MjA4ODEwODMwMH0.0R1EN2z5RBT_2iWUFYZpLs8oauvM_arf_CNzxj0aSts'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
