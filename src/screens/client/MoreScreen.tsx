@@ -102,7 +102,7 @@ export default function MoreScreen() {
     {
       name: 'Request Buy',
       icon: ShoppingBag,
-      desc: 'Shopee procurement',
+      desc: 'Shopee requests',
       action: () => navigation.navigate('RequestBuy'),
     },
     {
@@ -165,7 +165,7 @@ export default function MoreScreen() {
     {
       name: 'Notifications',
       icon: Bell,
-      desc: 'Manage push statements & alerts',
+      desc: 'Manage notifications & alerts',
       action: () => navigation.navigate('Notifications'),
     },
   ];

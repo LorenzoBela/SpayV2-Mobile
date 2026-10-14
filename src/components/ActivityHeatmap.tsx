@@ -690,7 +690,7 @@ export default function ActivityHeatmap({
                         </View>
                       </View>
                       <View style={s.summaryRow}>
-                        <Text style={[s.summaryRowLabel, { color: t.textSecondary }]}>Total Volume</Text>
+                        <Text style={[s.summaryRowLabel, { color: t.textSecondary }]}>Total Amount</Text>
                         <Text style={[s.summaryRowValue, { color: t.textPrimary }]}>
                           {formatCurrency(selectedDayDetails.orderTotal + selectedDayDetails.paymentTotal)}
                         </Text>
@@ -707,7 +707,7 @@ export default function ActivityHeatmap({
                       <View style={s.summaryRow}>
                         <View style={s.summaryRowLabelIcon}>
                           <CreditCard size={12} color="#10b981" />
-                          <Text style={[s.summaryRowLabel, { color: t.textSecondary }]}>Payments Settled</Text>
+                          <Text style={[s.summaryRowLabel, { color: t.textSecondary }]}>Payments Made</Text>
                         </View>
                         <Text style={[s.summaryRowValue, { color: '#059669' }]}>
                           {formatCurrency(selectedDayDetails.paymentTotal)}
@@ -715,7 +715,7 @@ export default function ActivityHeatmap({
                       </View>
                       {/* Activity Intensity */}
                       <View style={[s.summaryRow, { borderBottomWidth: 0 }]}>
-                        <Text style={[s.summaryRowLabel, { color: t.textSecondary }]}>Activity Intensity</Text>
+                        <Text style={[s.summaryRowLabel, { color: t.textSecondary }]}>Activity Level</Text>
                         <View style={s.intensityRow}>
                           {[0, 1, 2, 3, 4].map(level => (
                             <View
@@ -827,7 +827,7 @@ export default function ActivityHeatmap({
                       ) : (
                         <View style={[s.emptySection, { borderColor: t.cardBorder }]}>
                           <CreditCard size={16} color={t.textMuted} />
-                          <Text style={[s.emptySectionText, { color: t.textMuted }]}>No payments settled.</Text>
+                          <Text style={[s.emptySectionText, { color: t.textMuted }]}>No payments made.</Text>
                         </View>
                       )}
                     </View>

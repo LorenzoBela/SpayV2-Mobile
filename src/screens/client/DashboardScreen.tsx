@@ -1304,7 +1304,7 @@ export default function DashboardScreen() {
         {isDemo && (
           <View style={styles.demoBanner}>
             <Sparkles size={14} color="#d97706" />
-            <Text style={styles.demoBannerText}>Interactive Demo Mode Activated</Text>
+            <Text style={styles.demoBannerText}>Demo Mode Active</Text>
           </View>
         )}
 
@@ -1342,7 +1342,7 @@ export default function DashboardScreen() {
                   {nextMonthlyPayment ? (
                     <>Due {formatRelativeDate(nextMonthlyPayment.dueDate)} • {formatCurrency(nextMonthlyPayment.totalAmount)}</>
                   ) : (
-                    'No outstanding payments scheduled'
+                    'No payments due'
                   )}
                 </Text>
               </View>
@@ -1400,7 +1400,7 @@ export default function DashboardScreen() {
                   ? 'All Payments Caught Up'
                   : timeLeft.isOverdue
                   ? 'YOUR BILL IS OVERDUE'
-                  : 'Time Remaining to Settle Your Bill'}
+                  : 'Time left to pay'}
               </Text>
             </View>
           </View>
@@ -1413,7 +1413,7 @@ export default function DashboardScreen() {
                 <>
                   <Text style={[styles.amountDueValue, { color: t.textPrimary }]}>{formatCurrency(nextMonthlyPayment.totalAmount)}</Text>
                   <Text style={[styles.amountDueDesc, { color: t.textSecondary }]}>
-                    Combined bill from {nextMonthlyPayment.paymentCount} active installment{nextMonthlyPayment.paymentCount > 1 ? 's' : ''}.
+                    Total for {nextMonthlyPayment.paymentCount} active installment{nextMonthlyPayment.paymentCount > 1 ? 's' : ''}.
                   </Text>
                   {nextMonthlyPayment.payments.some((p: any) => p.isShared) && (
                      <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center' }}>
@@ -1425,7 +1425,7 @@ export default function DashboardScreen() {
               ) : (
                 <>
                   <Text style={[styles.amountDueValue, { color: '#10b981' }]}>{formatCurrency(0)}</Text>
-                  <Text style={[styles.amountDueDesc, { color: t.textSecondary }]}>All accounts caught up. Excellent standing!</Text>
+                  <Text style={[styles.amountDueDesc, { color: t.textSecondary }]}>You&apos;re all caught up.</Text>
                 </>
               )}
             </View>
@@ -1442,7 +1442,7 @@ export default function DashboardScreen() {
                 <View style={styles.paymentLockedNotice}>
                   <Clock size={12} color={t.textSecondary} />
                   <Text style={[styles.paymentLockedNoticeText, { color: t.textSecondary }]}>
-                    Payment opens after current dues are settled
+                    Available after current dues are paid
                   </Text>
                 </View>
               )
@@ -1546,7 +1546,7 @@ export default function DashboardScreen() {
               </View>
               <View>
                 <Text style={styles.obsidianTitle}>Global Shared Limit</Text>
-                <Text style={styles.obsidianSubtitle}>System-wide credit limit exposure</Text>
+                <Text style={styles.obsidianSubtitle}>Total shared credit limit across accounts</Text>
               </View>
             </View>
           </View>
@@ -1581,7 +1581,7 @@ export default function DashboardScreen() {
               </View>
               <View>
                 <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Financial Wellness</Text>
-                <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>Real-time credibility rating</Text>
+                <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>Payment reliability rating</Text>
               </View>
             </View>
             <View style={[styles.badge, { borderColor: wellnessColor + '40', backgroundColor: wellnessColor + '10' }]}>
@@ -1674,7 +1674,7 @@ export default function DashboardScreen() {
               </View>
               <View>
                 <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Category Weights</Text>
-                <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>Total credit weight by item category</Text>
+                <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>Spending by category</Text>
               </View>
             </View>
           </View>
@@ -1716,7 +1716,7 @@ export default function DashboardScreen() {
           <View style={styles.ordersHeaderRow}>
             <View>
               <Text style={[styles.cardTitle, { color: t.textPrimary }]}>Recent Purchase Orders</Text>
-              <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>Your most recent scheduled plans</Text>
+              <Text style={[styles.cardSubtitle, { color: t.textSecondary }]}>Your recent installment orders</Text>
             </View>
             <TouchableOpacity
               style={styles.viewAllBtn}
@@ -1835,8 +1835,8 @@ export default function DashboardScreen() {
           ]}
         >
           <PremiumLoader
-            title="Customer Portal"
-            subtitle="Syncing credit limits, ledger history, and streak metrics..."
+            title="Dashboard"
+            subtitle="Loading your account..."
             error={error}
             onRetry={() => {
               refetchPayments();

@@ -48,8 +48,8 @@ export default function OTAUpdateModal({
       return latest.summary;
     }
     return isApk
-      ? 'A new build is available. Update to get the latest features and improvements.'
-      : 'A newer version has been downloaded. Restart S-Pay now to apply the latest features.';
+      ? 'An update is available. Download to get the latest features and fixes.'
+      : 'An update has been downloaded. Restart S-Pay now to apply it.';
   }, [summary, rawCommit, isApk]);
 
   return (

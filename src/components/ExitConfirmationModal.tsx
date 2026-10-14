@@ -104,7 +104,7 @@ export default function ExitConfirmationModal({
               </Text>
 
               <Text style={[styles.description, { color: c.textSecondary }]}>
-                Are you sure you want to exit the application and close your active dashboard session?
+                Are you sure you want to exit the app?
               </Text>
 
               <View style={styles.buttonContainer}>

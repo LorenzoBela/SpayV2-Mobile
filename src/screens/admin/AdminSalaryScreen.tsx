@@ -478,7 +478,7 @@ export default function AdminSalaryScreen() {
   };
 
   if (loading) {
-    return <PremiumLoader title="Calculating Salary & Cashflow..." subtitle="Preparing payday countdown and tax analytics..." />;
+    return <PremiumLoader title="Loading Salary" subtitle="Preparing salary breakdown..." />;
   }
 
   const tax = salaryData?.taxBreakdown;
@@ -504,8 +504,8 @@ export default function AdminSalaryScreen() {
           <ChevronLeft size={22} color={theme.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerSubtitle}>COMPENSATION & CASHFLOW</Text>
-          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Salary Payday Hub</Text>
+          <Text style={styles.headerSubtitle}>SALARY OVERVIEW</Text>
+          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Salary & Payday</Text>
         </View>
         <View style={styles.headerRightActions}>
           <TouchableOpacity

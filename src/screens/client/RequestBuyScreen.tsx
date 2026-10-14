@@ -139,7 +139,7 @@ export default function RequestBuyScreen({ route }: RequestBuyScreenProps) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Toast.show({
         type: 'success',
-        text1: 'Shopee Link Intercepted!',
+        text1: 'Shopee Link Detected!',
         text2: 'Product link and details pre-filled.',
       });
       if (urlToUse) {
@@ -339,7 +339,7 @@ export default function RequestBuyScreen({ route }: RequestBuyScreenProps) {
             <ArrowLeft size={18} color={t.textPrimary} />
           </TouchableOpacity>
           <View style={styles.webHeaderLeft}>
-            <Text style={styles.webHeaderSubtitle}>S-Pay Procurement</Text>
+            <Text style={styles.webHeaderSubtitle}>Shopee Requests</Text>
             <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Buy Requests</Text>
             <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]} numberOfLines={1}>
               Request Shopee items with flexible installment plans.

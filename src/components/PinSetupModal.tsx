@@ -187,7 +187,7 @@ export function PinSetupModal({ isVisible, onClose, onSuccess }: PinSetupModalPr
             </Text>
             <Text style={styles.subtitle}>
               {step === 1
-                ? 'Choose a 6-digit PIN to secure your hardware vault and transactions.'
+                ? 'Choose a 6-digit PIN to secure your account and confirm payments.'
                 : 'Re-enter your 6-digit PIN to confirm setup.'}
             </Text>
           </View>

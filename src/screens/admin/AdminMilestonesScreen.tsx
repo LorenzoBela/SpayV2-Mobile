@@ -405,8 +405,8 @@ export default function AdminMilestonesScreen() {
           <ChevronLeft color={t.textPrimary} size={24} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={styles.headerSubtitle}>S-Pay Admin Panel</Text>
-          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Global Milestones</Text>
+          <Text style={styles.headerSubtitle}>Admin Overview</Text>
+          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Milestones</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
@@ -439,9 +439,9 @@ export default function AdminMilestonesScreen() {
           <View style={[styles.progressCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.progressHeader}>
               <View>
-                <Text style={[styles.progressTitle, { color: t.textPrimary }]}>System Achievements</Text>
+                <Text style={[styles.progressTitle, { color: t.textPrimary }]}>Milestone Progress</Text>
                 <Text style={[styles.progressSubtitle, { color: t.textSecondary }]}>
-                  {unlockedCount} of {totalCount} Global Milestones Unlocked
+                  {unlockedCount} of {totalCount} Milestones Unlocked
                 </Text>
               </View>
               <View style={[styles.badgeCircle, { backgroundColor: t.accentLight }]}>
@@ -455,7 +455,7 @@ export default function AdminMilestonesScreen() {
 
             <View style={styles.progressFooter}>
               <Text style={[styles.progressPercent, { color: t.accent }]}>{percentage}% Complete</Text>
-              <Text style={[styles.progressRarityText, { color: t.textMuted }]}>Platform milestones dashboard</Text>
+              <Text style={[styles.progressRarityText, { color: t.textMuted }]}>Milestone completion tracking</Text>
             </View>
           </View>
         </View>
@@ -538,7 +538,7 @@ export default function AdminMilestonesScreen() {
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={t.accent} size="large" />
-          <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading global milestones...</Text>
+          <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading milestones...</Text>
         </View>
       ) : paginatedMilestones.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -807,7 +807,7 @@ export default function AdminMilestonesScreen() {
                       </Text>
                       <TouchableOpacity style={[styles.celebrateButton, { backgroundColor: c.accent }]} onPress={triggerCelebrateAction}>
                         <Sparkles color="#ffffff" size={16} />
-                        <Text style={styles.celebrateButtonText}>Celebrate Unlock!</Text>
+                        <Text style={styles.celebrateButtonText}>Celebrate!</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (

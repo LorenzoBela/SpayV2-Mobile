@@ -255,7 +255,7 @@ export default function ChangelogScreen() {
 
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle}>Release History</Text>
-          <Text style={styles.headerSubtitle}>S-Pay Mobile Timeline</Text>
+          <Text style={styles.headerSubtitle}>Updates & improvements</Text>
         </View>
 
         <TouchableOpacity
@@ -358,12 +358,12 @@ export default function ChangelogScreen() {
         {isLoading && !isRefreshing ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#ee4d2d" />
-            <Text style={styles.loadingText}>Loading release timeline...</Text>
+            <Text style={styles.loadingText}>Loading update history...</Text>
           </View>
         ) : releases.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Layers size={40} color="#334155" />
-            <Text style={styles.emptyTitle}>No matching releases found</Text>
+            <Text style={styles.emptyTitle}>No updates found</Text>
             <Text style={styles.emptySubtitle}>
               Try adjusting your search query or filter category.
             </Text>

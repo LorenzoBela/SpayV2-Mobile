@@ -679,7 +679,7 @@ export default function CalendarScreen() {
           <Text style={styles.brandSub}>S-Pay Client</Text>
           <Text style={[styles.brandTitle, { color: t.textPrimary }]}>Calendar & Schedules</Text>
           <Text style={[styles.brandDesc, { color: t.textSecondary }]}>
-            Track real installment due dates, repayment status, upcoming cycles, and reschedule requests.
+            Track installment due dates, repayment status, and upcoming payment cycles.
           </Text>
         </View>
 
@@ -745,7 +745,7 @@ export default function CalendarScreen() {
               </View>
             </View>
             <Text style={[styles.statValue, { color: t.textPrimary }]}>{stats.completionRate}%</Text>
-            <Text style={styles.statDesc}>{formatCurrency(stats.totalPaid)} collected</Text>
+            <Text style={styles.statDesc}>{formatCurrency(stats.totalPaid)} paid</Text>
           </View>
         </View>
 

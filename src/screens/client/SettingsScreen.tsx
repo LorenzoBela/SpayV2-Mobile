@@ -680,7 +680,7 @@ export default function SettingsScreen() {
           <Text style={[styles.themeTitle, { color: t.textPrimary }]}>Display Theme</Text>
         </View>
         <Text style={[styles.themeDesc, { color: t.textSecondary }]}>
-          Choose a default visual layout for your client console navigation.
+          Choose a color theme for the app.
         </Text>
         <View style={styles.themeButtonGroup}>
           {([
@@ -942,7 +942,7 @@ export default function SettingsScreen() {
             <Text style={[styles.tabHeaderTitle, { color: t.textPrimary }]}>Export Account Data</Text>
           </View>
           <Text style={[styles.securityIntroText, { color: t.textSecondary, marginTop: 4 }]}>
-            Download a self-service copy of your personal profile, orders, payments, budget categories, and reschedule requests.
+            Download a copy of your personal profile, orders, payments, and budget categories.
           </Text>
 
           <View style={styles.exportBtnRow}>
@@ -1204,7 +1204,7 @@ export default function SettingsScreen() {
               <Text style={styles.subtitleText}>S-PAY CLIENT</Text>
               <Text style={[styles.mainTitleText, { color: t.textPrimary }]}>Settings</Text>
               <Text style={[styles.descText, { color: t.textSecondary }]}>
-                Configure profile details, payment notifications, display preferences, and session state.
+                Manage profile details, notifications, display preferences, and account security.
               </Text>
             </View>
 

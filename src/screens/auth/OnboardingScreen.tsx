@@ -39,7 +39,7 @@ const SLIDES = [
     accentColor: '#ee4d2d',
     title: 'Smart Expense &\nInstallment Tracking',
     subtitle:
-      'Seamlessly manage your monthly spending, credit card balances, and multi-month installment schedules in one unified dark dashboard.',
+      'Track your monthly spending, credit cards, and installment schedules in one place.',
     badge: 'AUTOMATED TRACKING',
   },
   {
@@ -48,17 +48,17 @@ const SLIDES = [
     accentColor: '#3b82f6',
     title: 'NootAI Financial\nAssistant Preview',
     subtitle:
-      'Get personalized budget recommendations, anomaly alerts, and instant breakdown of your cash flows powered by AI.',
+      'Get budget recommendations, unusual spending alerts, and cash flow breakdowns.',
     badge: 'AI FINANCIAL ADVISOR',
   },
   {
     id: 'slide-3',
     icon: ShieldCheck,
     accentColor: '#10b981',
-    title: 'Vault Security &\nHardware Encryption',
+    title: 'Biometric Security &\nPIN Protection',
     subtitle:
-      'Your financial records are protected by hardware biometrics, SHA-256 PIN hashing, and client-side encrypted storage.',
-    badge: 'BANK-GRADE VAULT',
+      'Your records are protected by device biometrics, secure PIN hashing, and encrypted storage.',
+    badge: 'SECURE STORAGE',
   },
 ];
 

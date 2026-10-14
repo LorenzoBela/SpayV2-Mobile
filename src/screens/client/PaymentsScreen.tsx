@@ -719,8 +719,8 @@ export default function PaymentsScreen() {
       setSelectedPaymentIds([]);
       setSelectedPayDetails([]);
       PremiumAlert.alert(
-        'Payment Authenticated',
-        'Cash payment transaction details authenticated successfully. Please present cash payment to administrator to verify.'
+        'Payment Recorded',
+        'Payment details confirmed. Hand the cash to the admin to complete.'
       );
       void refetch();
     } else if (action === 'RESCHEDULE') {
@@ -740,7 +740,7 @@ export default function PaymentsScreen() {
         setRescheduleReason('');
         PremiumAlert.alert(
           'Reschedule Submitted',
-          'Your installment reschedule request has been authenticated and submitted for admin approval.'
+          'Your reschedule request has been submitted for admin approval.'
         );
         void refetch();
       } catch (err: any) {
@@ -824,7 +824,7 @@ export default function PaymentsScreen() {
           <Text style={styles.webHeaderSubtitle}>S-Pay Ledger</Text>
           <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Timeline & Payments</Text>
           <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
-            Track custom monthly due cycles, evaluate financial wellness trends, and plan installments.
+            Track monthly due dates, check payment trends, and manage installments.
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -879,7 +879,7 @@ export default function PaymentsScreen() {
             fontFamily: 'Jakarta-Bold',
             textAlign: 'center'
           }}>
-            Offline Mode: Read-only access to cached ledger.
+            Offline: Showing saved payments.
           </Text>
         </View>
       )}
@@ -906,7 +906,7 @@ export default function PaymentsScreen() {
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <Text style={[styles.countdownSubtitle, { color: t.textSecondary, flexShrink: 1 }]} numberOfLines={1}>
-                        BILLING CYCLE OVERVIEW
+                        BILLING OVERVIEW
                       </Text>
                       <TouchableOpacity
                         onPress={() => setIsGuideModalOpen(true)}
@@ -994,7 +994,7 @@ export default function PaymentsScreen() {
                     <View style={styles.paymentLockedNotice}>
                       <Clock size={12} color={t.textSecondary} />
                       <Text style={[styles.paymentLockedNoticeText, { color: t.textSecondary }]}>
-                        Payment opens after current dues are settled
+                        Available after current dues are paid
                       </Text>
                     </View>
                   )}
@@ -1751,7 +1751,7 @@ export default function PaymentsScreen() {
               <View>
                 <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Pay Installment Dues</Text>
                 <Text style={[styles.modalSubtitle, { color: t.textSecondary }]}>
-                  Submit cash payment for selected installments.
+                  Pay selected installments in cash.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsPaymentModalOpen(false)}>
@@ -1766,7 +1766,7 @@ export default function PaymentsScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.warningBoxTitle}>Cash Payment Only</Text>
                   <Text style={styles.warningBoxDesc}>
-                    S-Pay uses Cash payment only. GCash and online payments are not accepted in the current S-Pay flow. Please pay your installment dues in cash directly to the admin in person.
+                    S-Pay currently accepts cash only. Please pay your installments directly to the admin in person.
                   </Text>
                 </View>
               </View>
@@ -1798,9 +1798,9 @@ export default function PaymentsScreen() {
                   <UserCheck size={16} color={t.textSecondary} />
                   <Text style={[styles.instructionHeader, { color: t.textPrimary }]}>Instructions</Text>
                 </View>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>1. Withdraw or prepare the exact cash amount for all selected installments.</Text>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>2. Meet the administrator in person.</Text>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>3. Hand over the cash payment to the administrator, and they will verify and mark it paid instantly.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>1. Prepare the exact cash amount for selected installments.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>2. Meet with the administrator in person.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>3. Hand the cash to the administrator to mark it as paid.</Text>
               </View>
             </ScrollView>
 
@@ -1843,7 +1843,7 @@ export default function PaymentsScreen() {
               <View>
                 <Text style={[styles.modalTitle, { color: t.textPrimary }]}>{selectedMonthGroup?.monthName}</Text>
                 <Text style={[styles.modalSubtitle, { color: t.textSecondary }]}>
-                  All installment amortizations belonging to this billing cycle.
+                  All installments due in this cycle.
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsMonthDetailModalOpen(false)}>
@@ -2038,7 +2038,7 @@ export default function PaymentsScreen() {
         description={
           pendingBiometricAction === 'RESCHEDULE'
             ? `Please verify your identity with biometrics or password to submit a reschedule request for ${reschedulePaymentItem?.itemName || 'this installment'}.`
-            : `Please verify your identity with biometrics or password to confirm cash payment transaction.`
+            : `Please verify your identity to confirm this cash payment.`
         }
       />
 

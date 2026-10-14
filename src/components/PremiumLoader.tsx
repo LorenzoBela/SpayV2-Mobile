@@ -36,23 +36,23 @@ const AD_SLIDES: AdSlideItem[] = [
   },
   {
     id: 2,
-    tag: 'HARDWARE ALERTS',
+    tag: 'REMINDERS',
     title: 'Smart Due-Date Reminders',
-    desc: 'Receive direct FCM system push alerts prior to billing dates to protect your credit.',
+    desc: 'Receive push alerts before billing dates so you never miss a payment.',
     icon: BellRing,
   },
   {
     id: 3,
-    tag: 'OFFLINE ARCHITECTURE',
+    tag: 'OFFLINE ACCESS',
     title: 'Offline-Ready Ledgers',
-    desc: 'Your payment schedules and balances are cached locally for zero-signal reliability.',
+    desc: 'Your payment schedules and balances are saved locally so you can view them anytime.',
     icon: ShieldCheck,
   },
   {
     id: 4,
-    tag: 'AI FINANCIAL ASSISTANT',
+    tag: 'FINANCIAL ASSISTANT',
     title: 'NootAI Smart Analytics',
-    desc: 'Get automated budget analysis, repayment forecasts, and credit extension insights.',
+    desc: 'Get budget tips, payment forecasts, and personalized financial insights.',
     icon: Sparkles,
   },
 ];
@@ -69,8 +69,8 @@ interface PremiumLoaderProps {
 }
 
 export default function PremiumLoader({
-  title: titleProp = 'Initializing Workspace',
-  subtitle = 'Syncing account configurations...',
+  title: titleProp = 'Loading S-Pay',
+  subtitle = 'Loading your account...',
   text,
   progress,
   error,
@@ -339,7 +339,7 @@ export default function PremiumLoader({
               style={styles.retryButton}
             >
               <RefreshCw size={14} color="#ffffff" strokeWidth={2.2} />
-              <Text style={font('retryText')}>Retry Connection</Text>
+              <Text style={font('retryText')}>Retry</Text>
             </TouchableOpacity>
           )
         ) : (

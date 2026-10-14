@@ -262,7 +262,7 @@ export default function AdminNotificationsScreen() {
   };
 
   const handleClearAll = () => {
-    PremiumAlert.alert('Clear History', 'Are you sure you want to delete all audit logs in this database partition?', [
+    PremiumAlert.alert('Clear History', 'Are you sure you want to delete all notification logs?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear All',
@@ -271,7 +271,7 @@ export default function AdminNotificationsScreen() {
           try {
             const res = await clearNotifications(undefined, true);
             if (res.success !== false) {
-              PremiumAlert.alert('Cleared', 'All system log history cleared.');
+              PremiumAlert.alert('Cleared', 'All notifications cleared.');
               queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
               void refreshUnreadCount();
             } else {
@@ -289,7 +289,7 @@ export default function AdminNotificationsScreen() {
     try {
       const res = await clearNotifications(id, false);
       if (res.success !== false) {
-        PremiumAlert.alert('Deleted', 'System log item removed.');
+        PremiumAlert.alert('Deleted', 'Notification removed.');
         queryClient.invalidateQueries({ queryKey: ['admin-notifications'] });
         void refreshUnreadCount();
       } else {
@@ -584,12 +584,12 @@ export default function AdminNotificationsScreen() {
           {loading ? (
             <View style={styles.loadingWrapper}>
               <ActivityIndicator size="large" color={t.accent} />
-              <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading system audit logs...</Text>
+              <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading notifications...</Text>
             </View>
           ) : paginatedItems.length === 0 ? (
             <View style={styles.emptyWrapper}>
               <Bell size={32} color={t.textMuted} />
-              <Text style={[styles.emptyText, { color: t.textSecondary }]}>No audit log notifications found.</Text>
+              <Text style={[styles.emptyText, { color: t.textSecondary }]}>No notifications found.</Text>
             </View>
           ) : (
             <View>

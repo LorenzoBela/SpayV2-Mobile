@@ -118,9 +118,9 @@ export function AdminImpersonationModal({
               <ShieldAlert size={20} color="#f59e0b" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.headerSubtitle}>ADMIN SECURITY CONTROL</Text>
+              <Text style={styles.headerSubtitle}>ADMIN TOOLS</Text>
               <Text style={[styles.headerTitle, { color: t.textPrimary }]} numberOfLines={1}>
-                Impersonate Client User
+                View as Client
               </Text>
             </View>
           </View>

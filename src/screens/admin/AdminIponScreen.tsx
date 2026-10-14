@@ -1015,7 +1015,7 @@ export default function AdminIponScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={t.accent} />
             <Text style={[styles.loadingText, { color: t.textSecondary }]}>
-              Loading savings telemetry...
+              Loading savings data...
             </Text>
           </View>
         ) : goals.length === 0 ? (
@@ -1023,7 +1023,7 @@ export default function AdminIponScreen() {
             <PiggyBank size={44} color={t.textMuted} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>No Ipon Goals Created Yet</Text>
             <Text style={[styles.emptyDesc, { color: t.textSecondary }]}>
-              Track savings targets with 1:1 gamified customer visuals synced to cash on hand.
+              Track customer savings targets synced to cash on hand.
             </Text>
             <TouchableOpacity
               onPress={openCreateGoal}
@@ -1493,7 +1493,7 @@ export default function AdminIponScreen() {
                   Deposit Cash to Ipon Goal
                 </Text>
                 <Text style={[styles.modalSubtitle, { color: t.textMuted }]}>
-                  Direct cash deposit to gamified target
+                  Direct cash deposit to savings goal
                 </Text>
               </View>
               <TouchableOpacity

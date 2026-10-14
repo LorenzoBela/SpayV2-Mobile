@@ -288,7 +288,7 @@ export default function ProfileScreen() {
               <Text style={styles.webHeaderSubtitle}>S-Pay Profile</Text>
               <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Customer Settings</Text>
               <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
-                Manage your personal account credentials, mobile numbers, and biometrics secure login.
+                Manage your account details, phone number, and biometric login.
               </Text>
             </View>
             <View style={styles.webHeaderRight}>

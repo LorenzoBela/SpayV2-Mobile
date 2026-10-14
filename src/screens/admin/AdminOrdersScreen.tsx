@@ -737,8 +737,8 @@ export default function AdminOrdersScreen() {
   if (loading && !ordersData) {
     return (
       <PremiumLoader
-        title="Admin Control Center"
-        subtitle="Loading order directories and transaction logs..."
+        title="Orders"
+        subtitle="Loading orders and records..."
         error={error}
         onRetry={() => refetch()}
       />
@@ -750,7 +750,7 @@ export default function AdminOrdersScreen() {
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
 
       {/* Header */}
-      <AdminHeader title="Client Orders" subtitle="Operations Center" />
+      <AdminHeader title="Client Orders" subtitle="Orders Overview" />
 
       {/* Search Box */}
       <View style={[styles.searchSection, { flexDirection: 'row', gap: 10, alignItems: 'center' }]}>
@@ -1661,7 +1661,7 @@ export default function AdminOrdersScreen() {
                   return (
                     <View style={[styles.exposureContainer, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
                       <View style={[styles.exposureHeader, { borderBottomColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
-                        <Text style={[styles.exposureTitle, { color: t.textPrimary }]}>Shared Credit Pool Exposure</Text>
+                        <Text style={[styles.exposureTitle, { color: t.textPrimary }]}>Shared Credit Pool Limit</Text>
                         <View style={[styles.poolBadge, { backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9' }]}>
                           <Text style={[styles.poolBadgeText, { color: t.textSecondary }]}>
                             Limit: {formatCurrency(metrics.creditLimit)}
@@ -1726,7 +1726,7 @@ export default function AdminOrdersScreen() {
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.alertTitleText, { color: isDarkMode ? '#fca5a5' : '#991b1b' }]}>Shared Credit Limit Exceeded</Text>
                             <Text style={[styles.alertDescriptionText, { color: isDarkMode ? '#fecaca' : '#7f1d1d' }]}>
-                              This scheduling action will exceed the global shared credit pool limit by {formatCurrency(metrics.overLimitAmount)}.
+                              This order will exceed the shared credit limit by {formatCurrency(metrics.overLimitAmount)}.
                             </Text>
                           </View>
                         </View>
@@ -1738,7 +1738,7 @@ export default function AdminOrdersScreen() {
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.alertTitleText, { color: isDarkMode ? '#fde047' : '#92400e' }]}>High Pool Limit Utilization</Text>
                             <Text style={[styles.alertDescriptionText, { color: isDarkMode ? '#fef08a' : '#78350f' }]}>
-                              This scheduling action will consume {metrics.projectedUtilPercent.toFixed(0)}% of the global credit pool capacity.
+                              This order will use {metrics.projectedUtilPercent.toFixed(0)}% of the total shared credit limit.
                             </Text>
                           </View>
                         </View>

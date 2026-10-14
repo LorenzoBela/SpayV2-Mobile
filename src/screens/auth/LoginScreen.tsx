@@ -405,14 +405,14 @@ export default function LoginScreen() {
         {/* Welcome Text Section */}
         <Animated.View style={[styles.welcomeSection, welcomeAnim.style]}>
           <Text style={styles.welcomeTitle}>
-            {lastAccount ? 'Welcome Back' : 'Authentication'}
+            {lastAccount ? 'Welcome Back' : 'Sign In'}
           </Text>
           <Text style={styles.welcomeSubtitle}>
             {lastAccount
               ? biometricAvailable
                 ? 'Unlock your saved session with device biometrics.'
-                : 'Tap below to resume your secure session.'
-              : 'Initialize a secure session to manage installments.'}
+                : 'Tap your account to continue.'
+              : 'Sign in to manage your installments.'}
           </Text>
         </Animated.View>
 
@@ -488,7 +488,7 @@ export default function LoginScreen() {
           <View style={styles.pinModal}>
             <Text style={styles.pinModalTitle}>Use Fallback PIN</Text>
             <Text style={styles.pinModalBody}>
-              Enter your 6-digit device PIN to unlock your saved Google sign-in.
+              Enter your 6-digit PIN to sign in.
             </Text>
             <TextInput
               value={fallbackPin}

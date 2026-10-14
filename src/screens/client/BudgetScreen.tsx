@@ -547,7 +547,7 @@ export default function BudgetScreen() {
       });
 
       if (error) throw error;
-      PremiumAlert.alert('Success', `Savings goal "${goalName}" established.`);
+      PremiumAlert.alert('Success', `Savings goal "${goalName}" created.`);
       setGoalModalVisible(false);
       setGoalName('');
       setGoalTarget('');
@@ -755,10 +755,10 @@ export default function BudgetScreen() {
                 <ArrowLeft size={20} color={t.textPrimary} />
               </TouchableOpacity>
               <View style={styles.webHeaderLeft}>
-                <Text style={styles.webHeaderSubtitle}>S-Pay Thresholds</Text>
+                <Text style={styles.webHeaderSubtitle}>S-Pay Limits</Text>
                 <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Budget Limits</Text>
                 <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]} numberOfLines={1}>
-                  Configure credit caps and track savings checkpoints.
+                  Set category limits and track savings goals.
                 </Text>
               </View>
             </View>
@@ -798,14 +798,14 @@ export default function BudgetScreen() {
                   <Text style={[styles.limitValue, { color: t.textPrimary }]}>₱{globalLimit.toLocaleString('en-US')}</Text>
                 </View>
                 <View style={[styles.limitCell, { borderLeftWidth: 1, borderLeftColor: t.divider, paddingLeft: 16 }]}>
-                  <Text style={[styles.limitLabel, { color: t.textMuted }]}>GLOBAL EXPOSURE</Text>
+                  <Text style={[styles.limitLabel, { color: t.textMuted }]}>TOTAL USED</Text>
                   <Text style={[styles.limitValue, { color: t.textPrimary }]}>₱{globalExposure.toLocaleString('en-US')}</Text>
                 </View>
               </View>
 
               <View style={styles.progressHeader}>
                 <Text style={[styles.progressTitle, { color: t.textPrimary }]}>
-                  {globalPercentage >= 80 ? 'Approaching shared limit' : 'Within budget limits'}
+                  {globalPercentage >= 80 ? 'Near shared limit' : 'Within budget limits'}
                 </Text>
                 <Text style={[styles.progressPercent, { color: t.textSecondary }]}>{Math.round(globalPercentage)}% used</Text>
               </View>
@@ -823,7 +823,7 @@ export default function BudgetScreen() {
 
               <View style={styles.limitsFooter}>
                 <Text style={[styles.footerText, { color: t.textMuted }]}>
-                  Remaining Capacity: <Text style={{ color: remainingCapacity >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>₱{remainingCapacity.toLocaleString('en-US')}</Text>
+                  Remaining Credit: <Text style={{ color: remainingCapacity >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>₱{remainingCapacity.toLocaleString('en-US')}</Text>
                 </Text>
               </View>
             </View>
@@ -891,7 +891,7 @@ export default function BudgetScreen() {
                       <Text style={[styles.spentValue, { color: t.textPrimary }]}>₱{item.currentSpent.toLocaleString('en-US')}</Text>
                     </View>
                     <View style={styles.rightAlign}>
-                      <Text style={[styles.footerLabel, { color: t.textMuted }]}>Monthly Guardrail</Text>
+                      <Text style={[styles.footerLabel, { color: t.textMuted }]}>Monthly Limit</Text>
                       <Text style={[styles.categoryLimitValue, { color: t.textSecondary }]}>₱{item.monthlyLimit.toLocaleString('en-US')}</Text>
                     </View>
                   </View>

@@ -195,7 +195,7 @@ export default function AdminMoreScreen() {
   // Section 4: System & Configuration
   const systemItems: MenuItem[] = [
     {
-      name: 'System Health & Telemetry',
+      name: 'System Health & Performance',
       icon: Activity,
       desc: 'Live latency, database status & diagnostics',
       action: () => navigation.navigate('AdminSystemHealth'),
@@ -342,7 +342,7 @@ export default function AdminMoreScreen() {
         {renderGroupedSection('Operations & Directory', 'MANAGEMENT & COMMS', operationItems)}
 
         {/* 4. SYSTEM & SECURITY */}
-        {renderGroupedSection('System & Observability', 'CONFIG & TELEMETRY', systemItems)}
+        {renderGroupedSection('System & Observability', 'CONFIG & SYSTEM HEALTH', systemItems)}
 
         {/* 5. SESSION & WORKSPACE */}
         <View style={styles.sectionWrapper}>

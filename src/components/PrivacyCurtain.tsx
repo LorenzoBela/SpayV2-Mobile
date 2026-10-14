@@ -56,7 +56,7 @@ export default function PrivacyCurtain() {
         <Text style={styles.title}>S-Pay</Text>
         <View style={styles.shieldRow}>
           <ShieldCheck size={14} color="#22c55e" strokeWidth={2} />
-          <Text style={styles.shieldText}>Financial Privacy Shield</Text>
+          <Text style={styles.shieldText}>Privacy Protected</Text>
         </View>
       </View>
     </Animated.View>

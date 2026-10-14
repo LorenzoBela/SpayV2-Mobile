@@ -367,7 +367,7 @@ export default function AdminSystemHealthScreen() {
               </View>
             )}
           </View>
-          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>System Health & Telemetry</Text>
+          <Text style={[styles.headerTitle, { color: t.textPrimary }]}>System Health & Performance</Text>
         </View>
 
         {/* Header Action Controls */}
@@ -556,7 +556,7 @@ export default function AdminSystemHealthScreen() {
         <View style={[styles.heatmapCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           <View style={styles.heatmapHeader}>
             <Text style={[styles.heatmapTitle, { color: t.textMuted }]}>
-              14-DAY INFRASTRUCTURE SLA MATRIX
+              14-DAY UPTIME HISTORY
             </Text>
             <Text style={[styles.heatmapUptime, { color: t.emerald }]}>99.99% Operational</Text>
           </View>
@@ -749,7 +749,7 @@ export default function AdminSystemHealthScreen() {
           <View style={styles.chartHeader}>
             <View>
               <Text style={[styles.chartTitle, { color: t.textPrimary }]}>
-                Ping Latency Telemetry
+                Ping Latency Monitor
               </Text>
               <Text style={[styles.chartSubtitle, { color: t.textMuted }]}>
                 Continuous multi-service ping history (ms)
@@ -828,7 +828,7 @@ export default function AdminSystemHealthScreen() {
               <View style={styles.chartEmpty}>
                 <ActivityIndicator size="small" color={t.accent} />
                 <Text style={[styles.chartEmptyText, { color: t.textMuted }]}>
-                  Recording ping telemetry...
+                  Measuring latency...
                 </Text>
               </View>
             )}
@@ -930,7 +930,7 @@ export default function AdminSystemHealthScreen() {
         {/* Runtime Environment Specs Bento */}
         <View style={[styles.runtimeCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           <Text style={[styles.runtimeTitle, { color: t.textMuted }]}>
-            RUNTIME ENVIRONMENT TELEMETRY
+            RUNTIME ENVIRONMENT
           </Text>
           <View style={styles.runtimeGrid}>
             <View style={styles.runtimeRow}>
@@ -1103,7 +1103,7 @@ export default function AdminSystemHealthScreen() {
             <View style={styles.logsEmpty}>
               <CheckCircle2 size={32} color={t.emerald} />
               <Text style={[styles.logsEmptyText, { color: t.textSecondary }]}>
-                No log entries matching criteria.
+                No log entries match filters.
               </Text>
             </View>
           ) : (
@@ -1255,7 +1255,7 @@ export default function AdminSystemHealthScreen() {
           <View style={[styles.pollModalBox, { backgroundColor: t.modalBg, borderColor: t.cardBorder }]}>
             <View style={[styles.modalHeader, { borderBottomColor: t.divider }]}>
               <Text style={[styles.modalTitle, { color: t.textPrimary }]}>
-                Telemetry Refresh Interval
+                Refresh Interval
               </Text>
               <TouchableOpacity
                 onPress={() => setShowPollModal(false)}

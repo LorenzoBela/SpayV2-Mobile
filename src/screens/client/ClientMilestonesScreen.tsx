@@ -445,7 +445,7 @@ export default function ClientMilestonesScreen() {
           <View style={[styles.progressCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.progressHeader}>
               <View>
-                <Text style={[styles.progressTitle, { color: t.textPrimary }]}>Your Achievement Journey</Text>
+                <Text style={[styles.progressTitle, { color: t.textPrimary }]}>Achievement Progress</Text>
                 <Text style={[styles.progressSubtitle, { color: t.textSecondary }]}>
                   {unlockedCount} of {totalCount} Milestones Unlocked
                 </Text>
@@ -544,7 +544,7 @@ export default function ClientMilestonesScreen() {
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={t.accent} size="large" />
-          <Text style={[styles.loadingText, { color: t.textSecondary }]}>Recalculating milestones...</Text>
+          <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading milestones...</Text>
         </View>
       ) : paginatedMilestones.length === 0 ? (
         <View style={styles.emptyContainer}>

@@ -117,7 +117,7 @@ export default function AppUpdateGate() {
                 <RefreshCw size={16} color="#ffffff" />
               )}
               <Text style={styles.bannerText}>
-                {updateType === 'apk' ? 'APK update available' : 'OTA update ready'} — Tap to apply
+                {updateType === 'apk' ? 'App update available' : 'Update ready'} — Tap to install
               </Text>
             </View>
             <View style={styles.bannerPill}>

@@ -51,8 +51,8 @@ const ReAuthKeypadButton: React.FC<{
 
 export function BiometricReAuthModal({
   visible,
-  title = 'Security Re-Authentication',
-  description = 'Please verify your identity to proceed with this sensitive action.',
+  title = 'Security Check',
+  description = 'Verify your identity to continue.',
   onDismiss,
   onSuccess,
 }: BiometricReAuthModalProps) {

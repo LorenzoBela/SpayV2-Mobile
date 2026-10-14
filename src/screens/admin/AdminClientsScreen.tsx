@@ -400,8 +400,8 @@ export default function AdminClientsScreen() {
   // Biometric Re-Auth State
   const [isReAuthOpen, setIsReAuthOpen] = useState(false);
   const [reAuthAction, setReAuthAction] = useState<(() => void) | null>(null);
-  const [reAuthTitle, setReAuthTitle] = useState('Security Re-Authentication');
-  const [reAuthDesc, setReAuthDesc] = useState('Please verify your identity with biometrics or current password to confirm this action.');
+  const [reAuthTitle, setReAuthTitle] = useState('Security Check');
+  const [reAuthDesc, setReAuthDesc] = useState('Please verify your identity with biometrics or PIN to confirm this action.');
 
   const triggerReAuth = useCallback((action: () => void, title?: string, description?: string) => {
     setReAuthAction(() => action);
@@ -729,8 +729,8 @@ export default function AdminClientsScreen() {
   if (loading && !clientsData) {
     return (
       <PremiumLoader
-        title="Admin Control Center"
-        subtitle="Loading client profiles and database structures..."
+        title="Clients"
+        subtitle="Loading client profiles..."
         error={error}
         onRetry={() => refetch()}
       />
@@ -742,7 +742,7 @@ export default function AdminClientsScreen() {
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
 
       {/* Header */}
-      <AdminHeader title="Clients Directory" subtitle="Operations Center" />
+      <AdminHeader title="Clients Directory" subtitle="Admin View" />
 
       {/* Search Bar */}
       <View style={styles.searchSection}>
@@ -1027,8 +1027,8 @@ export default function AdminClientsScreen() {
               <ActivityHeatmap
                 allOrders={heatmapOrders}
                 allPayments={heatmapPayments}
-                title="Repayment Activity Heatmap"
-                subtitle="Visual activity history of order placements and payment settlements."
+                title="Activity Heatmap"
+                subtitle="Orders placed and payments made over the past year."
               />
 
               {/* Gantt Timeline Visual Card */}

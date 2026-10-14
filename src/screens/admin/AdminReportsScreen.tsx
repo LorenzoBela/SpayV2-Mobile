@@ -552,8 +552,8 @@ export default function AdminReportsScreen() {
   if (loading && !reportsData) {
     return (
       <PremiumLoader
-        title="Admin Control Center"
-        subtitle="Loading report ledgers and running aggregations..."
+        title="Reports & Analytics"
+        subtitle="Preparing reports and analytics..."
         error={error}
         onRetry={() => loadData()}
       />
@@ -567,7 +567,7 @@ export default function AdminReportsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerSubtitle}>Operations Center</Text>
+          <Text style={styles.headerSubtitle}>Admin Reports</Text>
           <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Reports & Analytics</Text>
         </View>
         <TouchableOpacity
@@ -648,7 +648,7 @@ export default function AdminReportsScreen() {
                 <Text style={[styles.heroKpiLabel, { color: t.textSecondary }]}>Financial Health</Text>
               </View>
               <Text style={[styles.heroHealthDesc, { color: t.textSecondary }]}>
-                Business state is classified as <Text style={{ color: healthStatus.textColor, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{healthStatus.label}</Text>. Rate matches overall metrics.
+                Overall financial health is <Text style={{ color: healthStatus.textColor, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{healthStatus.label}</Text>. Collections and payments are on track.
               </Text>
             </View>
 
@@ -843,16 +843,16 @@ export default function AdminReportsScreen() {
                 <View style={[styles.iconWrapper, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
                   <Users size={15} color="#3b82f6" />
                 </View>
-                <Text style={[styles.heroKpiLabel, { color: t.textSecondary }]}>Retention & Velocity</Text>
+                <Text style={[styles.heroKpiLabel, { color: t.textSecondary }]}>Client Retention & Payment Speed</Text>
               </View>
               <Text style={[styles.heroHealthDesc, { color: t.textSecondary }]}>
-                Loyalty is running at <Text style={{ color: t.textPrimary, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{metrics.retentionRate}%</Text> with first-installment velocity taking <Text style={{ color: t.accent, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{metrics.avgPaymentVelocity} days</Text>.
+                Client retention is <Text style={{ color: t.textPrimary, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{metrics.retentionRate}%</Text>, with payments averaging <Text style={{ color: t.accent, fontWeight: 'bold', fontFamily: 'Outfit-Bold' }}>{metrics.avgPaymentVelocity} days</Text>.
               </Text>
             </View>
 
             {/* Visual speed scale gauge right side */}
             <View style={styles.velocityScale}>
-              <Text style={styles.velocityScaleLabel}>Installment speed</Text>
+              <Text style={styles.velocityScaleLabel}>Payment speed</Text>
               <View style={[styles.velocityTrack, { backgroundColor: isDarkMode ? '#334155' : '#e2e8f0' }]}>
                 <View style={[
                   styles.velocityMarker,
@@ -886,7 +886,7 @@ export default function AdminReportsScreen() {
                 <View style={[styles.iconWrapper, { backgroundColor: 'rgba(238, 77, 45, 0.15)' }]}>
                   <Users size={15} color="#ee4d2d" />
                 </View>
-                <Text style={[styles.heroKpiLabel, { color: '#ee4d2d' }]}>Collaborative Billing Volume</Text>
+                <Text style={[styles.heroKpiLabel, { color: '#ee4d2d' }]}>Shared Orders Breakdown</Text>
               </View>
               <View style={{ backgroundColor: '#ee4d2d', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
                 <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{metrics.collaborativeBilling?.sharedPercentage || 0}% Shared</Text>

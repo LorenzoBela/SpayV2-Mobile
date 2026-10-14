@@ -283,8 +283,8 @@ export const downloadAndInstallConfiguredApkAsync = async (
 
   // Show progress modal at 0%
   PremiumAlert.show({
-    title: 'Downloading APK...',
-    message: 'Please wait while the update is downloaded. This may take a moment depending on your connection.',
+    title: 'Downloading Update...',
+    message: 'Downloading the latest update. Please keep the app open.',
     buttons: [],
     options: { cancelable: false },
     isDownloading: true,
@@ -307,8 +307,8 @@ export const downloadAndInstallConfiguredApkAsync = async (
         const progress = Math.min(1, Math.max(0, downloadProgress.totalBytesWritten / total));
         
         PremiumAlert.show({
-          title: 'Downloading APK...',
-          message: 'Please wait while the update is downloaded. This may take a moment depending on your connection.',
+          title: 'Downloading Update...',
+          message: 'Downloading the latest update. Please keep the app open.',
           buttons: [],
           options: { cancelable: false },
           isDownloading: true,

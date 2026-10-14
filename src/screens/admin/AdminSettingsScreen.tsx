@@ -683,7 +683,7 @@ export default function AdminSettingsScreen() {
           <Text style={[styles.themeTitle, { color: t.textPrimary }]}>Display Theme</Text>
         </View>
         <Text style={[styles.themeDesc, { color: t.textSecondary }]}>
-          Choose a default visual layout for your admin panel.
+          Choose a color theme for the app.
         </Text>
         <View style={styles.themeButtonGroup}>
           {([
@@ -816,7 +816,7 @@ export default function AdminSettingsScreen() {
               <Fingerprint size={16} color={t.accent} />
             </View>
             <View style={styles.toggleTextCol}>
-              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>Biometrics & Hardware Lock</Text>
+              <Text style={[styles.toggleTitleText, { color: t.textPrimary }]}>Biometrics & PIN Lock</Text>
               <Text style={[styles.toggleDescText, { color: t.textSecondary }]}>
                 FaceID / TouchID & 6-digit PIN authentication are active.
               </Text>
@@ -855,7 +855,7 @@ export default function AdminSettingsScreen() {
         >
           <CheckCircle size={16} color={isDarkMode ? '#34d399' : '#047857'} />
           <Text style={[styles.successText, { color: isDarkMode ? '#a7f3d0' : '#065f46' }]}>
-            Session data and operation settings are synchronized with your S-Pay profile.
+            Settings are saved and synchronized with your S-Pay account.
           </Text>
         </View>
 
@@ -984,7 +984,7 @@ export default function AdminSettingsScreen() {
           activeOpacity={0.8}
         >
           <LogOut size={16} color="#ef4444" />
-          <Text style={styles.logoutBtnText}>Log Out Console Panel</Text>
+          <Text style={styles.logoutBtnText}>Log Out</Text>
         </TouchableOpacity>
       </View>
     </View>

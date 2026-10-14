@@ -609,7 +609,7 @@ export const DynamicIslandProvider: React.FC<{
           : undefined;
 
       const title = isShopeeNotification
-        ? newNotif.title || (parsedShopee.title ? `Shopee: ${parsedShopee.title}` : 'Shopee Item Intercepted')
+        ? newNotif.title || (parsedShopee.title ? `Shopee: ${parsedShopee.title}` : 'Shopee Link Detected')
         : newNotif.title || 'New Notification';
 
       const subtitle = isShopeeNotification
@@ -851,11 +851,11 @@ export const DynamicIslandProvider: React.FC<{
           id: `greeting_${Date.now()}`,
           type: 'sync',
           title: `${greetingTime}, ${nameToDisplay}!`,
-          subtitle: isAdmin ? 'SPay Admin Mobile • Operational' : 'SPay Client Mobile • Operational',
+          subtitle: isAdmin ? 'Admin mode ready' : 'Ready to track payments',
           compactText: `${greetingTime}, ${nameToDisplay}`,
           compactBadge: weatherBadge,
           detailLeft: greetingDetailLeft,
-          detailRight: 'Live Sync Active ✓',
+          detailRight: 'Synced',
           avatarUrl: avatar || undefined,
           durationMs: 5000,
         });
@@ -876,14 +876,14 @@ export const DynamicIslandProvider: React.FC<{
           setSecondaryEvent({
             id: `catchup_${Date.now()}`,
             type: 'sync',
-            title: `${totalMissed + unreadTotal} Updates & Notifs Missed!`,
+            title: `${totalMissed + unreadTotal} Unread Updates`,
             subtitle: `Since last active on ${lastActiveFormatted}`,
             amount: totalAmount > 0 ? `₱${totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : undefined,
-            compactText: 'Missed Catch-Up',
+            compactText: 'Updates',
             compactBadge: `${totalMissed + unreadTotal} Missed`,
             detailLeft: `${paymentsList.length} Pays • ${overdueList.length} Overdues • ${unreadTotal} Unread`,
             detailRight: 'Review All',
-            actionText: 'Acknowledge & Mark Read ✓',
+            actionText: 'Mark all as read',
             durationMs: 12000,
             onAction: () => {
               AsyncStorage.setItem('spay_last_online_at', new Date().toISOString());
@@ -906,14 +906,14 @@ export const DynamicIslandProvider: React.FC<{
         triggerIsland({
           id: `catchup_${Date.now()}`,
           type: 'sync',
-          title: `${totalMissed + unreadTotal} Updates & Notifs Missed!`,
+          title: `${totalMissed + unreadTotal} Unread Updates`,
           subtitle: `Since last active on ${lastActiveFormatted}`,
           amount: totalAmount > 0 ? `₱${totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : undefined,
-          compactText: 'Missed Catch-Up',
+          compactText: 'Updates',
           compactBadge: `${totalMissed + unreadTotal} Missed`,
           detailLeft: `${paymentsList.length} Pays • ${overdueList.length} Overdues • ${unreadTotal} Unread`,
           detailRight: 'Review All',
-          actionText: 'Acknowledge & Mark Read ✓',
+          actionText: 'Mark all as read',
           durationMs: 12000,
           onAction: () => {
             AsyncStorage.setItem('spay_last_online_at', new Date().toISOString());

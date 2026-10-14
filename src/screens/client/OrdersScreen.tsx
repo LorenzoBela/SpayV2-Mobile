@@ -248,7 +248,7 @@ export default function OrdersScreen() {
           <Text style={styles.webHeaderSubtitle}>S-Pay Client</Text>
           <Text style={[styles.webHeaderTitle, { color: t.textPrimary }]}>Active Purchases</Text>
           <Text style={[styles.webHeaderDesc, { color: t.textSecondary }]}>
-            Review your installment orders, track amortization schedules, and submit payments.
+            Track your orders, installment schedules, and payments.
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -303,7 +303,7 @@ export default function OrdersScreen() {
             fontFamily: 'Jakarta-Bold',
             textAlign: 'center'
           }}>
-            Offline Mode: Read-only access to cached purchases.
+            Offline: Showing saved purchases.
           </Text>
         </View>
       )}
@@ -1031,7 +1031,7 @@ export default function OrdersScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.warningBoxTitle}>Cash Payment Only</Text>
                   <Text style={styles.warningBoxDesc}>
-                    We no longer accept GCash or online payments. Please pay your installment dues in cash directly to the admin in person.
+                    Cash only. Pay your dues directly to the admin in person.
                   </Text>
                 </View>
               </View>
@@ -1074,17 +1074,17 @@ export default function OrdersScreen() {
                   <UserCheck size={16} color={t.textSecondary} />
                   <Text style={[styles.instructionHeader, { color: t.textPrimary }]}>How to pay</Text>
                 </View>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>1. Prepare exact cash amount for due installment(s).</Text>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>2. Hand the payment to the administrator in person.</Text>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>3. The admin will record your payment as settled.</Text>
-                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>4. You will receive email verification shortly after.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>1. Prepare the exact cash amount.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>2. Pay the admin in person.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>3. The admin marks your payment as paid.</Text>
+                <Text style={[styles.instructionItem, { color: t.textSecondary }]}>4. You&apos;ll receive a confirmation email.</Text>
               </View>
 
               {/* Footnote info */}
               <View style={styles.footnoteContainer}>
                 <Info size={14} color={t.textSecondary} style={{ marginRight: 6 }} />
                 <Text style={[styles.footnoteText, { color: t.textSecondary }]}>
-                  Ledger status updates are reflected as soon as the administrator processes receipt.
+                  Your balance updates once the admin confirms your payment.
                 </Text>
               </View>
             </ScrollView>

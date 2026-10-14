@@ -71,7 +71,7 @@ function checkInputSafety(input: string): { isSafe: boolean; reason: string } {
   if (injectionKeywords.some(keyword => lowerInput.includes(keyword))) {
     return { 
       isSafe: false, 
-      reason: 'I am programmed to only assist with S-Pay finances. I cannot share my system instructions or override my core rules.' 
+      reason: 'I can only help with S-Pay finances. I cannot share system instructions.' 
     };
   }
 
@@ -84,7 +84,7 @@ function checkInputSafety(input: string): { isSafe: boolean; reason: string } {
   if (codeKeywords.some(keyword => lowerInput.includes(keyword))) {
     return { 
       isSafe: false, 
-      reason: 'I am programmed to only assist with S-Pay personal finances. I cannot write, generate, or review programming code or scripts.' 
+      reason: 'I can only help with S-Pay personal finances. I cannot generate or review code.' 
     };
   }
 
@@ -106,7 +106,7 @@ function checkOutputSafety(output: string): string {
 
   // Detect code blocks (Markdown code fences) indicating script generation
   if (sanitized.includes('```')) {
-    return 'I apologize, but I am programmed to only assist with S-Pay finances. I cannot generate programming code or scripts.';
+    return 'I can only help with S-Pay finances. I cannot generate programming code or scripts.';
   }
 
   // Detect raw context blocks
@@ -116,7 +116,7 @@ function checkOutputSafety(output: string): string {
     sanitized.includes('Active Orders:') && 
     sanitized.includes('Budget Settings:')
   ) {
-    return 'I apologize, but I cannot display the raw system context data. Please let me know what specific information about S-Pay you are looking for!';
+    return 'I cannot display raw system data. What would you like to know about your S-Pay account?';
   }
   
   return sanitized;
@@ -338,7 +338,7 @@ export default function NootAiScreen() {
     setMessages([
       {
         sender: 'ai',
-        text: `Hello! I am NootAI, your premium financial companion. I can help analyze your credit limit, installment status, and budget allocations. What would you like to check today?`,
+        text: `Hi! I'm NootAI. I can check your credit limit, installment schedules, or budget goals. What do you need help with?`,
         timestamp: new Date(),
       }
     ]);
@@ -484,7 +484,7 @@ export default function NootAiScreen() {
       const errMsg = e?.message || '';
       const displayMsg = errMsg.includes('Rate limit') || errMsg.includes('limit') || errMsg.includes('safeguard')
         ? errMsg
-        : 'I apologize, but I am currently offline. Please check your network connection.';
+        : 'You are currently offline. Please check your internet connection.';
       setMessages(prev => [
         ...prev,
         {
@@ -516,7 +516,7 @@ export default function NootAiScreen() {
             setMessages([
               {
                 sender: 'ai',
-                text: 'Hello! I am NootAI, your premium financial companion. I can help analyze your credit limit, installment status, and budget allocations. What would you like to check today?',
+                text: "Hi! I'm NootAI. I can check your credit limit, installment schedules, or budget goals. What do you need help with?",
                 timestamp: new Date(),
               }
             ]);
@@ -549,8 +549,8 @@ export default function NootAiScreen() {
   if (loading) {
     return (
       <PremiumLoader
-        title="NootAI Assistant"
-        subtitle="Analyzing financial health indices and syncing limits..."
+        title="NootAI"
+        subtitle="Loading insights and limits..."
         error={error}
         onRetry={fetchNootAiMetrics}
       />
@@ -677,7 +677,7 @@ export default function NootAiScreen() {
           <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', padding: 12, borderTopWidth: 1, borderTopColor: 'rgba(239, 68, 68, 0.2)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <AlertTriangle size={14} color="#ef4444" />
             <Text style={{ color: '#ef4444', fontSize: 12, fontFamily: 'Jakarta-Bold', textAlign: 'center' }}>
-              NootAI requires internet connectivity to answer queries.
+              NootAI needs an internet connection to answer questions.
             </Text>
           </View>
         )}

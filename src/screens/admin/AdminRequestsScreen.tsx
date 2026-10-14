@@ -337,7 +337,7 @@ export default function AdminRequestsScreen() {
               <Text style={styles.adminBadgeText}>S-PAY ADMIN</Text>
             </View>
             <Text style={[styles.headerTitle, { color: t.textPrimary }]} numberOfLines={1}>
-              Procurement Queue
+              Purchase Requests
             </Text>
           </View>
         </View>
@@ -383,7 +383,7 @@ export default function AdminRequestsScreen() {
             <Text style={[styles.kpiValue, { color: '#22c55e' }]}>{stats.approvedCount}</Text>
           </View>
           <View style={[styles.kpiCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-            <Text style={[styles.kpiLabel, { color: t.accent }]}>Procurement Vol.</Text>
+            <Text style={[styles.kpiLabel, { color: t.accent }]}>Total Request Value</Text>
             <Text style={[styles.kpiValue, { color: t.accent, fontSize: 15 }]}>
               {formatAmount(stats.totalValue)}
             </Text>
@@ -449,7 +449,7 @@ export default function AdminRequestsScreen() {
             <ShoppingBag size={42} color={t.textSecondary} />
             <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>No Requests Found</Text>
             <Text style={[styles.emptyDesc, { color: t.textSecondary }]}>
-              {searchQuery ? 'Try adjusting your search criteria.' : 'Client buy requests will appear here.'}
+              {searchQuery ? 'Try adjusting your search filters.' : 'Client buy requests will appear here.'}
             </Text>
           </View>
         ) : (
@@ -686,7 +686,7 @@ export default function AdminRequestsScreen() {
                   {(isCompleted || isDeclined) && (
                     <View style={styles.closedFooter}>
                       <Text style={[styles.closedText, { color: t.textSecondary }]}>
-                        {isCompleted ? 'Procurement Complete' : 'Request Declined'}
+                        {isCompleted ? 'Purchase Complete' : 'Request Declined'}
                       </Text>
                       <Text style={[styles.closedDate, { color: t.textSecondary }]}>
                         {new Date(req.updatedAt).toLocaleDateString()}

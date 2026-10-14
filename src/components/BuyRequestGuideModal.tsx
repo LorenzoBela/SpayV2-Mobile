@@ -78,7 +78,7 @@ export default function BuyRequestGuideModal({
     {
       num: '5',
       icon: Package,
-      title: 'Admin Procurement & Delivery',
+      title: 'Admin Purchase & Delivery',
       desc: 'Once approved, admin purchases the item on Shopee and links it to your SPay schedule.',
     },
   ];
@@ -100,7 +100,7 @@ export default function BuyRequestGuideModal({
               </View>
               <View>
                 <Text style={[styles.title, { color: t.textPrimary }]}>How Buy Request Works</Text>
-                <Text style={[styles.subtitle, { color: t.textSecondary }]}>Easy 5-step procurement guide</Text>
+                <Text style={[styles.subtitle, { color: t.textSecondary }]}>Easy 5-step guide</Text>
               </View>
             </View>
             <TouchableOpacity

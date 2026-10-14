@@ -265,7 +265,7 @@ export default function WhatsNewModal({
                 accessibilityLabel="Got It"
               >
                 <CheckCircle2 size={18} color="#ffffff" style={styles.btnIcon} />
-                <Text style={styles.primaryButtonText}>Got It!</Text>
+                <Text style={styles.primaryButtonText}>Got It</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -273,9 +273,9 @@ export default function WhatsNewModal({
                 onPress={handleViewAll}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="View Full Changelog"
+                accessibilityLabel="View All Updates"
               >
-                <Text style={styles.secondaryButtonText}>View Full Changelog</Text>
+                <Text style={styles.secondaryButtonText}>View All Updates</Text>
                 <ArrowRight size={16} color="#94a3b8" />
               </TouchableOpacity>
             </View>

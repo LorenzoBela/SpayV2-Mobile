@@ -342,7 +342,7 @@ export default function DevicePushStatusCard({
                 activeOpacity={0.8}
               >
                 <View style={styles.tokenTextGroup}>
-                  <Text style={[styles.tokenLabel, { color: theme.textMuted }]}>FCM TOKEN IDENTIFIER</Text>
+                  <Text style={[styles.tokenLabel, { color: theme.textMuted }]}>FCM TOKEN</Text>
                   <Text numberOfLines={2} style={[styles.tokenValue, { color: theme.textPrimary }]}>
                     {activeToken}
                   </Text>

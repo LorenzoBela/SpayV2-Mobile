@@ -217,7 +217,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
           <Animated.View style={[styles.sectionTitleCol, subtitleAnim.style]}>
             <View style={styles.kickerRow}>
               <Sparkles size={14} color="#ee4d2d" />
-              <Text style={styles.sectionTitle}>WORKSPACE ROUTER</Text>
+              <Text style={styles.sectionTitle}>WORKSPACE SELECTOR</Text>
             </View>
             <Text style={[styles.heroTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Choose Console</Text>
             <Text style={[styles.sectionDesc, { color: isDarkMode ? '#94a3b8' : '#64748b' }]}>Switch between admin operations and customer view.</Text>
@@ -254,7 +254,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                       <Text style={[styles.priorityBadgeText, { color: isDarkMode ? '#fed7aa' : '#ee4d2d' }]}>ADMIN</Text>
                     </View>
                   </View>
-                  <Text style={[styles.bigButtonTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Admin Control Panel</Text>
+                  <Text style={[styles.bigButtonTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Admin Dashboard</Text>
                   <Text style={[styles.bigButtonDesc, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Orders, payments, clients, limits, and audits.</Text>
                   <View style={styles.featureGrid}>
                     <View style={[styles.featurePill, {
@@ -317,7 +317,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
                     <Text style={[styles.customerBadgeText, { color: isDarkMode ? '#bfdbfe' : '#3b82f6' }]}>CUSTOMER VIEW</Text>
                   </View>
                 </View>
-                <Text style={[styles.bigButtonTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Customer Portal</Text>
+                <Text style={[styles.bigButtonTitle, { color: isDarkMode ? '#f8fafc' : '#0f172a' }]}>Customer Dashboard</Text>
                 <Text style={[styles.bigButtonDesc, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Balances, orders, payments, reports, and budgets.</Text>
                 <View style={styles.featureGrid}>
                   <View style={[styles.featurePillBlue, {
@@ -376,7 +376,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
         >
           <PremiumLoader
             title="Loading Profile Data"
-            subtitle="Fetching user details from Supabase ledger..."
+            subtitle="Loading your profile..."
             error={fetchError}
             onRetry={fetchUserData}
           />

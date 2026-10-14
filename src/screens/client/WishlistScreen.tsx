@@ -261,7 +261,7 @@ export default function WishlistScreen() {
           </View>
           <Text style={[styles.emptyTitle, { color: t.textPrimary }]}>No active goals yet</Text>
           <Text style={[styles.emptyDesc, { color: t.textSecondary }]}>
-            Start saving for that new phone, a dream vacation, or an emergency fund. Track progress with gamified visuals!
+            Start saving for a purchase, vacation, or emergency fund. Track your progress with visual goals!
           </Text>
           <TouchableOpacity
             onPress={() => setIsFormOpen(true)}

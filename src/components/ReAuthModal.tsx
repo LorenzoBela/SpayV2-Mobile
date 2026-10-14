@@ -25,8 +25,8 @@ export default function ReAuthModal({
   visible,
   onDismiss,
   onSuccess,
-  title = 'Re-Authentication Required',
-  description = 'Please enter your current password to confirm this sensitive action.',
+  title = 'Confirm Password',
+  description = 'Enter your password to continue.',
   email,
 }: ReAuthModalProps) {
   const [password, setPassword] = useState('');

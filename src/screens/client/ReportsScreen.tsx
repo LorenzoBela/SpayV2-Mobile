@@ -1988,8 +1988,8 @@ export default function ReportsScreen() {
             {/* AI Spending Forecast Line chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={{ marginBottom: 12 }}>
-                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>AI-Powered Forecast</Text>
-                <Text style={styles.chartHeaderSub}>Regression spending projections with upper & lower boundary curves</Text>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Spending Forecast</Text>
+                <Text style={styles.chartHeaderSub}>Projected monthly spending with upper and lower boundaries</Text>
               </View>
               <View style={styles.chartBox}>{renderForecastChart(mappedMonthlyData, forecastMonths)}</View>
             </View>
@@ -2015,8 +2015,8 @@ export default function ReportsScreen() {
             {/* AI Repayment volume forecast bar chart */}
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={{ marginBottom: 12 }}>
-                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>AI Repayment Volume Forecast</Text>
-                <Text style={styles.chartHeaderSub}>Upcoming repayment transaction count forecast over 6 months</Text>
+                <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Repayment Volume Forecast</Text>
+                <Text style={styles.chartHeaderSub}>Upcoming payment count forecast over the next 6 months</Text>
               </View>
               <View style={styles.chartBox}>{renderBarChart(forecastMonths, 'projected', 'monthName', '#3b82f6')}</View>
             </View>
@@ -2063,8 +2063,8 @@ export default function ReportsScreen() {
             <View style={[styles.card, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
               <View style={styles.categoryHeaderRow}>
                 <View>
-                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>MITIGATION MATRIX</Text>
-                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Cost Optimizations</Text>
+                  <Text style={[styles.cardHeaderTitle, { color: t.textSecondary }]}>WAYS TO SAVE</Text>
+                  <Text style={[styles.chartHeaderTitle, { color: t.textPrimary }]}>Estimated Savings</Text>
                 </View>
                 <Lightbulb size={16} color={t.textSecondary} />
               </View>
@@ -2090,17 +2090,17 @@ export default function ReportsScreen() {
               <View style={[styles.warningBox, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.05)' : 'rgba(238, 77, 45, 0.03)', borderColor: 'rgba(238, 77, 45, 0.2)' }]}>
                 <ShieldAlert size={18} color="#ee4d2d" style={{ marginRight: 8, marginTop: 2 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.warningBoxTitle, { color: t.textPrimary }]}>Mitigation Advice</Text>
+                  <Text style={[styles.warningBoxTitle, { color: t.textPrimary }]}>Tips & Advice</Text>
                   <Text style={[styles.warningBoxDesc, { color: t.textSecondary }]}>
-                    Your default risk rating is <Text style={{ fontWeight: '700', color: t.textPrimary }}>{metrics.creditScore}</Text>. 
-                    Establishing automated calendar reminders or opting for shorter 3-month options reduces credit liability risk and builds score.
+                    Your current risk rating is <Text style={{ fontWeight: '700', color: t.textPrimary }}>{metrics.creditScore}</Text>. 
+                    Setting calendar reminders and choosing shorter payment terms helps maintain a healthy credit score.
                   </Text>
                 </View>
               </View>
 
               <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, recommendations: true }))} style={[styles.learnBtn, { backgroundColor: t.textPrimary }]}>
                 <Text style={[styles.learnBtnText, { color: isDarkMode ? '#000000' : '#ffffff' }]}>
-                  Learn Optimization Strategies
+                  View Savings Tips
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2162,9 +2162,9 @@ export default function ReportsScreen() {
             {/* Simulator Inputs Card */}
             <View style={[styles.card, { backgroundColor: 'rgba(238, 77, 45, 0.05)', borderColor: 'rgba(238, 77, 45, 0.25)', borderStyle: 'dashed' }]}>
               <View style={{ marginBottom: 14 }}>
-                <Text style={[styles.cardHeaderTitle, { color: '#ee4d2d' }]}>Prospective Purchase Simulator</Text>
+                <Text style={[styles.cardHeaderTitle, { color: '#ee4d2d' }]}>Purchase Simulator</Text>
                 <Text style={[styles.brandDesc, { marginTop: 2, color: t.textSecondary }]}>
-                  Simulate checking out a new item to verify forecast impact on your debt ratio instantly.
+                  Simulate a new order to see its estimated effect on your monthly debt.
                 </Text>
               </View>
 
@@ -2392,7 +2392,7 @@ export default function ReportsScreen() {
           <SwipeDismissModal onDismiss={() => setModals((prev) => ({ ...prev, recommendations: false }))}>
             <View style={[styles.modalContent, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingBottom: insets.bottom + 16 }]}>
               <View style={[styles.modalHeader, { borderColor: t.divider }]}>
-                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Cost Optimization Strategies</Text>
+                <Text style={[styles.modalTitle, { color: t.textPrimary }]}>Savings Tips & Advice</Text>
                 <TouchableOpacity onPress={() => setModals((prev) => ({ ...prev, recommendations: false }))} style={styles.modalCloseBtn}>
                   <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700' }}>✕</Text>
                 </TouchableOpacity>
@@ -2406,7 +2406,7 @@ export default function ReportsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>1. Early Settlement Bonus</Text>
                     <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
-                      Settle payments 3 or more days before the due date. While S-Pay is zero-interest, merchants frequently distribute early compliance coupons or direct cashback incentives for consistent early buyers.
+                      Pay 3 or more days before the due date to stay on track and qualify for early payment rewards and coupons.
                     </Text>
                   </View>
                 </View>
@@ -2418,9 +2418,9 @@ export default function ReportsScreen() {
                     <TrendingDown size={16} color="#3b82f6" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>2. Shorter Amortizations</Text>
+                    <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>2. Shorter Installment Terms</Text>
                     <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
-                      Choosing a 3-month or 1-month plan instead of 12-month plans reduces overall pending exposure, lowering your debt ratio faster and boosting your credit wellness standing in the Spay ecosystem.
+                      Choosing 1-month or 3-month plans lowers your pending balance faster and keeps your credit utilization low.
                     </Text>
                   </View>
                 </View>
@@ -2434,7 +2434,7 @@ export default function ReportsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.recItemTitle, { color: t.textPrimary }]}>3. Consolidate Purchases</Text>
                     <Text style={[styles.recItemDesc, { color: t.textSecondary }]}>
-                      Grouping items into a single consolidated checkout order optimizes installment dates, aligning all your monthly dues to a single calendar day for cleaner, structured bookkeeping.
+                      Grouping items into a single order aligns your due dates to a single monthly date for easier tracking.
                     </Text>
                   </View>
                 </View>

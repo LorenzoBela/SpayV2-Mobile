@@ -857,8 +857,8 @@ export default function AdminDashboardScreen() {
   if (loading && !dashboardData) {
     return (
       <PremiumLoader
-        title="Admin Control Center"
-        subtitle="Loading system metrics and syncing ledgers..."
+        title="Admin Dashboard"
+        subtitle="Loading dashboard and metrics..."
         error={error}
         onRetry={() => refetch()}
       />
@@ -869,7 +869,7 @@ export default function AdminDashboardScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
 
-      <AdminHeader title="Dashboard Overview" subtitle="S-Pay Admin" />
+      <AdminHeader title="Dashboard Overview" subtitle="Admin View" />
 
       <ScrollView
         contentContainerStyle={[
@@ -1103,12 +1103,12 @@ export default function AdminDashboardScreen() {
 
 
         {/* Stats Grid */}
-        <Text style={styles.sectionHeader}>System Metrics</Text>
+        <Text style={styles.sectionHeader}>Key Metrics</Text>
         <View style={styles.statsGrid}>
           {/* Card 1: Limit Exposure */}
           <View style={[styles.statCard, { width: '48%', backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.statCardHeader}>
-              <Text style={styles.statCardLabel}>LIMIT EXPOSURE</Text>
+              <Text style={styles.statCardLabel}>CREDIT LIMIT USED</Text>
               <View style={[styles.statIconWrapper, { backgroundColor: 'rgba(238, 77, 45, 0.06)' }]}>
                 <DollarSign size={14} color="#ee4d2d" />
               </View>
@@ -1149,7 +1149,7 @@ export default function AdminDashboardScreen() {
           {/* Card 3: Total Transaction Volume */}
           <View style={[styles.statCard, { width: '48%', backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.statCardHeader}>
-              <Text style={styles.statCardLabel}>TOTAL TRANSACTION VOL.</Text>
+              <Text style={styles.statCardLabel}>TOTAL ORDERS VALUE</Text>
               <View style={[styles.statIconWrapper, { backgroundColor: 'rgba(139, 92, 246, 0.06)' }]}>
                 <TrendingUp size={14} color="#8b5cf6" />
               </View>
@@ -1157,7 +1157,7 @@ export default function AdminDashboardScreen() {
             <View style={styles.statCardBody}>
               <Text style={[styles.statCardVal, { color: '#8b5cf6' }]} numberOfLines={1}>{formatCurrency(stats.totalOrderValue || 0)}</Text>
               <Text style={styles.statCardDesc} numberOfLines={1}>
-                {stats.totalOrdersCount || 0} Total Transactions
+                {stats.totalOrdersCount || 0} Total Orders
               </Text>
             </View>
           </View>
@@ -1165,7 +1165,7 @@ export default function AdminDashboardScreen() {
           {/* Card 4: Client Base */}
           <View style={[styles.statCard, { width: '48%', backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
             <View style={styles.statCardHeader}>
-              <Text style={styles.statCardLabel}>CLIENT BASE</Text>
+              <Text style={styles.statCardLabel}>ACTIVE CLIENTS</Text>
               <View style={[styles.statIconWrapper, { backgroundColor: 'rgba(59, 130, 246, 0.06)' }]}>
                 <Users size={14} color="#3b82f6" />
               </View>
@@ -1186,8 +1186,8 @@ export default function AdminDashboardScreen() {
         <ActivityHeatmap
           allOrders={allOrdersList}
           allPayments={allPaymentsList}
-          title="Platform Transaction Heatmap"
-          subtitle="Aggregate platform-wide visualization of orders placed and payment settlements over the past year."
+          title="Activity Heatmap"
+          subtitle="Orders placed and payments made over the past year."
         />
 
 
@@ -1195,7 +1195,7 @@ export default function AdminDashboardScreen() {
         {/* Rankings & Leaderboards Card */}
         <View style={[styles.rankingsCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
           <View style={styles.rankingsHeader}>
-            <Text style={[styles.rankingsTitle, { color: t.textPrimary }]}>Rankings & Leaderboards</Text>
+            <Text style={[styles.rankingsTitle, { color: t.textPrimary }]}>Client Rankings</Text>
             <View style={[styles.toggleContainer, { backgroundColor: isDarkMode ? '#000000' : '#f1f5f9' }]}>
               <TouchableOpacity
                 style={[styles.toggleBtn, rankingToggle === 'spenders' && styles.toggleBtnActive]}
@@ -1277,7 +1277,7 @@ export default function AdminDashboardScreen() {
         </View>
 
         {/* Quick actions */}
-        <Text style={styles.sectionHeader}>Admin Operations</Text>
+        <Text style={styles.sectionHeader}>Quick Actions</Text>
         <View style={styles.actionsContainer}>
           <TouchableOpacity style={[styles.actionRowBtn, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]} onPress={() => setIsNewOrderOpen(true)}>
             <View style={[styles.actionIconBox, { backgroundColor: t.accentLight }]}>
@@ -1285,7 +1285,7 @@ export default function AdminDashboardScreen() {
             </View>
             <View style={styles.actionTextContainer}>
               <Text style={[styles.actionTitleText, { color: t.textPrimary }]}>Assign New Order</Text>
-              <Text style={styles.actionDescText}>Create a new client installments ledger plan</Text>
+              <Text style={styles.actionDescText}>Set up an installment plan for a client</Text>
             </View>
             <ChevronRight size={16} color={t.textSecondary} />
           </TouchableOpacity>
@@ -1295,15 +1295,15 @@ export default function AdminDashboardScreen() {
               <Sliders size={20} color="#10b981" />
             </View>
             <View style={styles.actionTextContainer}>
-              <Text style={[styles.actionTitleText, { color: t.textPrimary }]}>Adjust Baseline Limits</Text>
-              <Text style={styles.actionDescText}>Configure default allocation per registered user</Text>
+              <Text style={[styles.actionTitleText, { color: t.textPrimary }]}>Set Default Credit Limits</Text>
+              <Text style={styles.actionDescText}>Change the starting credit limit for clients</Text>
             </View>
             <ChevronRight size={16} color={t.textSecondary} />
           </TouchableOpacity>
         </View>
 
         {/* Section A: Live Activity Hub (Tabbed) */}
-        <Text style={styles.sectionHeader}>Live Activity Hub</Text>
+        <Text style={styles.sectionHeader}>Recent Activity</Text>
         <View style={[styles.logsContainer, { backgroundColor: t.cardBg, borderColor: t.cardBorder, paddingVertical: 16 }]}>
           <View style={[styles.tabHeader, { borderBottomColor: t.border }]}>
             <View style={styles.tabButtonsRow}>
@@ -1811,7 +1811,7 @@ export default function AdminDashboardScreen() {
                       <ShoppingBag size={18} color="#ffffff" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>ORDER DESK</Text>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>NEW ORDER</Text>
                       <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Schedule New Order</Text>
                     </View>
                   </View>
@@ -1832,7 +1832,7 @@ export default function AdminDashboardScreen() {
                     </Text>
                   </View>
                   <View style={[styles.sheetMetric, { backgroundColor: isDarkMode ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.72)', borderColor: isDarkMode ? 'rgba(148,163,184,0.18)' : 'rgba(238,77,45,0.12)' }]}>
-                    <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Exposure</Text>
+                    <Text style={[styles.sheetMetricLabel, { color: isDarkMode ? '#cbd5e1' : '#64748b' }]}>Credit Used</Text>
                     <Text
                       style={[styles.sheetMetricValue, { color: projectedExposurePercent > 80 ? '#f87171' : (isDarkMode ? '#ffffff' : t.textPrimary) }]}
                       numberOfLines={1}
@@ -1848,7 +1848,7 @@ export default function AdminDashboardScreen() {
               <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
                 {/* Bulk Mode Toggle */}
                 <View style={styles.toggleRow}>
-                  <Text style={[styles.toggleLabel, { color: t.textPrimary }]}>Bulk Order Scheduling</Text>
+                  <Text style={[styles.toggleLabel, { color: t.textPrimary }]}>Bulk Add Orders</Text>
                   <TouchableOpacity
                     style={[styles.switchTrack, isBulkMode ? styles.switchTrackActive : styles.switchTrackInactive]}
                     onPress={() => setIsBulkMode(!isBulkMode)}
@@ -2696,8 +2696,8 @@ export default function AdminDashboardScreen() {
                       <Sliders size={18} color="#ffffff" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>LIMIT CONTROL</Text>
-                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Adjust Baseline Limits</Text>
+                      <Text style={[styles.sheetEyebrow, { color: isDarkMode ? '#fda4af' : '#ee4d2d' }]}>CREDIT LIMITS</Text>
+                      <Text style={[styles.sheetTitle, { color: t.textPrimary }]}>Set Default Credit Limits</Text>
                     </View>
                   </View>
                   <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setIsGlobalLimitOpen(false)} disabled={actionLoading}>
@@ -2705,14 +2705,14 @@ export default function AdminDashboardScreen() {
                   </TouchableOpacity>
                 </View>
                 <Text style={[styles.limitHeroText, { color: t.textSecondary }]}>
-                  Set one platform baseline and allocate it evenly across registered client accounts.
+                  Set a total credit pool and divide it across registered clients.
                 </Text>
               </LinearGradient>
 
               <View style={styles.limitBody}>
                 <View style={[styles.limitInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
                   <View style={styles.limitInputHeader}>
-                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>GLOBAL BASELINE</Text>
+                    <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>TOTAL CREDIT POOL</Text>
                     <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>{clientsList.length} clients</Text>
                   </View>
                   <View style={styles.amountInputRow}>

@@ -433,7 +433,7 @@ export default function NotificationsScreen() {
       {/* Premium Header */}
       <View style={[styles.header, { borderColor: t.headerBorder }]}>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerSubtitle}>S-Pay Account</Text>
+          <Text style={styles.headerSubtitle}>Notifications & Alerts</Text>
           <View style={styles.titleRow}>
             <Text style={[styles.headerTitle, { color: t.textPrimary }]}>Inbox</Text>
             {unreadCount > 0 && (

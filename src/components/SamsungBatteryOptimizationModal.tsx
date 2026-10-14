@@ -190,7 +190,7 @@ export default function SamsungBatteryOptimizationModal() {
                 Ensure Instant Notifications
               </Text>
               <Text style={[styles.description, { color: colors.body }]}>
-                Samsung One UI may pause background activity. Whitelist S-Pay to ensure payment reminders and transaction updates arrive without delay:
+                Samsung devices may delay background notifications. Allow S-Pay to run in the background so you receive payment reminders on time:
               </Text>
 
               <View

@@ -112,14 +112,14 @@ export default class RootErrorBoundary extends Component<Props, State> {
             </View>
 
             {/* Header Titles */}
-            <Text style={styles.title}>Workspace Recovery</Text>
+            <Text style={styles.title}>Something Went Wrong</Text>
             <Text style={styles.subtitle}>
-              S-Pay encountered an unexpected interface issue. Your local account data and settings remain safe.
+              S-Pay encountered an unexpected problem. Your data is safe.
             </Text>
 
             {/* Diagnostic Box */}
             <View style={styles.diagnosticBox}>
-              <Text style={styles.diagnosticLabel}>DIAGNOSTIC LOG</Text>
+              <Text style={styles.diagnosticLabel}>ERROR DETAILS</Text>
               <Text style={styles.diagnosticText} numberOfLines={4}>
                 {sanitizeErrorMessage(errorMessage)}
               </Text>
@@ -133,7 +133,7 @@ export default class RootErrorBoundary extends Component<Props, State> {
                 activeOpacity={0.8}
               >
                 <RefreshCw size={16} color="#ffffff" strokeWidth={2.2} />
-                <Text style={styles.primaryButtonText}>Reload Workspace</Text>
+                <Text style={styles.primaryButtonText}>Reload App</Text>
               </TouchableOpacity>
 
               <TouchableOpacity

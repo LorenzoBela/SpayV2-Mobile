@@ -204,7 +204,7 @@ export default function AnimatedSplashScreen({
             },
           ]}
         >
-          SECURE PAYMENT PLATFORM
+          SMART PAYMENT TRACKER
         </Animated.Text>
       </View>
     </Animated.View>

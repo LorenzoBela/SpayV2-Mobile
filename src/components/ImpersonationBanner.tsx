@@ -15,13 +15,13 @@ export function ImpersonationBanner() {
       triggerIsland({
         id: `impersonate_${impersonatedUser.id}_${Date.now()}`,
         type: 'admin_impersonation',
-        title: 'Admin Impersonation Active',
+        title: 'Viewing as Client',
         subtitle: `Acting as ${impersonatedUser.name}`,
-        compactText: 'Impersonating',
+        compactText: 'Client View',
         compactBadge: impersonatedUser.name,
         detailLeft: impersonatedUser.email || 'Client Account',
         detailRight: 'Active',
-        actionText: 'Exit Impersonation',
+        actionText: 'Exit Client View',
         onAction: () => {
           void exitImpersonation();
         },
@@ -42,9 +42,9 @@ export function ImpersonationBanner() {
             <ShieldAlert size={18} color="#fbbf24" />
           </View>
           <View style={styles.textContainer}>
-            <Text style={styles.badgeText}>ADMIN IMPERSONATION MODE</Text>
+            <Text style={styles.badgeText}>VIEWING AS CLIENT</Text>
             <Text style={styles.userText} numberOfLines={1}>
-              Impersonating: <Text style={styles.userNameText}>{impersonatedUser.name}</Text>
+              Client: <Text style={styles.userNameText}>{impersonatedUser.name}</Text>
               {impersonatedUser.email ? ` (${impersonatedUser.email})` : ''}
             </Text>
           </View>
@@ -56,7 +56,7 @@ export function ImpersonationBanner() {
           activeOpacity={0.8}
         >
           <LogOut size={14} color="#7f1d1d" />
-          <Text style={styles.exitButtonText}>Exit Impersonation</Text>
+          <Text style={styles.exitButtonText}>Exit Client View</Text>
         </TouchableOpacity>
       </View>
     </View>

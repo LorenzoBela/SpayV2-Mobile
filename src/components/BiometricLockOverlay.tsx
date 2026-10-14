@@ -134,7 +134,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
           subtitle: `${biometricType} Authentication Verified`,
           compactText: 'Verified',
           compactBadge: 'Secure ✓',
-          detailLeft: 'Zero-Trust Session Active',
+          detailLeft: 'Session Unlocked',
           detailRight: 'Unlocked',
           durationMs: 3500,
         });

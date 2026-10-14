@@ -732,7 +732,7 @@ export default function AdminExpensesScreen() {
         bgColor: '#FF4F00',
         textColor: '#ffffff',
         accentColor: '#ffffff',
-        roleBadge: '🛡️ Savings Vault (Payroll Target)',
+        roleBadge: '🛡️ Savings Account (Payroll Target)',
         type: 'DIGITAL_BANK',
       },
       {
@@ -833,7 +833,7 @@ export default function AdminExpensesScreen() {
       <SafeAreaView style={[styles.loadingContainer, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
         <ActivityIndicator size="large" color="#ee4d2d" />
-        <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading Expenses & Master Dashboard...</Text>
+        <Text style={[styles.loadingText, { color: t.textSecondary }]}>Loading expenses...</Text>
       </SafeAreaView>
     );
   }
@@ -844,7 +844,7 @@ export default function AdminExpensesScreen() {
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
         <AlertTriangle size={40} color="#ee4d2d" style={{ marginBottom: 12 }} />
         <Text style={[styles.loadingText, { color: t.textPrimary, fontWeight: 'bold', fontSize: 16 }]}>
-          Unable to Load Expenses Data
+          Unable to load expenses
         </Text>
         <Text style={{ color: t.textSecondary, fontSize: 12, textAlign: 'center', marginHorizontal: 32, marginTop: 4, marginBottom: 16 }}>
           Please check your connection and tap below to retry.
@@ -1018,7 +1018,7 @@ export default function AdminExpensesScreen() {
               ₱{(data.balances?.totalIponSavings ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.statCapsuleSub, { color: t.textSecondary }]}>
-              Safe Cash: ₱{(data.balances?.iponSavingsBySource?.CASH || 0).toLocaleString()} • Vault: ₱{(data.balances?.iponSavingsBySource?.MARIBANK || 0).toLocaleString()}
+              Safe Cash: ₱{(data.balances?.iponSavingsBySource?.CASH || 0).toLocaleString()} • Bank: ₱{(data.balances?.iponSavingsBySource?.MARIBANK || 0).toLocaleString()}
             </Text>
           </View>
         </ScrollView>
@@ -2028,7 +2028,7 @@ export default function AdminExpensesScreen() {
               <Text style={[styles.formLabel, { color: t.textSecondary }]}>Notes / Label</Text>
               <TextInput
                 style={[styles.formInput, { backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', color: t.textPrimary, borderColor: t.border }]}
-                placeholder="e.g. Physical savings in safe vault"
+                placeholder="e.g. Physical savings in safe box"
                 placeholderTextColor={t.textMuted}
                 value={iponForm.note}
                 onChangeText={(text) => setIponForm({ ...iponForm, note: text })}
@@ -2345,7 +2345,7 @@ export default function AdminExpensesScreen() {
               <View style={styles.salaryDropGrid}>
                 {[
                   { id: 'BDO', label: '🏦 BDO Payroll', desc: 'Primary Receiver' },
-                  { id: 'MARIBANK', label: '🛡️ MariBank', desc: 'Savings Vault' },
+                  { id: 'MARIBANK', label: '🛡️ MariBank', desc: 'Savings Account' },
                   { id: 'GCASH', label: '📱 GCash', desc: 'Daily Wallet' },
                   { id: 'CASH', label: '💵 Physical Cash', desc: 'Safe & Cash on Hand' },
                 ].map((acc) => (

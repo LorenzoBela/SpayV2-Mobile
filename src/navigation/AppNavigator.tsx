@@ -1218,8 +1218,8 @@ export default function AppNavigator() {
                     ]}
                   >
                     <PremiumLoader
-                      title={session ? 'Syncing Account Config' : 'Initializing Session'}
-                      subtitle={session ? 'Retrieving profiles and role permissions...' : 'Connecting to secure auth gateway...'}
+                      title={session ? 'Loading Account' : 'Signing In'}
+                      subtitle={session ? 'Loading your profile...' : 'Connecting...'}
                       error={profileError}
                       onRetry={handleRetry}
                     />

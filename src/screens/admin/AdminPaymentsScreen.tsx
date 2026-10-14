@@ -1912,8 +1912,8 @@ export default function AdminPaymentsScreen() {
   if (loading && !paymentsData) {
     return (
       <PremiumLoader
-        title="Admin Control Center"
-        subtitle="Loading payments ledger and verifying receipts..."
+        title="Payments"
+        subtitle="Loading payments and history..."
         error={error}
         onRetry={() => refetch()}
       />
@@ -1923,7 +1923,7 @@ export default function AdminPaymentsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
-      <AdminHeader title="Payments Ledger" subtitle="Operations Center" />
+      <AdminHeader title="Payments Ledger" subtitle="Payments Overview" />
 
       <ScrollView
         contentContainerStyle={[styles.mainScrollContent]}
@@ -2409,7 +2409,7 @@ export default function AdminPaymentsScreen() {
                     renderItem={renderPaymentItem}
                   />
                 ) : (
-                  <Text style={styles.emptyText}>No payments match criteria.</Text>
+                  <Text style={styles.emptyText}>No payments match filters.</Text>
                 )}
               </View>
             ) : (
@@ -2489,7 +2489,7 @@ export default function AdminPaymentsScreen() {
                         );
                       })
                     ) : (
-                      <Text style={styles.emptyText}>No payments match criteria.</Text>
+                      <Text style={styles.emptyText}>No payments match filters.</Text>
                     )}
                   </View>
                 </ScrollView>
@@ -3673,7 +3673,7 @@ export default function AdminPaymentsScreen() {
             {isLoadingPreview ? (
               <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: t.bg }}>
                 <ActivityIndicator size="large" color={t.accent} />
-                <Text style={{ marginTop: 12, fontSize: 13, fontWeight: '600', color: t.textSecondary }}>Generating live receipt preview...</Text>
+                <Text style={{ marginTop: 12, fontSize: 13, fontWeight: '600', color: t.textSecondary }}>Generating receipt preview...</Text>
               </View>
             ) : receiptPreviewHtml ? (
               <View style={{ flex: 1, backgroundColor: '#ffffff' }}>

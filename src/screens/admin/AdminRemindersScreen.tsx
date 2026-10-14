@@ -747,7 +747,7 @@ export default function AdminRemindersScreen() {
     if (isTriggering) return;
     setIsTriggering(true);
     setConsoleLog(
-      `[SYSTEM] Connecting to SMTP Brevo and Firebase relays...\n[SYSTEM] Triggering scheduler API...\n[SCHEDULER] Running automated job scanning daemon...\n[DB] Querying unpaid payment records...\n[DB] Verifying admin exclusion criteria...\n[Relays] Processing active notification channels...`
+      `[SYSTEM] Connecting to email and push notification services...\n[SYSTEM] Calling scheduler API...\n[SCHEDULER] Scanning for pending reminders...\n[DB] Querying unpaid payment records...\n[DB] Checking admin exclusions...\n[SERVICES] Preparing active delivery channels...`
     );
     try {
       const result = await triggerNotificationScheduler();
@@ -758,7 +758,7 @@ export default function AdminRemindersScreen() {
         const fcmReminderCount = result.results?.find((r: any) => r.type === 'PAYMENT_REMINDER_FCM')?.count ?? 0;
         
         setConsoleLog(
-          `[SYSTEM] API responded successfully (Status 200).\n[SCHEDULER] Ingesting notification events into queue...\n[Relays] SMTP Email: Dispatched ${adsCount} Ads, ${reminderCount} Reminders.\n[Relays] Firebase Cloud Messaging: Pushed ${fcmAdsCount} Ads, ${fcmReminderCount} User Alerts.\n[SUCCESS] Run completed cleanly.\n[SYSTEM] Relays returned to operational idle state.`
+          `[SYSTEM] API responded successfully (Status 200).\n[SCHEDULER] Adding notifications to send queue...\n[EMAIL] Sent ${adsCount} Ads, ${reminderCount} Reminders.\n[PUSH] Delivered ${fcmAdsCount} Ads, ${fcmReminderCount} Alerts.\n[SUCCESS] Completed successfully.`
         );
         PremiumAlert.alert(
           'Scheduler Executed',
@@ -1182,7 +1182,7 @@ export default function AdminRemindersScreen() {
           </View>
         )}
 
-        <Text style={styles.sectionHeaderTitle}>System Relays & Operation Controller</Text>
+        <Text style={styles.sectionHeaderTitle}>Notification Services</Text>
         
         {/* SMTP Email Relay Card */}
         <View style={[styles.relayCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
@@ -1269,7 +1269,7 @@ export default function AdminRemindersScreen() {
           </View>
           
           <Text style={[styles.automationCardDesc, { color: t.textSecondary, marginTop: 4 }]}>
-            Manually trigger immediate execution of the background scheduler daemon. This scans the database for pending payment events and active campaign slots, evaluates rate limit throttles, excludes administrators, and fires relay dispatches.
+            Run the reminder scheduler now. This checks for due payments, verifies settings, and sends email and push reminders.
           </Text>
 
           <TouchableOpacity
@@ -1398,7 +1398,7 @@ export default function AdminRemindersScreen() {
         {loading && !refreshing ? (
           <View style={{ paddingVertical: 80, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator size="large" color={t.accent} />
-            <Text style={{ color: t.textSecondary, fontSize: 13, marginTop: 12, fontFamily: 'Outfit-Medium' }}>Loading reminders data...</Text>
+            <Text style={{ color: t.textSecondary, fontSize: 13, marginTop: 12, fontFamily: 'Outfit-Medium' }}>Loading reminders...</Text>
           </View>
         ) : activeTab === 'pending' ? (
           <>
@@ -2058,13 +2058,13 @@ export default function AdminRemindersScreen() {
                 {isPreviewLoading ? (
                   <View style={styles.previewStepLoading}>
                     <ActivityIndicator size="large" color={t.accent} />
-                    <Text style={[styles.previewStepLoadingText, { color: t.textPrimary }]}>Compiling Queue templates...</Text>
+                    <Text style={[styles.previewStepLoadingText, { color: t.textPrimary }]}>Loading previews...</Text>
                   </View>
                 ) : !previewData?.clients || previewData.clients.length === 0 ? (
                   <View style={styles.previewStepEmpty}>
                     <Info size={32} color={t.textSecondary} />
                     <Text style={[styles.previewStepEmptyText, { color: t.textPrimary }]}>
-                      {previewData?.message || 'No reminders matched queue constraints.'}
+                      {previewData?.message || 'No reminders found.'}
                     </Text>
                     <TouchableOpacity
                       style={[styles.bulkCancelBtn, { borderColor: t.border, marginTop: 10 }]}
