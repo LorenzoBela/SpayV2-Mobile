@@ -1470,22 +1470,31 @@ export default function DashboardScreen() {
                     p.isShared && { borderLeftWidth: 3, borderLeftColor: '#ee4d2d' }
                   ]}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-SemiBold' }} numberOfLines={1}>
-                        {p.itemName}
-                      </Text>
-                      {p.isShared && (
-                        <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, marginLeft: 6 }}>
-                          <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800' }}>SHARED (YOUR SPLIT)</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Text style={{ fontSize: 11, color: t.textSecondary, fontFamily: 'Jakarta-Medium' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-SemiBold' }} numberOfLines={1}>
+                          {p.itemName}
+                        </Text>
+                        {p.isShared && (
+                          <View style={{
+                            backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
+                            borderColor: 'rgba(238, 77, 45, 0.3)',
+                            borderWidth: 1,
+                            paddingHorizontal: 6,
+                            paddingVertical: 1.5,
+                            borderRadius: 4,
+                          }}>
+                            <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>SHARED (YOUR SPLIT)</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={{ fontSize: 11, color: t.textSecondary, fontFamily: 'Jakarta-Medium', marginTop: 4 }}>
                         Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                       </Text>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: t.textPrimary, fontFamily: 'Outfit-Bold' }}>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', paddingTop: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: t.textPrimary, fontFamily: 'Outfit-Bold' }}>
                         {formatCurrency(p.amount)}
                       </Text>
                     </View>

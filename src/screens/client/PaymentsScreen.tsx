@@ -1005,28 +1005,30 @@ export default function PaymentsScreen() {
                 <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>COMBINED BILL BREAKDOWN</Text>
                 {nextPaymentCountdown.payments.map((p: any, idx: number) => (
                   <View key={p.id || idx} style={{ marginBottom: 12 }}>
-                    <View style={styles.breakdownRow}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 8 }}>
-                        <Text style={[styles.breakdownItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                          {p.itemName}
-                        </Text>
-                        {p.isShared && (
-                          <View style={{
-                            borderWidth: 1,
-                            borderColor: '#ee4d2d',
-                            borderRadius: 4,
-                            paddingHorizontal: 4,
-                            paddingVertical: 1,
-                            marginLeft: 6
-                          }}>
-                            <Text style={{ color: '#ee4d2d', fontSize: 7, fontWeight: '800' }}>SHARED</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.breakdownItemRight}>
-                        <Text style={[styles.breakdownItemDate, { color: t.textSecondary }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                          <Text style={[styles.breakdownItemName, { color: t.textPrimary, flex: 0, paddingRight: 0 }]} numberOfLines={1}>
+                            {p.itemName}
+                          </Text>
+                          {p.isShared && (
+                            <View style={{
+                              borderWidth: 1,
+                              borderColor: 'rgba(238, 77, 45, 0.3)',
+                              backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
+                              borderRadius: 4,
+                              paddingHorizontal: 5,
+                              paddingVertical: 1.5,
+                            }}>
+                              <Text style={{ color: '#ee4d2d', fontSize: 7.5, fontWeight: '800', letterSpacing: 0.3 }}>SHARED</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[styles.breakdownItemDate, { color: t.textSecondary, marginTop: 3 }]}>
                           Due {parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
                         </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', paddingTop: 1 }}>
                         <Text style={[styles.breakdownItemAmount, { color: t.textPrimary }]}>
                           {formatCurrency(p.amount)}
                         </Text>
