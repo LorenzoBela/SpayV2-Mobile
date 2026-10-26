@@ -1,3 +1,8 @@
+import { useSplitValidity } from '../../hooks/useSplitValidity';
+import SplitBreakdown from '../../components/SplitBreakdown';
+import SplitEditor from '../../components/SplitEditor';
+import SplitOptionsHint from '../../components/SplitOptionsHint';
+import type { SplitConfiguration } from '../../utils/split-allocation';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import { formatAmount } from '../../utils/money';
@@ -117,7 +122,7 @@ const OrderListItem = React.memo(function OrderListItem({
         {order.is_shared && (
           <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginVertical: 2 }}>
             <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
-            <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED GROUP</Text>
+            <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED GROUP · {(order.participants || []).slice(0, 3).map((p: any) => p.splitPercentageLabel).filter(Boolean).join(' / ')}{(order.participants?.length || 0) > 3 ? ` +${order.participants.length - 3}` : ''}</Text>
           </View>
         )}
         <View style={[styles.clientRow, { justifyContent: 'center' }]}>
@@ -166,7 +171,7 @@ const OrderListItem = React.memo(function OrderListItem({
             {order.is_shared && (
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(238, 77, 45, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 }}>
                 <Users size={10} color="#ee4d2d" style={{ marginRight: 3 }} />
-                <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED GROUP</Text>
+                <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED GROUP · {(order.participants || []).slice(0, 3).map((p: any) => p.splitPercentageLabel).filter(Boolean).join(' / ')}{(order.participants?.length || 0) > 3 ? ` +${order.participants.length - 3}` : ''}</Text>
               </View>
             )}
           </View>
@@ -248,10 +253,13 @@ export default function AdminOrdersScreen() {
 
   const [isShared, setIsShared] = useState(false);
   const [sharedParticipants, setSharedParticipants] = useState<string[]>([]);
+  const [splitConfig, setSplitConfig] = useState<SplitConfiguration>();
+  const { invalid: splitFormInvalid, report: reportSplitValidity } = useSplitValidity();
+  const [editSplitConfig, setEditSplitConfig] = useState<SplitConfiguration>();
 
   // Form states - Assign Order (Bulk mode additions)
   const [isBulkMode, setIsBulkMode] = useState(false);
-  const [bulkOrders, setBulkOrders] = useState<Array<{ id: string; clientId: string; itemName: string; amount: string; months: string; purchaseDate: string; firstPaymentDate: string; remarks: string; isShared: boolean; participants: string[] }>>([]);
+  const [bulkOrders, setBulkOrders] = useState<Array<{ id: string; clientId: string; itemName: string; amount: string; months: string; purchaseDate: string; firstPaymentDate: string; remarks: string; isShared: boolean; participants: string[]; splitConfig?: SplitConfiguration }>>([]);
   const [clientSelectorActiveOrderId, setClientSelectorActiveOrderId] = useState<string | null>(null);
   const [bulkClientSearchQuery, setBulkClientSearchQuery] = useState('');
   const [participantSelectorActiveOrderId, setParticipantSelectorActiveOrderId] = useState<string | null>(null);
@@ -301,6 +309,7 @@ export default function AdminOrdersScreen() {
     setFirstPaymentDate('');
     setIsShared(false);
     setSharedParticipants([]);
+    setSplitConfig(undefined);
     setIsBulkMode(false);
     setBulkOrders([]);
     setClientSelectorActiveOrderId(null);
@@ -393,6 +402,8 @@ export default function AdminOrdersScreen() {
       order_date: o.orderDate,
       is_paid: o.isPaid,
       is_shared: o.isShared,
+      splitConfig: o.splitConfig,
+      splitRevision: o.splitRevision,
       remarks: o.remarks,
       user_id: o.userId,
       clientName: o.clientName,
@@ -505,6 +516,7 @@ export default function AdminOrdersScreen() {
             firstPaymentDate: o.firstPaymentDate || undefined,
             remarks: o.remarks || undefined,
             participants: o.isShared ? o.participants : undefined,
+            splitConfig: o.isShared ? o.splitConfig : undefined,
           }))
         };
 
@@ -541,6 +553,7 @@ export default function AdminOrdersScreen() {
           firstPaymentDate: firstPaymentDate || undefined,
           remarks: remarks || undefined,
           participants: isShared ? sharedParticipants : undefined,
+          splitConfig: isShared ? splitConfig : undefined,
         });
 
         if (response.success) {
@@ -580,6 +593,7 @@ export default function AdminOrdersScreen() {
     setEditIsShared(order.is_shared || false);
     setEditSharedParticipants((order.participants || []).map((p: any) => p.user_id).filter((id: string) => id !== order.user_id));
     
+    setEditSplitConfig(order.splitConfig || order.split_config || undefined);
     setIsEditOpen(true);
   };
 
@@ -615,6 +629,8 @@ export default function AdminOrdersScreen() {
         remarks: editRemarks || undefined,
         clientId: editClientId,
         participants: editIsShared ? editSharedParticipants : undefined,
+        splitConfig: editIsShared ? editSplitConfig : undefined,
+        expectedRevision: selectedOrder.splitRevision ?? selectedOrder.split_revision,
       });
 
       if (response.success) {
@@ -646,6 +662,8 @@ export default function AdminOrdersScreen() {
                     remarks: editRemarks || undefined,
                     clientId: editClientId,
                     participants: editIsShared ? editSharedParticipants : undefined,
+        splitConfig: editIsShared ? editSplitConfig : undefined,
+        expectedRevision: selectedOrder.splitRevision ?? selectedOrder.split_revision,
                     forceEdit: true,
                   });
                   if (forceRes.success) {
@@ -689,7 +707,7 @@ export default function AdminOrdersScreen() {
           onPress: async () => {
             setActionLoading(true);
             try {
-              const response = await callAdminApi('delete-order', { id: orderId });
+              const response = await callAdminApi('delete-order', { id: orderId, expectedRevision: selectedOrder?.splitRevision ?? selectedOrder?.split_revision });
               if (response.success) {
                 PremiumAlert.alert('Deleted', 'Order successfully removed.');
                 setIsDetailsOpen(false);
@@ -1092,49 +1110,7 @@ export default function AdminOrdersScreen() {
                   </Text>
                   
                   <View style={{ gap: 8 }}>
-                    {(selectedOrder.participants || []).map((participant: any) => {
-                      const isOwner = participant.user_id === selectedOrder.user_id;
-                      return (
-                        <View 
-                          key={participant.id || participant.user_id} 
-                          style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            justifyContent: 'space-between',
-                            paddingVertical: 8,
-                            borderBottomWidth: 1,
-                            borderBottomColor: t.border
-                          }}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary }}>
-                                {participant.name || 'Unknown'}
-                              </Text>
-                              {isOwner && (
-                                <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 }}>
-                                  <Text style={{ fontSize: 9, color: '#ee4d2d', fontWeight: '800' }}>OWNER</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={{ fontSize: 10, color: t.textSecondary }}>{participant.email}</Text>
-                          </View>
-                          
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary, fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace' }}>
-                              {formatCurrency(participant.splitAmount || 0)}
-                            </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: participant.isPaid ? '#10b981' : '#f59e0b' }} />
-                              <Text style={{ fontSize: 10, fontWeight: '700', color: participant.isPaid ? '#10b981' : '#f59e0b' }}>
-                                {participant.isPaid ? 'Paid' : 'Unpaid'}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
+                    <SplitBreakdown total={selectedOrder.amount} config={selectedOrder.splitConfig} participants={selectedOrder.participants || []} />                  </View>
                 </View>
               )}
 
@@ -1313,69 +1289,6 @@ export default function AdminOrdersScreen() {
                       </Text>
                     </View>
 
-                    {/* Shared Order Toggle */}
-                    <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12 }]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <View>
-                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
-                          <Text style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>Split payments across clients</Text>
-                        </View>
-                        <Switch
-                          value={isShared}
-                          onValueChange={setIsShared}
-                          trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
-                          thumbColor={isShared ? '#ee4d2d' : '#f4f3f4'}
-                        />
-                      </View>
-                      
-                      {isShared && (
-                        <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 16 }}>
-                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({sharedParticipants.length})</Text>
-                          <TouchableOpacity
-                            style={[styles.inlineClientSelector, { marginTop: 8 }]}
-                            onPress={() => {
-                              setParticipantSelectorActiveOrderId('single');
-                              setBulkClientSearchQuery('');
-                            }}
-                          >
-                            <Text style={[styles.selectedClientName, { color: sharedParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
-                              {sharedParticipants.length > 0 ? `${sharedParticipants.length} selected` : 'Choose Participants...'}
-                            </Text>
-                            <ChevronDown size={14} color={t.textSecondary} />
-                          </TouchableOpacity>
-
-                          {/* Split-Billing Calculator Inline */}
-                          {(() => {
-                            const totalAmount = parseFloat(amount) || 0;
-                            const monthsCount = parseInt(installmentMonths, 10) || 6;
-                            const totalParts = 1 + sharedParticipants.length;
-                            const splitPrincipal = totalAmount / totalParts;
-                            const splitMonthly = splitPrincipal / monthsCount;
-                            return (
-                              <View style={{ marginTop: 14, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 16, padding: 14 }}>
-                                <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <View style={{ flex: 1, marginRight: 8 }}>
-                                    <Text style={{ fontSize: 13, fontWeight: '800', color: t.textPrimary }}>
-                                      ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
-                                    </Text>
-                                    <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-                                      ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / month for {monthsCount} months
-                                    </Text>
-                                  </View>
-                                  <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
-                                      1 Main + {sharedParticipants.length} Split{sharedParticipants.length === 1 ? '' : 's'}
-                                    </Text>
-                                  </View>
-                                </View>
-                              </View>
-                            );
-                          })()}
-                        </View>
-                      )}
-                    </View>
-
                     <View style={styles.formSectionHeader}>
                       <Text style={[styles.formSectionTitle, { color: t.textPrimary }]}>Order Details</Text>
                       <Text style={[styles.formSectionMeta, { color: t.textSecondary }]}>Installment setup</Text>
@@ -1449,6 +1362,45 @@ export default function AdminOrdersScreen() {
                       />
                     </View>
 
+                    {/* Shared Order Toggle */}
+                    <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder, marginTop: 12 }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View>
+                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>SHARED ORDER</Text>
+                          <Text style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>Split payments across clients</Text>
+                        </View>
+                        <Switch
+                          value={isShared}
+                          onValueChange={setIsShared}
+                          trackColor={{ false: '#767577', true: isDarkMode ? 'rgba(238, 77, 45, 0.5)' : '#ffb3a1' }}
+                          thumbColor={isShared ? '#ee4d2d' : '#f4f3f4'}
+                        />
+                      </View>
+
+                      <SplitOptionsHint sharingEnabled={isShared} primarySelected={Boolean(selectedClientId)} hasParticipants={sharedParticipants.length > 0} isDarkMode={isDarkMode} />
+
+                      {isShared && (
+                        <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 16 }}>
+                          <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({sharedParticipants.length})</Text>
+                          <TouchableOpacity
+                            style={[styles.inlineClientSelector, { marginTop: 8 }]}
+                            onPress={() => {
+                              setParticipantSelectorActiveOrderId('single');
+                              setBulkClientSearchQuery('');
+                            }}
+                          >
+                            <Text style={[styles.selectedClientName, { color: sharedParticipants.length > 0 ? t.textPrimary : t.textSecondary }]}>
+                              {sharedParticipants.length > 0 ? `${sharedParticipants.length} selected` : 'Choose Participants...'}
+                            </Text>
+                            <ChevronDown size={14} color={t.textSecondary} />
+                          </TouchableOpacity>
+
+                          {selectedClientId && sharedParticipants.length > 0 && <SplitEditor total={amount} months={Number(installmentMonths)} value={splitConfig} onValidityChange={valid => reportSplitValidity('create', valid)} onChange={setSplitConfig} isDarkMode={isDarkMode}
+                            participants={Array.from(new Set([selectedClientId, ...sharedParticipants])).map(id => ({ id, name: profiles.find((p: any) => p.id === id)?.name || 'Client', avatarUrl: getClientAvatarUrl(profiles.find((p: any) => p.id === id), undefined, 80) }))} />}
+                        </View>
+                      )}
+                    </View>
+
                     <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
                       <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>REMARKS / SPECIFICATIONS</Text>
                       <TextInput
@@ -1513,6 +1465,8 @@ export default function AdminOrdersScreen() {
                             />
                           </View>
 
+                          <SplitOptionsHint sharingEnabled={Boolean(order.isShared)} primarySelected={Boolean(order.clientId)} hasParticipants={Boolean(order.participants?.length)} isDarkMode={isDarkMode} />
+
                           {order.isShared && (
                             <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: t.border, paddingTop: 12 }}>
                               <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>PARTICIPANTS ({(order.participants || []).length})</Text>
@@ -1529,35 +1483,8 @@ export default function AdminOrdersScreen() {
                                 <ChevronDown size={14} color={t.textSecondary} />
                               </TouchableOpacity>
 
-                              {/* Split-Billing Calculator Inline */}
-                              {(() => {
-                                const totalAmount = parseFloat(order.amount) || 0;
-                                const monthsCount = parseInt(order.months, 10) || 6;
-                                const partsList = order.participants || [];
-                                const totalParts = 1 + partsList.length;
-                                const splitPrincipal = totalAmount / totalParts;
-                                const splitMonthly = splitPrincipal / monthsCount;
-                                return (
-                                  <View style={{ marginTop: 14, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 16, padding: 14 }}>
-                                    <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <View style={{ flex: 1, marginRight: 8 }}>
-                                        <Text style={{ fontSize: 13, fontWeight: '800', color: t.textPrimary }}>
-                                          ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
-                                        </Text>
-                                        <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-                                          ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / month for {monthsCount} months
-                                        </Text>
-                                      </View>
-                                      <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
-                                        <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
-                                          1 Main + {partsList.length} Split{partsList.length === 1 ? '' : 's'}
-                                        </Text>
-                                      </View>
-                                    </View>
-                                  </View>
-                                );
-                              })()}
+                              {order.clientId && order.participants.length > 0 && <SplitEditor total={order.amount} months={Number(order.months)} value={order.splitConfig} onValidityChange={valid => reportSplitValidity(`bulk:${order.id}`, valid)} onChange={config => updateBulkOrderRow(order.id, { splitConfig: config })} isDarkMode={isDarkMode}
+                                participants={Array.from(new Set([order.clientId, ...order.participants])).map(id => ({ id, name: profiles.find((p: any) => p.id === id)?.name || 'Client', avatarUrl: getClientAvatarUrl(profiles.find((p: any) => p.id === id), undefined, 80) }))} />}
                             </View>
                           )}
                         </View>
@@ -1752,7 +1679,7 @@ export default function AdminOrdersScreen() {
                 <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsAssignOpen(false)} disabled={actionLoading}>
                   <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleAssignSubmit} disabled={actionLoading}>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleAssignSubmit} disabled={splitFormInvalid || (actionLoading)}>
                   <CheckCircle2 size={16} color="#ffffff" />
                   <Text style={styles.primaryActionText}>{actionLoading ? 'Assigning...' : 'Assign Order'}</Text>
                 </TouchableOpacity>
@@ -2199,34 +2126,9 @@ export default function AdminOrdersScreen() {
                           <ChevronDown size={14} color={t.textSecondary} />
                         </TouchableOpacity>
 
-                        {/* Split-Billing Calculator Inline */}
-                        {(() => {
-                          const totalAmount = parseFloat(editAmount) || 0;
-                          const monthsCount = parseInt(editMonths, 10) || 6;
-                          const totalParts = 1 + editSharedParticipants.length;
-                          const splitPrincipal = totalAmount / totalParts;
-                          const splitMonthly = splitPrincipal / monthsCount;
-                          return (
-                            <View style={{ marginTop: 14, backgroundColor: isDarkMode ? '#1e293b' : '#fff7ed', borderWidth: 1, borderColor: isDarkMode ? '#334155' : '#ffedd5', borderRadius: 16, padding: 14 }}>
-                              <Text style={{ fontSize: 10, fontWeight: '800', color: t.accent, letterSpacing: 1, marginBottom: 6 }}>SPLIT CALCULATOR</Text>
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <View style={{ flex: 1, marginRight: 8 }}>
-                                  <Text style={{ fontSize: 13, fontWeight: '800', color: t.textPrimary }}>
-                                    ₱{splitPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} each
-                                  </Text>
-                                  <Text style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-                                    ₱{splitMonthly.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mo for {monthsCount} mos
-                                  </Text>
-                                </View>
-                                <View style={{ backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
-                                  <Text style={{ fontSize: 11, fontWeight: '700', color: t.accent }}>
-                                    1 Main + {editSharedParticipants.length} Split{editSharedParticipants.length === 1 ? '' : 's'}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
-                          );
-                        })()}
+                        {editClientId && editSharedParticipants.length > 0 && <SplitEditor total={editAmount} months={Number(editMonths)} value={editSplitConfig} onValidityChange={valid => reportSplitValidity('edit', valid)} onChange={setEditSplitConfig} isDarkMode={isDarkMode}
+                          disabled={Boolean(selectedOrder?.payments?.some((p: any) => p.is_paid || p.isPaid))}
+                          participants={Array.from(new Set([editClientId, ...editSharedParticipants])).map(id => ({ id, name: profiles.find((p: any) => p.id === id)?.name || 'Client', avatarUrl: getClientAvatarUrl(profiles.find((p: any) => p.id === id), undefined, 80) }))} />}
                       </View>
                     )}
                   </View>
@@ -2343,7 +2245,7 @@ export default function AdminOrdersScreen() {
                 <TouchableOpacity style={[styles.secondaryAction, { borderColor: t.cardBorder }]} onPress={() => setIsEditOpen(false)} disabled={actionLoading}>
                   <Text style={[styles.secondaryActionText, { color: t.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditSubmit} disabled={actionLoading}>
+                <TouchableOpacity style={[styles.primaryAction, { backgroundColor: t.accent, opacity: actionLoading ? 0.7 : 1 }]} onPress={handleEditSubmit} disabled={splitFormInvalid || (actionLoading)}>
                   <CheckCircle2 size={16} color="#ffffff" />
                   <Text style={styles.primaryActionText}>{actionLoading ? 'Saving...' : 'Save Changes'}</Text>
                 </TouchableOpacity>

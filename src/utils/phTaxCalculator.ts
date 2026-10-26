@@ -1,3 +1,5 @@
+import { getPayslipPayroll } from './payslipPayroll'
+
 /**
  * Official Philippine BIR TRAIN Law Income Tax & Statutory Contributions Calculator
  * Reference: Sweldo.ph / BIR Revised Withholding Tax Tables (Effective 2023 - 2026+)
@@ -12,6 +14,8 @@ export function formatDateStr(d: Date): string {
 }
 
 export interface PhTaxBreakdown {
+  wisp?: number
+  payrollSource?: string
   grossMonthly: number;
   sss: number;
   philhealth: number;
@@ -52,7 +56,9 @@ export interface PayrollCutoffInfo {
   standardSemiMonthlyPaycheck: number;
 }
 
-export function calculatePhilippineTaxAndDeductions(monthlyGrossSalary: number): PhTaxBreakdown {
+export function calculatePhilippineTaxAndDeductions(monthlyGrossSalary: number, employer = ''): PhTaxBreakdown {
+  const observed = getPayslipPayroll(monthlyGrossSalary, employer)
+  if (observed) return observed
   if (monthlyGrossSalary <= 0) {
     return {
       grossMonthly: 0,
@@ -143,21 +149,19 @@ export function calculate13thMonthPay(
   basicMonthlySalary: number,
   employmentStartDateStr?: string | null,
   employmentEndDateStr?: string | null,
-  targetYear?: number
+  targetYear?: number,
+  unpaidBasicDeductions = 0
 ): Ph13thMonthBreakdown {
-  const currentYear = targetYear || new Date().getFullYear();
-  const yearStart = new Date(currentYear, 0, 1); // Jan 1
-  const yearEnd = new Date(currentYear, 11, 31, 23, 59, 59); // Dec 31
-
-  let start = yearStart;
-  if (employmentStartDateStr && !isNaN(new Date(employmentStartDateStr).getTime())) {
-    start = new Date(employmentStartDateStr);
-  }
-
-  let end = yearEnd;
-  if (employmentEndDateStr && !isNaN(new Date(employmentEndDateStr).getTime())) {
-    end = new Date(employmentEndDateStr);
-  }
+  const currentYear = targetYear || new Date().getFullYear()
+  const yearStart = new Date(Date.UTC(currentYear, 0, 1))
+  const yearEnd = new Date(Date.UTC(currentYear, 11, 31))
+  const parseDay = (value?: string | null) => value ? new Date(`${value.slice(0, 10)}T00:00:00Z`) : null
+  const requestedStart = parseDay(employmentStartDateStr)
+  const requestedEnd = parseDay(employmentEndDateStr)
+  const start = requestedStart && Number.isFinite(requestedStart.getTime()) && requestedStart > yearStart ? requestedStart : yearStart
+  const defaultCutoff = new Date(Date.UTC(currentYear, 10, 30))
+  const end = requestedEnd && Number.isFinite(requestedEnd.getTime())
+    ? new Date(Math.min(requestedEnd.getTime(), yearEnd.getTime())) : defaultCutoff
 
   if (start > end) {
     return {
@@ -177,17 +181,27 @@ export function calculate13thMonthPay(
     };
   }
 
-  // Calculate actual days worked in custom period
-  const diffTime = Math.abs(end.getTime() - start.getTime());
-  const daysWorked = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  const monthsWorked = Math.min(12, Math.round((daysWorked / 30.42) * 10) / 10);
-  const proratedPercentage = Math.min(100, Math.round((monthsWorked / 12) * 1000) / 10);
-
-  // Total basic salary earned during the custom duration
-  const totalEarnedInYear = Math.round(basicMonthlySalary * (daysWorked / 365) * 12 * 100) / 100;
-
-  // 13th Month Pay = Total Basic Salary Earned / 12 = basicMonthlySalary * (monthsWorked / 12)
-  const gross13thMonthPay = Math.round((totalEarnedInYear / 12) * 100) / 100;
+  // Project the basic salary using the same two payroll cutoffs as regular pay.
+  // July 16-31 is one complete half-month, not 16/31 of a monthly salary.
+  const daysWorked = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+  let earnedMonths = 0
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1))
+  while (cursor <= end) {
+    const year = cursor.getUTCFullYear(), month = cursor.getUTCMonth()
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+    for (const [first, last] of [[1, 15], [16, lastDay]]) {
+      const periodStart = Date.UTC(year, month, first)
+      const periodEnd = Date.UTC(year, month, last)
+      const overlapStart = Math.max(start.getTime(), periodStart)
+      const overlapEnd = Math.min(end.getTime(), periodEnd)
+      if (overlapEnd >= overlapStart) earnedMonths += 0.5 * (Math.round((overlapEnd - overlapStart) / 86400000) + 1) / (last - first + 1)
+    }
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1)
+  }
+  const monthsWorked = Math.round(earnedMonths * 100) / 100
+  const proratedPercentage = Math.round(earnedMonths / 12 * 1000) / 10
+  const totalEarnedInYear = Math.round(Math.max(0, basicMonthlySalary * earnedMonths - Math.max(0, unpaidBasicDeductions)) * 100) / 100
+  const gross13thMonthPay = Math.round(totalEarnedInYear / 12 * 100) / 100
 
   // BIR ₱90,000 Tax Exemption Rule
   const taxExemptLimit = 90000;
@@ -221,9 +235,10 @@ export function calculate13thMonthPay(
 export function getPayrollCutoffSchedule(
   employmentStartDateStr: string,
   baseSalary: number,
-  frequency: string = 'SEMI_MONTHLY_10_25'
+  frequency: string = 'SEMI_MONTHLY_10_25',
+  employer = ''
 ): PayrollCutoffInfo {
-  const taxBreakdown = calculatePhilippineTaxAndDeductions(baseSalary);
+  const taxBreakdown = calculatePhilippineTaxAndDeductions(baseSalary, employer);
   const standardSemiMonthlyPaycheck = taxBreakdown.paycheck10th;
 
   const start = new Date(employmentStartDateStr);
@@ -350,4 +365,15 @@ export function calculateLiveNextPayday(
       return formatDateStr(new Date(year, month + 1, 10));
     }
   }
+}
+
+/** Only dated, explicitly recorded unpaid time reduces the basic-pay projection. */
+export function getUnpaidBasicSalaryDeductions(history: Array<{
+  status: string
+  suspensions?: Array<{ type: string; amount: number; date?: string }>
+}>, from: string, through: string): number {
+  return Math.round(history.filter(p => p.status === 'CONFIRMED').reduce((sum, p) => sum + (p.suspensions || []).reduce((deduction, item) => {
+    const unpaid = ['ABSENCE', 'UNDERTIME', 'WEATHER_FULL', 'WEATHER_HALF'].includes(item.type)
+    return deduction + (unpaid && item.date && item.date >= from && item.date <= through && Number.isFinite(item.amount) ? Math.max(0, item.amount) : 0)
+  }, 0), 0) * 100) / 100
 }

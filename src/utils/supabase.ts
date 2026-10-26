@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import * as SecureStore from 'expo-secure-store'
+import { SPLIT_READER_HEADERS } from './split-reader-contract'
 
 // Custom storage adapter for React Native to store auth tokens securely
 export const expoSecureStorage = {
@@ -22,6 +23,7 @@ const supabaseAnonKey =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyenFzcHR4ZXFzZ25reXRoZW52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1MzIzMDAsImV4cCI6MjA4ODEwODMwMH0.0R1EN2z5RBT_2iWUFYZpLs8oauvM_arf_CNzxj0aSts'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { headers: SPLIT_READER_HEADERS },
   auth: {
     storage: expoSecureStorage,
     autoRefreshToken: true,

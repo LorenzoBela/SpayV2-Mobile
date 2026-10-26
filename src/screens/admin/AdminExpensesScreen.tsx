@@ -1,3 +1,4 @@
+import { getBillingMonthKey } from '../../utils/date';
 import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
 import {
   StyleSheet,
@@ -1094,6 +1095,14 @@ export default function AdminExpensesScreen() {
           </View>
         </View>
 
+        {(() => {
+          const unpaid = (data.upcomingPlannedPayments || []).filter((p: any) => !p.isPaid && Number(p.amountDue) > 0);
+          const period = nextTarget.date ? getBillingMonthKey(nextTarget.date) : '';
+          const shared = unpaid.filter((p: any) => p.isShared && getBillingMonthKey(p.dueDate) === period);
+          if (!shared.length) return null;
+          return <View style={{ borderRadius: 14, borderWidth: 1, borderColor: t.border, backgroundColor: t.surfaceCard, padding: 12, gap: 10 }}><Text style={{ fontSize: 11, fontWeight: '800', color: '#ee4d2d' }}>SHARED EXPENSES · YOUR UPCOMING LIABILITIES</Text>{shared.map((p: any) => <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}><View style={{ flex: 1 }}><Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary }}>{p.title}{p.splitPercentageLabel ? ` · ${p.splitPercentageLabel}` : ''}</Text><Text style={{ fontSize: 11, color: t.textSecondary }}>Your share {p.splitPercentageLabel} · {p.splitMode}</Text></View><Text style={{ fontSize: 12, fontWeight: '800', color: t.textPrimary }}>₱{Number(p.amountDue).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</Text></View>)}</View>;
+        })()}
+
         {/* 3. CASH ON HAND BANNER WITH QUICK MICRO-ADJUSTMENTS */}
         <View style={[styles.cashOnHandBanner, { backgroundColor: t.surface, borderColor: t.border }]}>
           <View style={styles.cashBannerTopRow}>
@@ -1706,7 +1715,7 @@ export default function AdminExpensesScreen() {
                     <Text style={styles.timelineSourceText}>{p.source}</Text>
                   </View>
                   <View style={styles.timelineMid}>
-                    <Text style={[styles.timelineItemTitle, { color: t.textPrimary }]} numberOfLines={1}>{p.title}</Text>
+                    <Text style={[styles.timelineItemTitle, { color: t.textPrimary }]} numberOfLines={1}>{p.title}{p.splitPercentageLabel ? ` · ${p.splitPercentageLabel}` : ''}</Text>
                     <Text style={[styles.timelineItemDate, { color: t.textMuted }]}>
                       Due: {new Date(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>

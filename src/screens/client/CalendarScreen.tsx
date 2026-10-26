@@ -2,6 +2,7 @@ import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { formatAmount } from '../../utils/money';
 import { generatePaymentRef } from '../../utils/id';
+import { SPLIT_READER_HEADERS } from '../../utils/split-reader-contract';
 import {
   View,
   Text,
@@ -56,6 +57,8 @@ export interface CalendarEvent {
   amount: number;
   status: 'paid' | 'overdue' | 'upcoming';
   itemName: string;
+  splitPercentageLabel?: string;
+  splitMode?: string;
   monthNumber: number;
   installmentMonths: number;
   paymentDate: string | null;
@@ -259,6 +262,8 @@ export default function CalendarScreen() {
         proof_of_payment: p.proofOfPayment,
         month_number: p.monthNumber,
         rescheduleHistory: p.rescheduleHistory || [],
+        splitPercentageLabel: p.splitPercentageLabel,
+        splitMode: p.splitMode,
       })));
     }
   }, [paymentsHookList]);
@@ -324,6 +329,8 @@ export default function CalendarScreen() {
         amount: parseFloat(p.amount_due) || 0,
         status,
         itemName: order.itemName,
+        splitPercentageLabel: p.splitPercentageLabel,
+        splitMode: p.splitMode,
         monthNumber: parseInt(p.month_number, 10) || 1,
         installmentMonths: order.installmentMonths,
         paymentDate: p.payment_date,
@@ -573,6 +580,7 @@ export default function CalendarScreen() {
         const response = await fetch(`${apiUrl}/api/payments/reschedule`, {
           method: 'POST',
           headers: {
+            ...SPLIT_READER_HEADERS,
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session?.access_token || ''}`,
           },
@@ -896,6 +904,11 @@ export default function CalendarScreen() {
                       <Text style={[styles.dueItemInstallment, { color: t.textSecondary }]}>
                         Installment {event.monthNumber} of {event.installmentMonths}
                       </Text>
+                      {event.splitPercentageLabel && (
+                        <Text style={[styles.dueItemInstallment, { color: t.textSecondary }]}>
+                          Your share {event.splitPercentageLabel}{event.splitMode ? ` · ${event.splitMode}` : ''}
+                        </Text>
+                      )}
                       <View style={[styles.statusBadge, { backgroundColor: styling.bgColor, alignSelf: 'flex-start', marginTop: 4 }]}>
                         <StatusIcon size={10} color={styling.color} style={{ marginRight: 4 }} />
                         <Text style={[styles.statusBadgeText, { color: styling.color }]}>{styling.label}</Text>
@@ -1119,6 +1132,11 @@ export default function CalendarScreen() {
                   <Text style={[styles.modalTitle, { color: t.textPrimary }]} numberOfLines={1}>
                     {selectedEvent.itemName}
                   </Text>
+                  {selectedEvent.splitPercentageLabel && (
+                    <Text style={[styles.dueItemInstallment, { color: t.textSecondary }]}>
+                      Your share {selectedEvent.splitPercentageLabel}{selectedEvent.splitMode ? ` · ${selectedEvent.splitMode}` : ''}
+                    </Text>
+                  )}
                 </View>
                 <TouchableOpacity onPress={() => setSelectedEvent(null)} style={styles.modalCloseBtn}>
                   <X size={20} color={t.textSecondary} />

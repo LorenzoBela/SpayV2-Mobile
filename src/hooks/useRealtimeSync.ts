@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '../utils/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
+import { AppState } from 'react-native';
 import { syncWidgetData } from '../utils/widgetSync';
 
 /**
@@ -58,6 +59,11 @@ export function useRealtimeSync(
             queryClient.invalidateQueries({ queryKey: key });
           });
         }
+        // tRPC keys are path tuples, not legacy ['client-orders'] aliases.
+        queryClient.invalidateQueries({ predicate: query => {
+          const path = query.queryKey[0];
+          return Array.isArray(path) && ['orders', 'payments', 'admin', 'expenses'].includes(String(path[0]));
+        } });
         
         if (onSyncRef.current) {
           onSyncRef.current();
@@ -70,7 +76,9 @@ export function useRealtimeSync(
     console.log(`[useRealtimeSync] Subscribing to changes on [${tablesKey}] under channel: ${channelName}`);
     const channel = supabase.channel(channelName);
 
-    tables.forEach((table) => {
+    const subscribedTables = [...new Set(tables.some(table => table === 'orders' || table === 'payments')
+      ? [...tables, 'order_participants', 'order_participant_payments'] : tables)];
+    subscribedTables.forEach((table) => {
       channel.on(
         'postgres_changes',
         {
@@ -95,8 +103,13 @@ export function useRealtimeSync(
       }
     });
 
+    const fallbackRefresh = tables.some(table => table === 'orders' || table === 'payments') ? setInterval(() => {
+      if (AppState.currentState === 'active') triggerSync();
+    }, 60000) : null;
+
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
+      if (fallbackRefresh !== null) clearInterval(fallbackRefresh);
       console.log(`[useRealtimeSync] Cleaning up subscription for channel: ${channelName}`);
       void supabase.removeChannel(channel);
     };

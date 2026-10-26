@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { formatAmount } from '../../utils/money';
 import { generatePaymentRef } from '../../utils/id';
+import { SPLIT_READER_HEADERS } from '../../utils/split-reader-contract';
 import {
   StyleSheet,
   Text,
@@ -465,6 +466,7 @@ export default function NootAiScreen() {
         const response = await fetch(`${apiUrl}/api/nootai`, {
           method: 'POST',
           headers: {
+            ...SPLIT_READER_HEADERS,
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token || ''}`,
           },

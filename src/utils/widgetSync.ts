@@ -6,6 +6,8 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { getLinkedProfileForCurrentUser } from './authProfile';
 import { callAdminApi } from '../services/adminService';
 import { queryClient } from './queryClient';
+import { personalOrder } from './personal-liability';
+import { throwIfSplitReaderUpgrade } from './split-reader-contract';
 
 dayjs.extend(relativeTime);
 
@@ -59,6 +61,7 @@ export async function syncWidgetData(force: boolean = false) {
     let globalLimit = 0;
     let globalUnpaid = 0;
     const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
+    throwIfSplitReaderUpgrade(rpcError);
     if (!rpcError && globalStats && globalStats[0]) {
       globalLimit = parseFloat(globalStats[0].credit_limit_total) || 0;
       globalUnpaid = parseFloat(globalStats[0].unpaid_amount_total) || 0;
@@ -111,26 +114,29 @@ export async function syncWidgetData(force: boolean = false) {
           is_paid: o.isPaid ?? o.is_paid,
         }));
       } else {
-        const { data: participations } = await supabase
+        const { data: participations, error: participationError } = await supabase
           .from('order_participants')
           .select('id, order_id, split_amount, is_paid')
           .eq('user_id', effectiveProfileId);
+        throwIfSplitReaderUpgrade(participationError);
 
         const participantOrderIds = (participations || []).map((p: any) => p.order_id);
         const participantByOrderId = new Map<string, any>();
         (participations || []).forEach((p: any) => participantByOrderId.set(p.order_id, p));
 
-        const { data: owned } = await supabase
+        const { data: owned, error: ownedError } = await supabase
           .from('orders')
-          .select('id, item_name, amount, installment_months, order_date, is_paid')
+          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared, split_config')
           .eq('user_id', effectiveProfileId);
+        throwIfSplitReaderUpgrade(ownedError);
 
         let shared: any[] = [];
         if (participantOrderIds.length > 0) {
-          const { data: fetchedShared } = await supabase
+          const { data: fetchedShared, error: sharedError } = await supabase
             .from('orders')
-            .select('id, item_name, amount, installment_months, order_date, is_paid')
+            .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared, split_config')
             .in('id', participantOrderIds);
+          throwIfSplitReaderUpgrade(sharedError);
           if (fetchedShared) shared = fetchedShared;
         }
 
@@ -141,7 +147,8 @@ export async function syncWidgetData(force: boolean = false) {
             const part = participantByOrderId.get(o.id);
             combinedMap.set(o.id, {
               ...o,
-              amount: part ? parseFloat(part.split_amount) || o.amount : o.amount,
+              orderTotal: o.amount,
+              amount: part ? Number(part.split_amount ?? 0) : o.amount,
               is_paid: part ? part.is_paid : o.is_paid,
               is_participant: true,
               participant_id: part?.id,
@@ -149,7 +156,7 @@ export async function syncWidgetData(force: boolean = false) {
           }
         });
 
-        dbOrders = Array.from(combinedMap.values());
+        dbOrders = Array.from(combinedMap.values(), order => personalOrder(order, participantByOrderId.get(order.id), effectiveProfileId));
       }
 
       let billingCycles: any[] = [];
@@ -170,26 +177,28 @@ export async function syncWidgetData(force: boolean = false) {
             id: p.id,
             order_id: p.orderId || p.order_id,
             due_date: p.rawDueDate || p.dueDate || p.due_date,
-            amount_due: p.amountDue || p.amount_due,
+            amount_due: p.amountDue ?? p.amount_due,
             is_paid: p.isPaid ?? p.is_paid,
             payment_date: p.paymentDate || p.payment_date,
             month_number: p.monthNumber || p.month_number,
           }));
         } else {
-          const { data } = await supabase
+          const { data, error: paymentsError } = await supabase
             .from('payments')
             .select('id, order_id, due_date, amount_due, is_paid, payment_date, month_number')
             .in('order_id', orderIds)
             .order('due_date', { ascending: true });
+          throwIfSplitReaderUpgrade(paymentsError);
 
           const participantOrders = (dbOrders || []).filter((o: any) => o.is_participant && o.participant_id);
           const participantIds = participantOrders.map((o: any) => o.participant_id);
           let participantPaymentsMap = new Map<string, any>();
           if (participantIds.length > 0) {
-            const { data: partPayments } = await supabase
+            const { data: partPayments, error: participantPaymentsError } = await supabase
               .from('order_participant_payments')
               .select('id, participant_id, payment_id, amount_due, is_paid, paid_at')
               .in('participant_id', participantIds);
+            throwIfSplitReaderUpgrade(participantPaymentsError);
             (partPayments || []).forEach((pp: any) => {
               participantPaymentsMap.set(pp.payment_id, pp);
             });
@@ -201,8 +210,8 @@ export async function syncWidgetData(force: boolean = false) {
               return {
                 ...p,
                 amount_due: pp.amount_due,
-                is_paid: pp.is_paid,
-                payment_date: pp.paid_at || p.payment_date,
+                is_paid: Number(pp.amount_due) === 0 || pp.is_paid,
+                payment_date: pp.paid_at,
               };
             }
             return p;
@@ -217,7 +226,7 @@ export async function syncWidgetData(force: boolean = false) {
           const unpaidGroups = new Map<string, any>();
           
           dbPayments.forEach(p => {
-            if (!p.is_paid) {
+            if (!p.is_paid && Number(p.amount_due) > 0) {
               const date = new Date(p.due_date);
               const monthKey = dayjs(date).format('MMMM YYYY');
               const order = ordersMap.get(p.order_id);
@@ -286,7 +295,7 @@ export async function syncWidgetData(force: boolean = false) {
           });
 
           // Map Upcoming Installments (up to 50 active installments)
-          const unpaidList = dbPayments.filter(p => !p.is_paid).slice(0, 50);
+          const unpaidList = dbPayments.filter(p => !p.is_paid && Number(p.amount_due) > 0).slice(0, 50);
           upcomingInstallments = unpaidList.map(inst => {
             const order = ordersMap.get(inst.order_id);
             const dueDate = new Date(inst.due_date);
@@ -308,7 +317,7 @@ export async function syncWidgetData(force: boolean = false) {
 
           // Map Recent Transactions (up to 50 paid repayments)
           const paidList = dbPayments
-            .filter(p => p.is_paid)
+            .filter(p => p.is_paid && Number(p.amount_due) > 0)
             .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime())
             .slice(0, 50);
 
@@ -327,7 +336,7 @@ export async function syncWidgetData(force: boolean = false) {
 
           // Compute Streak & On-Time Rate
           const allPaidPayments = dbPayments
-            .filter(p => p.is_paid)
+            .filter(p => p.is_paid && Number(p.amount_due) > 0)
             .sort((a, b) => new Date(b.payment_date || b.due_date).getTime() - new Date(a.payment_date || a.due_date).getTime());
 
           for (const p of allPaidPayments) {
@@ -394,6 +403,7 @@ export async function syncWidgetData(force: boolean = false) {
         notifications
       };
     } catch (err) {
+      throwIfSplitReaderUpgrade(err);
       console.error('[widgetSync] Error fetching client database details:', err);
     }
 
@@ -402,6 +412,8 @@ export async function syncWidgetData(force: boolean = false) {
         // Fetch Admin Dashboard & Reminders via Next.js backend API
         const dashboardRes = await callAdminApi('fetch-admin-dashboard');
         const remindersRes = await callAdminApi('fetch-admin-reminders');
+        throwIfSplitReaderUpgrade(dashboardRes);
+        throwIfSplitReaderUpgrade(remindersRes);
 
         const outstandingCapital = dashboardRes?.stats?.outstandingBalance || 0.0;
         const collectionEfficiency = dashboardRes?.stats?.collectionEfficiency || 0.0;
@@ -409,9 +421,10 @@ export async function syncWidgetData(force: boolean = false) {
         const clientsCount = dashboardRes?.stats?.activeClientsCount || 0;
 
         // Get total orders count platform-wide
-        const { count: ordersCount } = await supabase
+        const { count: ordersCount, error: ordersCountError } = await supabase
           .from('orders')
           .select('id', { count: 'exact', head: true });
+        throwIfSplitReaderUpgrade(ordersCountError);
 
         // Map Admin Countdown timelines
         const adminCycles = (dashboardRes?.unpaidBillingSchedules || []).map((g: any) => {
@@ -511,6 +524,7 @@ export async function syncWidgetData(force: boolean = false) {
           adminAuditLogs
         };
       } catch (err) {
+        throwIfSplitReaderUpgrade(err);
         console.error('[widgetSync] Error fetching admin dashboard details:', err);
       }
     }

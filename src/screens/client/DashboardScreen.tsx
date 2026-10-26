@@ -1187,7 +1187,7 @@ export default function DashboardScreen() {
     return () => subscription.remove();
   }, [refetchPayments, refetchOrders, fetchGlobalLimits]);
 
-  useRealtimeSync(['orders', 'payments', 'account_limits'], () => {
+  useRealtimeSync(['orders', 'payments', 'order_participants', 'order_participant_payments', 'account_limits'], () => {
     refetchPayments();
     refetchOrders();
     fetchGlobalLimits();
@@ -1514,7 +1514,7 @@ export default function DashboardScreen() {
                       {p.sharingProgress.map((sp: any, spIdx: number) => (
                         <View key={spIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
                           <Text style={{ fontSize: 11, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }} numberOfLines={1}>
-                            {sp.name}
+                            {sp.name}{sp.splitPercentageLabel ? ` · ${sp.splitPercentageLabel}` : ''}{sp.splitMode ? ` · ${sp.splitMode}` : ''}
                           </Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Text style={{ fontSize: 11, fontWeight: '700', color: t.textSecondary, fontFamily: 'Outfit-Bold' }}>
@@ -1532,7 +1532,7 @@ export default function DashboardScreen() {
                                 fontWeight: '800',
                                 fontFamily: 'Jakarta-Bold',
                               }}>
-                                {sp.isPaid ? 'Paid' : 'Unpaid'}
+                                {Number(sp.amountDue) === 0 ? 'No payment required' : sp.isPaid ? 'Paid' : 'Unpaid'}
                               </Text>
                             </View>
                           </View>

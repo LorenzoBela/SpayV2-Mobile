@@ -1,3 +1,4 @@
+import { signOutWithNotifications } from '../../utils/notificationSignOut';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useContext, useEffect, useState } from 'react';
 import {
@@ -81,7 +82,7 @@ export default function AdminMoreScreen() {
       {
         text: 'Sign Out',
         onPress: async () => {
-          await supabase.auth.signOut();
+          await signOutWithNotifications();
         },
       },
     ]);

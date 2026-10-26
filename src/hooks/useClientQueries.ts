@@ -24,6 +24,11 @@ export interface OrderItem {
   progressPercent: number;
   payments: OrderPaymentItem[];
   isShared?: boolean;
+  splitConfig?: import('../utils/split-allocation').SplitConfiguration | null;
+  splitRevision?: number;
+  orderTotal?: number;
+  splitPercentageLabel?: string;
+  splitMode?: string;
   splitAmount?: number;
   participants?: {
     id: string;
@@ -31,6 +36,8 @@ export interface OrderItem {
     name: string;
     email: string;
     splitAmount: number;
+    splitPercentageLabel?: string;
+    splitMode?: string;
     isPaid: boolean;
   }[];
   userId?: string;
@@ -72,11 +79,19 @@ export interface ClientPaymentItem {
   status: 'paid' | 'overdue' | 'pending';
   rescheduleHistory: PaymentReschedule[];
   isShared?: boolean;
+  splitConfig?: import('../utils/split-allocation').SplitConfiguration | null;
+  splitRevision?: number;
+  orderTotal?: number;
+  splitPercentageLabel?: string;
+  splitMode?: string;
   sharingProgress?: Array<{
     name: string;
     email: string;
     splitAmount?: number;
     amountDue: number;
+    userId?: string;
+    splitPercentageLabel?: string;
+    splitMode?: string;
     isPaid: boolean;
   }>;
 }
@@ -115,6 +130,10 @@ export function useClientPaymentsQuery() {
           created_at: r.createdAt,
         })),
         isShared: p.isShared,
+        splitConfig: p.splitConfig,
+        orderTotal: p.orderTotal,
+        splitPercentageLabel: p.splitPercentageLabel,
+        splitMode: p.splitMode,
         sharingProgress: p.sharingProgress,
       }));
     },

@@ -1,3 +1,4 @@
+import { pushRegistrationGate } from './pushRegistrationGate';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
@@ -123,6 +124,7 @@ export async function ensureTrayNotificationPermissions() {
 }
 
 export async function registerForTrayNotifications(userId: string) {
+  const registrationVersion = pushRegistrationGate.version;
   await setupAndroidNotificationChannels();
 
   const hasPermission = await ensureTrayNotificationPermissions();
@@ -155,44 +157,51 @@ export async function registerForTrayNotifications(userId: string) {
     return null;
   }
 
-  const deviceId = `${Platform.OS}-${Device.modelName || 'device'}`;
-  const { error } = await supabase
-    .from('notification_devices')
-    .upsert(
-      {
-        user_id: userId,
-        expo_push_token: expoPushToken,
-        platform: Platform.OS,
-        device_id: deviceId,
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        revoked_at: null,
-      },
-      { onConflict: 'expo_push_token' }
-    );
+  return pushRegistrationGate.run(async signal => {
+    const deviceId = `${Platform.OS}-${Device.modelName || 'device'}`;
+    const { error } = await supabase
+      .from('notification_devices')
+      .upsert(
+        {
+          user_id: userId,
+          expo_push_token: expoPushToken,
+          platform: Platform.OS,
+          device_id: deviceId,
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          revoked_at: null,
+        },
+        { onConflict: 'expo_push_token' }
+      ).abortSignal(signal);
 
-  // Dual-write to production backend
-  try {
-    const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
-    void fetch(`${serverUrl}/api/notifications/register-device`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        expoPushToken,
-        platform: Platform.OS,
-        deviceId,
-      }),
-    }).catch(() => undefined);
-  } catch {
-    // Non-blocking
-  }
+    // Dual-write to production backend
+    try {
+      const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) return expoPushToken;
+      await fetch(`${serverUrl}/api/notifications/register-device`, {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          userId,
+          expoPushToken,
+          platform: Platform.OS,
+          deviceId,
+        }),
+      }).then(response => {
+        if (!response.ok) console.warn('[Notifications] Device registration rejected:', response.status);
+      }).catch(() => console.warn('[Notifications] Device registration unavailable'));
+    } catch {
+      // Non-blocking
+    }
 
-  if (error) {
-    console.warn('[Notifications] Failed to register device token:', error.message);
-  }
+    if (error) {
+      console.warn('[Notifications] Failed to register device token:', error.message);
+    }
 
-  return expoPushToken;
+    return expoPushToken;
+  }, registrationVersion);
 }
 
 export async function fetchNotifications(limit = 100) {

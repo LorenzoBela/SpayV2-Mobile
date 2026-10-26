@@ -3,6 +3,7 @@ import { createTRPCClient, httpBatchLink } from '@trpc/client'
 import superjson from 'superjson'
 export type AppRouter = any
 import { supabase, expoSecureStorage } from './supabase'
+import { SPLIT_READER_HEADERS } from './split-reader-contract'
 
 const getApiUrl = () => {
   const url = process.env.EXPO_PUBLIC_API_URL?.trim()
@@ -43,6 +44,7 @@ export const getTrpcHeaders = async () => {
   }
 
   return {
+    ...SPLIT_READER_HEADERS,
     Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
     ...(cachedImpersonatedUserId ? { 'x-impersonate-user-id': cachedImpersonatedUserId } : {}),
   }

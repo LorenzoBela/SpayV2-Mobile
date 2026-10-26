@@ -638,7 +638,7 @@ export default function PaymentsScreen() {
     fetchPayments();
   }, []);
 
-  useRealtimeSync(['orders', 'payments'], undefined, [['client-payments']]);
+  useRealtimeSync(['orders', 'payments', 'order_participants', 'order_participant_payments'], undefined, [['client-payments']]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1037,20 +1037,31 @@ export default function PaymentsScreen() {
                     {p.isShared && p.sharingProgress && p.sharingProgress.length > 0 && (
                       <View style={{ paddingLeft: 12, marginTop: 4, borderLeftWidth: 1, borderLeftColor: t.divider }}>
                         {p.sharingProgress.map((part: any, pIdx: number) => (
-                          <View key={pIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 }}>
-                            <Text style={{ fontSize: 9, color: t.textSecondary, flex: 1 }} numberOfLines={1}>
-                              {part.name} <Text style={{ opacity: 0.6, fontSize: 8 }}>({part.email})</Text>
+                          <View key={pIdx} style={styles.sharedCountdownParticipant}>
+                            <Text style={[styles.sharedCountdownName, { color: t.textPrimary }]}>
+                              {part.name}
                             </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={{ fontSize: 9, color: t.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
+                            {(part.splitPercentageLabel || part.splitMode) && (
+                              <Text style={[styles.sharedCountdownDetail, { color: t.textSecondary }]}>
+                                {[part.splitPercentageLabel, part.splitMode].filter(Boolean).join(' · ')}
+                              </Text>
+                            )}
+                            {part.email && (
+                              <Text style={[styles.sharedCountdownDetail, { color: t.textSecondary }]}>
+                                {part.email}
+                              </Text>
+                            )}
+                            <View style={styles.sharedCountdownLiability}>
+                              <Text style={{ fontSize: 12, color: t.textPrimary, flexShrink: 1, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
                                 {formatCurrency(part.amountDue)}
                               </Text>
                               <Text style={{
-                                fontSize: 8,
+                                fontSize: 11,
                                 fontWeight: '800',
-                                color: part.isPaid ? '#10b981' : '#f59e0b',
+                                flexShrink: 1,
+                                color: Number(part.amountDue) === 0 ? t.textSecondary : part.isPaid ? '#10b981' : '#f59e0b',
                               }}>
-                                {part.isPaid ? 'PAID' : 'UNPAID'}
+                                {Number(part.amountDue) === 0 ? 'No payment required' : part.isPaid ? 'PAID' : 'UNPAID'}
                               </Text>
                             </View>
                           </View>
@@ -1313,7 +1324,7 @@ export default function PaymentsScreen() {
                                     }}
                                   >
                                     <Text style={{ fontSize: 10, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }}>
-                                      {sp.name}
+                                      {sp.name}{sp.splitPercentageLabel ? ` · ${sp.splitPercentageLabel}` : ''}{sp.splitMode ? ` · ${sp.splitMode}` : ''}
                                     </Text>
                                     <Text style={{ fontSize: 10, color: t.textSecondary, fontFamily: 'Outfit-Bold' }}>
                                       {formatCurrency(sp.amountDue ?? sp.splitAmount ?? 0)}
@@ -1334,7 +1345,7 @@ export default function PaymentsScreen() {
                                           fontFamily: 'Jakarta-Bold',
                                         }}
                                       >
-                                        {sp.isPaid ? 'Paid' : 'Unpaid'}
+                                        {Number(sp.amountDue) === 0 ? 'No payment required' : sp.isPaid ? 'Paid' : 'Unpaid'}
                                       </Text>
                                     </View>
                                   </View>
@@ -1479,7 +1490,7 @@ export default function PaymentsScreen() {
                                   }}
                                 >
                                   <Text style={{ fontSize: 9, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }}>
-                                    {sp.name}
+                                    {sp.name}{sp.splitPercentageLabel ? ` · ${sp.splitPercentageLabel}` : ''}{sp.splitMode ? ` · ${sp.splitMode}` : ''}
                                   </Text>
                                   <View
                                     style={{
@@ -1497,7 +1508,7 @@ export default function PaymentsScreen() {
                                         fontFamily: 'Jakarta-Bold',
                                       }}
                                     >
-                                      {sp.isPaid ? 'Paid' : 'Unpaid'}
+                                      {Number(sp.amountDue) === 0 ? 'No payment required' : sp.isPaid ? 'Paid' : 'Unpaid'}
                                     </Text>
                                   </View>
                                 </View>
@@ -2251,6 +2262,27 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '800',
+  },
+  sharedCountdownParticipant: {
+    paddingVertical: 8,
+    gap: 4,
+    minWidth: 0,
+    alignSelf: 'stretch',
+  },
+  sharedCountdownName: {
+    fontSize: 13,
+    fontFamily: 'Jakarta-Bold',
+  },
+  sharedCountdownDetail: {
+    fontSize: 11,
+    fontFamily: 'Jakarta-Medium',
+  },
+  sharedCountdownLiability: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 4,
   },
   breakdownBox: {
     borderRadius: 14,

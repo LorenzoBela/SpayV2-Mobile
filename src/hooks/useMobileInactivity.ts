@@ -1,3 +1,4 @@
+import { signOutWithNotifications } from '../utils/notificationSignOut';
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,8 +36,9 @@ export function useMobileInactivity(enabled: boolean = true) {
             console.log(
               `[useMobileInactivity] Session timed out after ${elapsed} ms (> ${INACTIVITY_TIMEOUT_MS} ms). Signing out.`
             );
+            const { error } = await signOutWithNotifications();
+            if (error) return false;
             await AsyncStorage.removeItem(SPAY_LAST_ACTIVE_KEY);
-            await supabase.auth.signOut();
             return true;
           }
         }

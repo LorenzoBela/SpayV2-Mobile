@@ -1,4 +1,5 @@
 import { storage } from '../utils/queryPersister';
+import { SPLIT_READER_HEADERS } from '../utils/split-reader-contract';
 import { supabase } from '../utils/supabase';
 import { callAdminApi } from './adminService';
 import { trpcVanillaClient } from '../utils/trpc';
@@ -201,6 +202,7 @@ const getAuthHeaders = async () => {
   const token = session?.access_token;
   return {
     'Content-Type': 'application/json',
+    ...SPLIT_READER_HEADERS,
     'Authorization': token ? `Bearer ${token}` : '',
   };
 };

@@ -160,7 +160,7 @@ export default function OrdersScreen() {
     fetchOrdersAndAnalytics();
   }, []);
 
-  useRealtimeSync(['orders', 'payments'], undefined, [['client-orders']]);
+  useRealtimeSync(['orders', 'payments', 'order_participants', 'order_participant_payments'], undefined, [['client-orders']]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -566,7 +566,7 @@ export default function OrdersScreen() {
                             {Math.round(progress)}% Settled ({order.paidInstallments}/{order.installmentMonths} Mo)
                           </Text>
                           <Text style={[styles.orderAmountValue, { color: t.textPrimary }]}>
-                            {formatCurrency(order.amount)}{order.isShared ? ' (Your Split)' : ''}
+                            {formatCurrency(order.amount)}{order.isShared ? ` (Your share${order.participants?.find((p: any) => p.userId === (order as any).viewerId)?.splitPercentageLabel ? ` ${order.participants.find((p: any) => p.userId === (order as any).viewerId)?.splitPercentageLabel}` : ''})` : ''}
                           </Text>
                         </View>
                       </View>
@@ -638,7 +638,7 @@ export default function OrdersScreen() {
                               {order.participants.map((part: any) => (
                                 <View key={part.id || part.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
-                                    {part.name}
+                                    {part.name}{part.userId === (order as any).viewerId ? ' (You)' : ''}{part.splitMode ? ` · ${part.splitMode}` : ''}{part.splitPercentageLabel ? ` · ${part.splitPercentageLabel}` : ''}
                                   </Text>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
@@ -736,7 +736,7 @@ export default function OrdersScreen() {
                         <View style={styles.listRowRight}>
                           <View style={{ alignItems: 'flex-end', marginRight: 4 }}>
                             <Text style={[styles.orderListRowAmount, { color: t.textPrimary }]}>
-                              {formatCurrency(order.amount)}{order.isShared ? ' (Your Split)' : ''}
+                              {formatCurrency(order.amount)}{order.isShared ? ` (Your share${order.participants?.find((p: any) => p.userId === (order as any).viewerId)?.splitPercentageLabel ? ` ${order.participants.find((p: any) => p.userId === (order as any).viewerId)?.splitPercentageLabel}` : ''})` : ''}
                             </Text>
                             <Text style={[styles.orderListRowProgressText, { color: t.textSecondary }]}>
                               {Math.round(progress)}% ({order.paidInstallments}/{order.installmentMonths})
@@ -857,7 +857,7 @@ export default function OrdersScreen() {
                               {order.participants.map((part: any) => (
                                 <View key={part.id || part.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
-                                    {part.name}
+                                    {part.name}{part.userId === (order as any).viewerId ? ' (You)' : ''}{part.splitMode ? ` · ${part.splitMode}` : ''}{part.splitPercentageLabel ? ` · ${part.splitPercentageLabel}` : ''}
                                   </Text>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                     <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>

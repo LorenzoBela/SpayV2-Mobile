@@ -1,3 +1,5 @@
+import { pushRegistrationGate } from '../services/pushRegistrationGate';
+import { signOutWithNotifications } from '../utils/notificationSignOut';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, StyleSheet, Animated, StatusBar, Pressable, Text, useWindowDimensions, AppState, Appearance, useColorScheme, Platform, Linking, type AppStateStatus } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
@@ -820,6 +822,7 @@ export default function AppNavigator() {
       setSession(session);
       setLoading(false);
       if (session?.user?.id) {
+        pushRegistrationGate.resume();
         void registerForFcmNotifications(session.user.id);
         posthog.identify(session.user.id, {
           email: session.user.email ?? '',
@@ -836,6 +839,7 @@ export default function AppNavigator() {
       setSession(session);
       setLoading(false);
       if (session?.user?.id) {
+        if (event === 'SIGNED_IN') pushRegistrationGate.resume();
         void registerForFcmNotifications(session.user.id);
         posthog.identify(session.user.id, {
           email: session.user.email ?? '',
@@ -1166,7 +1170,7 @@ export default function AppNavigator() {
                                   {...props}
                                   onSelectRole={(role) => setActiveRole(role)}
                                   onSignOut={async () => {
-                                    await supabase.auth.signOut();
+                                    await signOutWithNotifications();
                                   }}
                                 />
                               )}

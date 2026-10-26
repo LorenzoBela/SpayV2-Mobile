@@ -1,6 +1,7 @@
 import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../utils/supabase';
 import { trpcVanillaClient } from '../utils/trpc';
+import { SPLIT_READER_HEADERS } from '../utils/split-reader-contract';
 import {
   fetchNotifications,
   markNotificationRead,
@@ -48,6 +49,7 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
       const response = await fetch(`${apiUrl}/api/admin/actions`, {
         method: 'POST',
         headers: {
+          ...SPLIT_READER_HEADERS,
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
@@ -60,13 +62,15 @@ export const callAdminApi = async (action: string, bodyData: any = {}) => {
       if (!response.ok) {
         const errText = await response.text();
         let errMsg = 'Failed to execute admin action.';
+        let errorCode: string | undefined;
         try {
           const parsed = JSON.parse(errText);
           errMsg = parsed.error || parsed.message || errMsg;
+          errorCode = typeof parsed.code === 'string' ? parsed.code : undefined;
         } catch {
           if (errText) errMsg = errText.slice(0, 100);
         }
-        return { success: false, error: errMsg };
+        return { success: false, error: errMsg, ...(errorCode ? { code: errorCode } : {}) };
       }
 
       const result = await response.json();
@@ -114,6 +118,7 @@ export const getExportLedgerCsv = async (filters: {
       const response = await fetch(`${apiUrl}/api/admin/reports/export${queryParams}`, {
         method: 'GET',
         headers: {
+          ...SPLIT_READER_HEADERS,
           'Authorization': `Bearer ${token}`,
         },
       });

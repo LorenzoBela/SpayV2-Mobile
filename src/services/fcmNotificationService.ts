@@ -1,3 +1,4 @@
+import { pushRegistrationGate } from './pushRegistrationGate';
 import { Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidGroupAlertBehavior } from '@notifee/react-native';
 import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
@@ -192,65 +193,69 @@ function getPersistentDeviceId(): string {
   }
 }
 
-async function upsertFcmToken(userId: string, fcmToken: string, customDeviceId?: string) {
-  const deviceId = customDeviceId || getPersistentDeviceId();
+async function upsertFcmToken(userId: string, fcmToken: string, customDeviceId?: string, registrationVersion = pushRegistrationGate.version) {
+  return await pushRegistrationGate.run(async signal => {
+    const deviceId = customDeviceId || getPersistentDeviceId();
   
-  // Revoke any previous active tokens for this device to prevent duplicate records
-  try {
-    await supabase
-      .from('notification_devices')
-      .update({ revoked_at: new Date().toISOString() })
-      .eq('user_id', userId)
-      .eq('device_id', deviceId)
-      .neq('expo_push_token', `fcm:${fcmToken}`)
-      .is('revoked_at', null);
-  } catch (err) {
-    console.warn('[FCM] Error revoking stale device token:', err);
-  }
-
-  // 1. Write to Supabase table
-  const supabasePromise = supabase
-    .from('notification_devices')
-    .upsert(
-      {
-        user_id: userId,
-        expo_push_token: `fcm:${fcmToken}`,
-        fcm_token: fcmToken,
-        platform: Platform.OS,
-        device_id: deviceId,
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        revoked_at: null,
-      },
-      { onConflict: 'expo_push_token' },
-    );
-
-  // 2. Dual-write to Next.js API endpoint (Prisma DB)
-  const apiPromise = (async () => {
+    // Revoke any previous active tokens for this device to prevent duplicate records
     try {
-      const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      await fetch(`${serverUrl}/api/notifications/register-device`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          userId,
-          fcmToken,
-          platform: Platform.OS,
-          deviceId,
-        }),
-      });
+      await supabase
+        .from('notification_devices')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('device_id', deviceId)
+        .neq('expo_push_token', `fcm:${fcmToken}`)
+        .is('revoked_at', null).abortSignal(signal);
     } catch (err) {
-      console.warn('[FCM] register-device fetch error:', err);
+      console.warn('[FCM] Error revoking stale device token:', err);
     }
-  })();
 
-  const [result] = await Promise.all([supabasePromise, apiPromise]);
-  return result;
+    // 1. Write to Supabase table
+    const supabasePromise = supabase
+      .from('notification_devices')
+      .upsert(
+        {
+          user_id: userId,
+          expo_push_token: `fcm:${fcmToken}`,
+          fcm_token: fcmToken,
+          platform: Platform.OS,
+          device_id: deviceId,
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          revoked_at: null,
+        },
+        { onConflict: 'expo_push_token' },
+      ).abortSignal(signal);
+
+    // 2. Dual-write to Next.js API endpoint (Prisma DB)
+    const apiPromise = (async () => {
+      try {
+        const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) return;
+        const response = await fetch(`${serverUrl}/api/notifications/register-device`, {
+          method: 'POST', signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            userId,
+            fcmToken,
+            platform: Platform.OS,
+            deviceId,
+          }),
+        });
+        if (!response.ok) console.warn('[FCM] Device registration rejected:', response.status);
+      } catch (err) {
+        console.warn('[FCM] register-device fetch error:', err);
+      }
+    })();
+
+    const [result] = await Promise.all([supabasePromise, apiPromise]);
+    return result;
+  }, registrationVersion) ?? { error: new Error('Push registration paused during sign out') };
 }
 
 export async function registerForFcmNotifications(userId: string) {
@@ -259,6 +264,7 @@ export async function registerForFcmNotifications(userId: string) {
 
 export async function ensureDeviceRegistration(userId: string, maxRetries = 3): Promise<string | null> {
   if (!userId) return null;
+  const registrationVersion = pushRegistrationGate.version;
 
   await setupAndroidNotificationChannels();
   await setupNotifeeChannels();
@@ -299,7 +305,7 @@ export async function ensureDeviceRegistration(userId: string, maxRetries = 3): 
 
       if (fcmToken) {
         const deviceId = getPersistentDeviceId();
-        const { error } = await upsertFcmToken(userId, fcmToken, deviceId);
+        const { error } = await upsertFcmToken(userId, fcmToken, deviceId, registrationVersion);
         if (error) {
           console.warn(`[FCM] Supabase registration warning (attempt ${attempt + 1}):`, error.message);
         } else {
@@ -322,8 +328,9 @@ export async function ensureDeviceRegistration(userId: string, maxRetries = 3): 
 }
 
 export function subscribeToFcmTokenRefresh(userId: string) {
+  const registrationVersion = pushRegistrationGate.version;
   return messaging().onTokenRefresh((fcmToken) => {
-    upsertFcmToken(userId, fcmToken).catch((err) => {
+    upsertFcmToken(userId, fcmToken, undefined, registrationVersion).catch((err) => {
       console.warn('[FCM] Error updating token on refresh:', err);
     });
   });

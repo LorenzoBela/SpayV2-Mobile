@@ -1,3 +1,4 @@
+import { signOutWithNotifications } from '../../utils/notificationSignOut';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import React, { useState, useEffect, useContext } from 'react';
@@ -383,7 +384,8 @@ export default function AdminSettingsScreen() {
         style: 'destructive',
         onPress: async () => {
           setLoading(true);
-          await supabase.auth.signOut();
+          const { error } = await signOutWithNotifications();
+          if (error) setLoading(false);
         },
       },
     ]);

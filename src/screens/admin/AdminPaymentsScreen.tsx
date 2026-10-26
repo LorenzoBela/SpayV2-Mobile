@@ -1,3 +1,7 @@
+import { unpaidBillingLiabilities } from '../../utils/shared-billing';
+import { useSplitValidity } from '../../hooks/useSplitValidity';
+import SplitEditor from '../../components/SplitEditor';
+import { previewInstallmentSplit, type SplitConfiguration } from '../../utils/split-allocation';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import DatePicker from '../../components/DatePicker';
 import React, { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react';
@@ -376,7 +380,7 @@ const PaymentListItem = React.memo(function PaymentListItem({
             )}
             <View style={styles.paymentMainInfo}>
               <Text style={[styles.paymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                {payment.itemName}{payment.splitPercentageLabel ? ` · ${payment.splitPercentageLabel}` : ''} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
               </Text>
               <Text style={styles.clientLabelText}>{payment.clientName} • Term {payment.month_number} of {payment.totalMonths}</Text>
               <Text style={styles.dateLabelText}>Due date: {formatDate(payment.due_date)}</Text>
@@ -523,6 +527,8 @@ export default function AdminPaymentsScreen() {
         isOverdue,
         itemName: p.itemName,
         is_shared: p.isShared,
+        splitPercentageLabel: p.splitPercentageLabel,
+        splitMode: p.splitMode,
         totalMonths: p.totalMonths,
         clientName: p.clientName,
         clientEmail: p.clientEmail,
@@ -598,6 +604,8 @@ export default function AdminPaymentsScreen() {
   // Shopee Shared Order State
   const [shopeeIsShared, setShopeeIsShared] = useState(false);
   const [shopeeParticipants, setShopeeParticipants] = useState<string[]>([]);
+  const [shopeeSplitConfig, setShopeeSplitConfig] = useState<SplitConfiguration>();
+  const { invalid: splitFormInvalid, report: reportSplitValidity } = useSplitValidity();
   const [shopeeParticipantSelectorActive, setShopeeParticipantSelectorActive] = useState<string | null>(null);
 
   // Bulk Shopee Review Modal States
@@ -612,10 +620,26 @@ export default function AdminPaymentsScreen() {
     firstPaymentDate?: string;
     isShared?: boolean;
     participants?: string[];
+    splitConfig?: SplitConfiguration;
     category?: string;
     subcategory?: string;
   }>>({});
   const [activeBulkItemId, setActiveBulkItemId] = useState<string | null>(null);
+
+  const bulkSplitError = useMemo(() => {
+    for (const id of selectedImportIds) {
+      const cfg = bulkItemsConfig[id];
+      if (!cfg?.isShared || !cfg.clientId || !cfg.participants?.length) continue;
+      const item = shopeeImports.find((item: any) => item.notificationId === id);
+      if (!item) return 'A selected import is unavailable. Refresh the list.';
+      try {
+        previewInstallmentSplit(Math.round(getShopeeInterestDetails(item.amount, Number(cfg.months), cfg.paymentMethod).totalAmount * 100) / 100, Number(cfg.months), cfg.splitConfig, [...new Set([cfg.clientId, ...cfg.participants])]);
+      } catch (error) {
+        return `${cfg.itemName || item.itemName}: ${error instanceof Error ? error.message : 'Check the split.'}`;
+      }
+    }
+    return '';
+  }, [selectedImportIds, bulkItemsConfig, shopeeImports]);
 
   // Bulk defaults state (Column 1 equivalence)
   const [batchDefaultClientId, setBatchDefaultClientId] = useState('');
@@ -766,6 +790,7 @@ export default function AdminPaymentsScreen() {
 
   // Open Review modal & prefill details
   const openReviewModal = (imp: any) => {
+    setShopeeSplitConfig(undefined);
     setSelectedImport(imp);
     setShopeeItemName(imp.itemName);
     setShopeeClientId('');
@@ -810,6 +835,7 @@ export default function AdminPaymentsScreen() {
         firstPaymentDate: shopeeFirstPaymentDate || undefined,
         isShared: shopeeIsShared,
         participants: shopeeIsShared ? shopeeParticipants : undefined,
+        splitConfig: shopeeIsShared ? shopeeSplitConfig : undefined,
       });
 
       if (response.success) {
@@ -867,6 +893,8 @@ export default function AdminPaymentsScreen() {
         proof_of_payment: p.proof_of_payment,
         isOverdue,
         isShared: p.order?.is_shared === true,
+        splitPercentageLabel: p.splitPercentageLabel,
+        splitMode: p.splitMode,
         itemName: p.order?.item_name || 'Purchase Order',
         totalMonths: p.order?.installment_months || 0,
         clientName: p.order?.profile?.name || 'Unknown Client',
@@ -885,42 +913,8 @@ export default function AdminPaymentsScreen() {
 
   const unpaidBillingSchedules = useMemo(() => {
     if (rawPayments.length === 0) return [];
-    const unpaidRaw = rawPayments.filter((p: any) => !p.is_paid);
-    
-    // Flatten shared payments: for shared orders, each participant gets their own entry
-    const flattenedUnpaid: any[] = [];
-    unpaidRaw.forEach((p: any) => {
-      const isShared = p.order?.is_shared === true;
-      const hasPP = p.participantPayments && p.participantPayments.length > 0;
+    const flattenedUnpaid = unpaidBillingLiabilities(rawPayments);
 
-      if (isShared && hasPP) {
-        p.participantPayments.forEach((pp: any) => {
-          if (!pp.is_paid) {
-            flattenedUnpaid.push({
-              ...p,
-              amount_due: pp.amount_due,
-              clientId: pp.profile?.id || p.order?.profile?.id || '',
-              clientName: pp.profile?.name || p.order?.profile?.name || 'Unknown Client',
-              clientEmail: pp.profile?.email || p.order?.profile?.email || '',
-              isShared: true,
-              itemName: p.order?.item_name || 'Purchase Order',
-              totalMonths: p.order?.installment_months || 0,
-            });
-          }
-        });
-      } else {
-        flattenedUnpaid.push({
-          ...p,
-          clientId: p.order?.profile?.id || '',
-          clientName: p.order?.profile?.name || 'Unknown Client',
-          clientEmail: p.order?.profile?.email || '',
-          isShared: isShared,
-          itemName: p.order?.item_name || 'Purchase Order',
-          totalMonths: p.order?.installment_months || 0,
-        });
-      }
-    });
-    
     const unpaidByMonth = new Map<string, any[]>();
     flattenedUnpaid.forEach((payment: any) => {
       const monthKey = getBillingMonthKey(payment.due_date);
@@ -956,6 +950,8 @@ export default function AdminPaymentsScreen() {
           monthNumber: payment.month_number,
           installmentMonths: payment.totalMonths,
           isShared: payment.isShared,
+          splitPercentageLabel: payment.splitPercentageLabel,
+          splitMode: payment.splitMode,
         });
         clientBillingMap.set(payment.clientId, clientData);
       });
@@ -1735,6 +1731,7 @@ export default function AdminPaymentsScreen() {
 
   // Submit approved Shopee imports in bulk
   const handleBulkApproveShopeeImportsSubmit = async () => {
+    if (bulkSplitError) { PremiumAlert.alert('Check split', bulkSplitError); return; }
     const unassigned = selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId);
     if (unassigned) {
       PremiumAlert.alert('Validation Error', 'Please assign a client to all selected items before submitting.');
@@ -1757,6 +1754,7 @@ export default function AdminPaymentsScreen() {
           firstPaymentDate: cfg.firstPaymentDate || undefined,
           isShared: cfg.isShared || false,
           participants: cfg.isShared ? cfg.participants || [] : undefined,
+          splitConfig: cfg.isShared ? cfg.splitConfig : undefined,
           category: cfg.category || undefined,
           subcategory: cfg.subcategory || undefined
         };
@@ -2460,7 +2458,7 @@ export default function AdminPaymentsScreen() {
                               {payment.clientName}
                             </Text>
                             <Text style={[styles.tableCell, { width: 140, color: t.textPrimary }]} numberOfLines={1}>
-                              {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                              {payment.itemName}{payment.splitPercentageLabel ? ` · ${payment.splitPercentageLabel}` : ''} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
                             </Text>
                             <Text style={[styles.tableCell, { width: 70, textAlign: 'center', color: t.textPrimary }]}>
                               {payment.month_number}/{payment.totalMonths}
@@ -2724,7 +2722,7 @@ export default function AdminPaymentsScreen() {
                                             )}
                                             <View style={{ flex: 1 }}>
                                               <Text style={[styles.miniPaymentItemName, { color: t.textPrimary }]} numberOfLines={1}>
-                                                {p.itemName} {p.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>} (Term {p.month_number}/{p.totalMonths})
+                                                {p.itemName}{p.splitPercentageLabel ? ` · ${p.splitPercentageLabel}` : ''} {p.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>} (Term {p.month_number}/{p.totalMonths})
                                               </Text>
                                               <Text style={styles.dateLabelText}>Due: {formatDate(p.due_date)}</Text>
                                             </View>
@@ -2804,7 +2802,7 @@ export default function AdminPaymentsScreen() {
                               {payment.clientName}
                             </Text>
                             <Text style={[styles.tableCell, { width: 130, color: t.textPrimary }]} numberOfLines={1}>
-                              {payment.itemName} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
+                              {payment.itemName}{payment.splitPercentageLabel ? ` · ${payment.splitPercentageLabel}` : ''} {payment.is_shared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
                             </Text>
                             <Text style={[styles.tableCell, { width: 60, textAlign: 'center', color: t.textPrimary }]}>
                               {payment.month_number}/{payment.totalMonths}
@@ -3483,7 +3481,7 @@ export default function AdminPaymentsScreen() {
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                               <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary }}>
-                                {pp.name || 'Unknown'}
+                                {pp.name || 'Unknown'}{pp.splitPercentageLabel ? ` · ${pp.splitPercentageLabel}` : ''}{pp.splitMode ? ` · ${pp.splitMode}` : ''}
                               </Text>
                               {isOwner && (
                                 <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 }}>
@@ -4078,6 +4076,7 @@ export default function AdminPaymentsScreen() {
                         </Text>
                         <ChevronDown size={14} color={t.textSecondary} />
                       </TouchableOpacity>
+                      {shopeeClientId && shopeeParticipants.length > 0 && <SplitEditor total={Math.round(getShopeeInterestDetails(selectedImport.amount, Number(shopeeMonths), shopeePaymentMethod).totalAmount * 100) / 100} months={Number(shopeeMonths)} value={shopeeSplitConfig} onValidityChange={valid => reportSplitValidity('import', valid)} onChange={setShopeeSplitConfig} isDarkMode={isDarkMode} participants={Array.from(new Set([shopeeClientId, ...shopeeParticipants])).map(id => ({ id, name: clientsList.find(c => c.id === id)?.name || 'Client' }))} />}
                     </View>
                   )}
                 </View>
@@ -4249,7 +4248,7 @@ export default function AdminPaymentsScreen() {
                 <TouchableOpacity
                   style={[styles.mainActionBtn, { backgroundColor: '#ee4d2d', opacity: !shopeeClientId || actionLoading ? 0.6 : 1 }]}
                   onPress={handleApproveShopeeImportSubmit}
-                  disabled={actionLoading || !shopeeClientId}
+                  disabled={splitFormInvalid || (actionLoading || !shopeeClientId)}
                 >
                   {actionLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -4596,6 +4595,7 @@ export default function AdminPaymentsScreen() {
                                     {(cfg.participants || []).length > 0 ? `${(cfg.participants || []).length} selected` : 'Choose Participants...'}
                                   </Text>
                                 </TouchableOpacity>
+                              {cfg.clientId && (cfg.participants || []).length > 0 && <SplitEditor total={Math.round(getShopeeInterestDetails(imp.amount, Number(cfg.months), cfg.paymentMethod).totalAmount * 100) / 100} months={Number(cfg.months)} value={cfg.splitConfig} onValidityChange={valid => reportSplitValidity(`import:${id}`, valid)} onChange={config => setBulkItemsConfig(prev => ({ ...prev, [id]: { ...prev[id], splitConfig: config } }))} isDarkMode={isDarkMode} participants={Array.from(new Set([cfg.clientId, ...(cfg.participants || [])])).map(personId => ({ id: personId, name: clientsList.find(c => c.id === personId)?.name || 'Client' }))} />}
                               </View>
                             )}
                           </View>
@@ -4799,10 +4799,11 @@ export default function AdminPaymentsScreen() {
 
               {/* Bulk Submit button */}
               <View style={[styles.standardActionsCol, { marginBottom: 30 }]}>
+                {!!bulkSplitError && <Text accessibilityRole="alert" style={{ color: '#ee4d2d', fontSize: 12, marginBottom: 10 }}>{bulkSplitError}</Text>}
                 <TouchableOpacity
                   style={[styles.mainActionBtn, { backgroundColor: '#ee4d2d', opacity: selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId) || actionLoading ? 0.6 : 1 }]}
                   onPress={handleBulkApproveShopeeImportsSubmit}
-                  disabled={actionLoading || selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId)}
+                  disabled={Boolean(bulkSplitError) || splitFormInvalid || (actionLoading || selectedImportIds.some(id => !bulkItemsConfig[id]?.clientId))}
                 >
                   {actionLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -4835,7 +4836,7 @@ export default function AdminPaymentsScreen() {
                   </View>
                   <View>
                     <Text style={{ fontSize: 18, fontWeight: '700', color: t.textPrimary }}>Select Participants</Text>
-                    <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 2 }}>They will split the bill equally</Text>
+                    <Text style={{ fontSize: 13, color: t.textSecondary, marginTop: 2 }}>Adjust the allocation in the split editor after selecting participants</Text>
                   </View>
                 </View>
                 <TouchableOpacity style={styles.sheetCloseButton} onPress={() => setShopeeParticipantSelectorActive(null)}>

@@ -1,3 +1,4 @@
+import { personalOrder } from '../../utils/personal-liability';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { formatAmount } from '../../utils/money';
@@ -204,14 +205,14 @@ export default function BudgetScreen() {
 
       const { data: ownedOrders } = await supabase
         .from('orders')
-        .select('id, item_name, amount, installment_months, order_date, is_paid')
+        .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared, split_config')
         .eq('user_id', profileId);
 
       let sharedOrders: any[] = [];
       if (participantOrderIds.length > 0) {
         const { data: fetchedShared } = await supabase
           .from('orders')
-          .select('id, item_name, amount, installment_months, order_date, is_paid')
+          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared, split_config')
           .in('id', participantOrderIds);
         if (fetchedShared) sharedOrders = fetchedShared;
       }
@@ -223,7 +224,8 @@ export default function BudgetScreen() {
           const part = participantByOrderId.get(o.id);
           combinedOrdersMap.set(o.id, {
             ...o,
-            amount: part ? parseFloat(part.split_amount) || o.amount : o.amount,
+            orderTotal: o.amount,
+            amount: part ? Number(part.split_amount ?? 0) : o.amount,
             is_paid: part ? part.is_paid : o.is_paid,
             is_participant: true,
             participant_id: part?.id,
@@ -231,6 +233,7 @@ export default function BudgetScreen() {
         }
       });
 
+      for (const [id, order] of combinedOrdersMap) combinedOrdersMap.set(id, personalOrder(order, participantByOrderId.get(id), profileId));
       const dbOrders = Array.from(combinedOrdersMap.values());
       const orderIds = dbOrders.map(o => o.id);
       let rawPayments: any[] = [];
@@ -261,7 +264,7 @@ export default function BudgetScreen() {
           return {
             ...p,
             amount_due: pp.amount_due,
-            is_paid: pp.is_paid,
+            is_paid: Number(pp.amount_due) === 0 || pp.is_paid,
             payment_date: pp.paid_at || p.payment_date,
           };
         }

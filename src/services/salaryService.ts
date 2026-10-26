@@ -22,6 +22,7 @@ export interface SalaryPaycheckRecord {
   taxDeducted: number;
   sssDeducted: number;
   philhealthDeducted: number;
+  wispDeducted?: number;
   pagibigDeducted: number;
   deductionsAmount: number;
   deductionsReason?: string;
@@ -98,9 +99,9 @@ function normalizeSalaryPayload(data: any): SalaryDataPayload {
   
   const nextPaydayIso = profile.nextPayday || data.nextPaydayIso || data.nextPayday || calculateLiveNextPayday(employmentStartDate, frequency);
 
-  const taxBreakdown = data.taxBreakdown || calculatePhilippineTaxAndDeductions(baseSalary);
-  const bonus13thBreakdown = data.bonus13thBreakdown || calculate13thMonthPay(baseSalary, employmentStartDate, employmentEndDate, currentYear);
-  const cutoffSchedule = data.cutoffSchedule || getPayrollCutoffSchedule(employmentStartDate, baseSalary, frequency);
+  const taxBreakdown = data.taxBreakdown || calculatePhilippineTaxAndDeductions(baseSalary, employer);
+  const bonus13thBreakdown = data.bonus13thBreakdown || data.thirteenthMonth || calculate13thMonthPay(baseSalary, employmentStartDate, `${currentYear}-11-30`, currentYear);
+  const cutoffSchedule = data.cutoffSchedule || getPayrollCutoffSchedule(employmentStartDate, baseSalary, frequency, employer);
 
   const rawPaycheckHistory = data.paycheckHistory || data.earnings?.history || [];
   const firstPaydayKey = cutoffSchedule.firstPaydayDate;
@@ -113,7 +114,7 @@ function normalizeSalaryPayload(data: any): SalaryDataPayload {
 
   const totalEarnedLifetime = data.totalEarnedLifetime ?? data.earnings?.totalEarnedLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.actualReceived || 0), 0);
   const totalTaxPaidLifetime = data.totalTaxPaidLifetime ?? data.earnings?.totalTaxPaidLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.taxDeducted || 0), 0);
-  const totalStatutoryPaidLifetime = data.totalStatutoryPaidLifetime ?? data.earnings?.totalStatutoryPaidLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.sssDeducted || 0) + (p.philhealthDeducted || 0) + (p.pagibigDeducted || 0), 0);
+  const totalStatutoryPaidLifetime = data.totalStatutoryPaidLifetime ?? data.earnings?.totalStatutoryPaidLifetime ?? confirmedPaychecks.reduce((sum: number, p: any) => sum + (p.sssDeducted || 0) + (p.philhealthDeducted || 0) + (p.pagibigDeducted || 0) + (p.wispDeducted || 0), 0);
 
   return {
     jobTitle,
@@ -147,7 +148,7 @@ function getFallbackSalaryPayload(): SalaryDataPayload {
   const defaultEndDate = `${currentYear}-12-31`;
 
   const taxBreakdown = calculatePhilippineTaxAndDeductions(defaultGross);
-  const bonus13thBreakdown = calculate13thMonthPay(defaultGross, defaultStartDate, defaultEndDate, currentYear);
+  const bonus13thBreakdown = calculate13thMonthPay(defaultGross, defaultStartDate, `${currentYear}-11-30`, currentYear);
   const cutoffSchedule = getPayrollCutoffSchedule(defaultStartDate, defaultGross, 'SEMI_MONTHLY_10_25');
   const nextPaydayIso = calculateLiveNextPayday(defaultStartDate, 'SEMI_MONTHLY_10_25');
 

@@ -1,9 +1,11 @@
+import { signOutWithNotifications } from '../../utils/notificationSignOut';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import BiometricReAuthModal from '../../components/BiometricReAuthModal';
 import React, { useState, useEffect, useContext } from 'react';
 import { formatAmount } from '../../utils/money';
 import { generatePaymentRef } from '../../utils/id';
+import { SPLIT_READER_HEADERS } from '../../utils/split-reader-contract';
 import {
   View,
   Text,
@@ -192,6 +194,7 @@ export default function SettingsScreen() {
         fileUri,
         {
           headers: {
+            ...SPLIT_READER_HEADERS,
             Authorization: `Bearer ${token}`,
           },
         }
@@ -529,7 +532,8 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: async () => {
           setLoading(true);
-          await supabase.auth.signOut();
+          const { error } = await signOutWithNotifications();
+          if (error) setLoading(false);
         },
       },
     ]);

@@ -1,3 +1,4 @@
+import { personalOrder } from '../../utils/personal-liability';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { formatAmount } from '../../utils/money';
@@ -122,7 +123,7 @@ export default function ReportsScreen() {
 
       const { data: dbOrders, error: ordersErr } = await supabase
         .from('orders')
-        .select('id, item_name, amount, installment_months, order_date, is_paid')
+        .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared, split_config')
         .eq('user_id', profileId);
 
       if (ordersErr) throw ordersErr;
@@ -131,7 +132,7 @@ export default function ReportsScreen() {
       if (participantOrderIds.length > 0) {
         const { data: fetchedShared, error: sharedErr } = await supabase
           .from('orders')
-          .select('id, item_name, amount, installment_months, order_date, is_paid')
+          .select('id, item_name, amount, installment_months, order_date, is_paid, is_shared, split_config')
           .in('id', participantOrderIds);
         if (sharedErr) throw sharedErr;
         if (fetchedShared) sharedOrders = fetchedShared;
@@ -144,7 +145,8 @@ export default function ReportsScreen() {
           const part = participantByOrderId.get(o.id);
           combinedOrdersMap.set(o.id, {
             ...o,
-            amount: part ? parseFloat(part.split_amount) || o.amount : o.amount,
+            orderTotal: o.amount,
+            amount: part ? Number(part.split_amount ?? 0) : o.amount,
             is_paid: part ? part.is_paid : o.is_paid,
             is_participant: true,
             participant_id: part?.id,
@@ -152,6 +154,7 @@ export default function ReportsScreen() {
         }
       });
 
+      for (const [id, order] of combinedOrdersMap) combinedOrdersMap.set(id, personalOrder(order, participantByOrderId.get(id), profileId));
       const ordersList = Array.from(combinedOrdersMap.values());
 
       // 2. Fetch Payments
@@ -185,8 +188,8 @@ export default function ReportsScreen() {
           return {
             ...p,
             amount_due: pp.amount_due,
-            is_paid: pp.is_paid,
-            payment_date: pp.paid_at || p.payment_date,
+            is_paid: Number(pp.amount_due) === 0 || pp.is_paid,
+            payment_date: pp.paid_at,
           };
         }
         return p;
@@ -330,6 +333,8 @@ export default function ReportsScreen() {
     });
 
     const filteredPayments = rawPayments.filter((p) => {
+      // Zero allocations settle installments without creating a repayment event.
+      if (p.amountDue <= 0) return false;
       if (!startDate || !endDate) return true;
       return p.orderDate >= startDate && p.orderDate <= endDate;
     });
@@ -395,7 +400,7 @@ export default function ReportsScreen() {
     streak = Math.min(streak, 10);
 
     // Remaining debt payoff timeline (all-time, unfiltered)
-    const allUnpaidPayments = rawPayments.filter((p) => !p.isPaid);
+    const allUnpaidPayments = rawPayments.filter((p) => !p.isPaid && p.amountDue > 0);
     let monthsToPayoff = 0;
     if (allUnpaidPayments.length > 0) {
       const finalDueDate = new Date(Math.max(...allUnpaidPayments.map((p) => p.dueDate.getTime())));

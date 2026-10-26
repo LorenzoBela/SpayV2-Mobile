@@ -1,6 +1,7 @@
 import { storage } from '../utils/queryPersister';
 import { supabase } from '../utils/supabase';
 import { callAdminApi } from './adminService';
+import { SPLIT_READER_HEADERS } from '../utils/split-reader-contract';
 
 export const IPON_CACHE_KEY = '@ipon_overview_cache';
 
@@ -75,6 +76,7 @@ const getAuthHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   return {
+    ...SPLIT_READER_HEADERS,
     'Content-Type': 'application/json',
     'Authorization': token ? `Bearer ${token}` : '',
   };
