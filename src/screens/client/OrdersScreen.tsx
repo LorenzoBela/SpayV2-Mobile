@@ -48,6 +48,9 @@ import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { OrdersSkeleton } from '../../components/SkeletonLoader';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+import InstallmentShares from '../../components/InstallmentShares';
+import SplitBreakdown from '../../components/SplitBreakdown';
+import { installmentPreview, installmentShares, type InstallmentShare } from '../../utils/installment-shares';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { parseUtcDate } from '../../utils/date';
 import NetInfo from '@react-native-community/netinfo';
@@ -63,9 +66,13 @@ interface PaymentItem {
   dueDate: string;
   isPaid: boolean;
   paymentDate: string | null;
+  participantShares?: InstallmentShare[];
+  groupAmountDue?: number;
+  groupIsPaid?: boolean;
 }
 
 interface OrderItem {
+  participants?: Parameters<typeof installmentShares>[0];
   id: string;
   itemName: string;
   amount: number;
@@ -78,6 +85,7 @@ interface OrderItem {
   payments: PaymentItem[];
   userId?: string;
   isShared?: boolean;
+  viewerId?: string;
 }
 
 export default function OrdersScreen() {
@@ -461,6 +469,12 @@ export default function OrdersScreen() {
                 const order = item;
                 const isExpanded = expandedOrderId === order.id;
                 const progress = order.progressPercent;
+                const preview = order.isShared ? installmentPreview<any>(order.payments || []) : undefined;
+                const monthlyShares = preview ? <InstallmentShares
+                  title={`Month ${preview.monthNumber} · Shared installment`}
+                  shares={preview.participantShares ?? installmentShares(order.participants || [], preview.id)}
+                  groupAmountDue={preview.groupAmountDue} viewerId={order.viewerId} isDarkMode={isDarkMode} />
+                  : order.isShared ? <InstallmentShares viewerId={order.viewerId} isDarkMode={isDarkMode} /> : null;
                 const hasOverdue = order.payments.some(
                   (p: any) => !p.isPaid && parseUtcDate(p.dueDate).getTime() < Date.now()
                 );
@@ -571,6 +585,8 @@ export default function OrdersScreen() {
                         </View>
                       </View>
 
+                      {monthlyShares}
+
                       {/* Collapsed breakdown schedule */}
                       {isExpanded && (
                         <View style={styles.scheduleExpansion}>
@@ -587,7 +603,9 @@ export default function OrdersScreen() {
                               let statusText = 'Pending';
                               let statusBg = t.divider;
 
-                              if (p.isPaid) {
+                              if (p.amountDue === 0) {
+                                statusText = 'No payment required';
+                              } else if (p.isPaid) {
                                 labelColor = t.successText;
                                 statusText = 'Settled';
                                 statusBg = 'rgba(16, 185, 129, 0.1)';
@@ -598,7 +616,8 @@ export default function OrdersScreen() {
                               }
 
                               return (
-                                <View key={p.id} style={[styles.scheduleRow, { borderColor: t.divider }]}>
+                                <View key={p.id}>
+                                <View style={[styles.scheduleRow, { borderColor: t.divider }]}>
                                   <View>
                                     <Text style={[styles.scheduleMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
                                     <Text style={[styles.scheduleDate, { color: t.textSecondary }]}>
@@ -607,7 +626,7 @@ export default function OrdersScreen() {
                                   </View>
                                   <View style={styles.scheduleRight}>
                                     <Text style={[styles.scheduleAmount, { color: t.textPrimary }]}>
-                                      {formatCurrency(p.amountDue)}
+                                      {order.isShared ? 'Your share · ' : ''}{formatCurrency(p.amountDue)}
                                     </Text>
                                     <View style={[styles.rowStatusBadge, { backgroundColor: statusBg }]}>
                                       <Text style={[styles.rowStatusBadgeText, { color: labelColor }]}>
@@ -616,51 +635,24 @@ export default function OrdersScreen() {
                                     </View>
                                     {order.isShared && p.participantPaidCount !== undefined && (
                                       <Text style={{ fontSize: 9, color: t.textSecondary, marginTop: 2, fontWeight: '600', textAlign: 'right' }}>
-                                        👥 {p.participantPaidCount}/{p.participantTotalCount} paid
+                                        👥 {p.participantPaidCount}/{p.participantTotalCount} settled
                                       </Text>
                                     )}
                                   </View>
+                                </View>
+                                {order.isShared && <InstallmentShares title={`Month ${p.monthNumber} · Monthly shares`}
+                                  shares={p.participantShares ?? installmentShares(order.participants || [], p.id)}
+                                  groupAmountDue={p.groupAmountDue} viewerId={order.viewerId} isDarkMode={isDarkMode} />}
                                 </View>
                               );
                             })}
                           </View>
 
                           {order.isShared && order.participants && (
-                            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: t.divider }}>
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                <Text style={[styles.scheduleHeading, { color: t.textSecondary }]}>
-                                  SHARING PARTICIPANTS
-                                </Text>
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>
-                                  {order.participants.filter((p: any) => p.isPaid).length}/{order.participants.length} Paid
-                                </Text>
-                              </View>
-                              {order.participants.map((part: any) => (
-                                <View key={part.id || part.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
-                                  <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
-                                    {part.name}{part.userId === (order as any).viewerId ? ' (You)' : ''}{part.splitMode ? ` · ${part.splitMode}` : ''}{part.splitPercentageLabel ? ` · ${part.splitPercentageLabel}` : ''}
-                                  </Text>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
-                                      {formatCurrency(part.splitAmount)}
-                                    </Text>
-                                    <View style={{
-                                      backgroundColor: part.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                      paddingHorizontal: 6,
-                                      paddingVertical: 2,
-                                      borderRadius: 4,
-                                    }}>
-                                      <Text style={{
-                                        fontSize: 9,
-                                        fontWeight: '800',
-                                        color: part.isPaid ? t.successText : '#ef4444',
-                                      }}>
-                                        {part.isPaid ? 'PAID' : 'UNPAID'}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                </View>
-                              ))}
+                            <View style={{ marginTop: 12 }}>
+                              <Text style={[styles.scheduleHeading, { color: t.textSecondary }]}>WHOLE-ORDER ALLOCATION</Text>
+                              <SplitBreakdown compact total={order.orderTotal ?? order.amount} config={order.splitConfig}
+                                participants={order.participants} currentUserId={order.viewerId} />
                             </View>
                           )}
 
@@ -791,6 +783,8 @@ export default function OrdersScreen() {
                         </View>
                       </TouchableOpacity>
 
+                      {monthlyShares}
+
                       {isExpanded && (
                         <View style={styles.listScheduleExpansion}>
                           <View style={[styles.divider, { backgroundColor: t.divider }]} />
@@ -806,7 +800,9 @@ export default function OrdersScreen() {
                               let statusText = 'Pending';
                               let statusBg = t.divider;
 
-                              if (p.isPaid) {
+                              if (p.amountDue === 0) {
+                                statusText = 'No payment required';
+                              } else if (p.isPaid) {
                                 labelColor = t.successText;
                                 statusText = 'Settled';
                                 statusBg = 'rgba(16, 185, 129, 0.1)';
@@ -817,7 +813,8 @@ export default function OrdersScreen() {
                               }
 
                               return (
-                                <View key={p.id} style={[styles.scheduleRow, { borderColor: t.divider }]}>
+                                <View key={p.id}>
+                                <View style={[styles.scheduleRow, { borderColor: t.divider }]}>
                                   <View>
                                     <Text style={[styles.scheduleMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
                                     <Text style={[styles.scheduleDate, { color: t.textSecondary }]}>
@@ -826,7 +823,7 @@ export default function OrdersScreen() {
                                   </View>
                                   <View style={styles.scheduleRight}>
                                     <Text style={[styles.scheduleAmount, { color: t.textPrimary }]}>
-                                      {formatCurrency(p.amountDue)}
+                                      {order.isShared ? 'Your share · ' : ''}{formatCurrency(p.amountDue)}
                                     </Text>
                                     <View style={[styles.rowStatusBadge, { backgroundColor: statusBg }]}>
                                       <Text style={[styles.rowStatusBadgeText, { color: labelColor }]}>
@@ -835,51 +832,24 @@ export default function OrdersScreen() {
                                     </View>
                                     {order.isShared && p.participantPaidCount !== undefined && (
                                       <Text style={{ fontSize: 9, color: t.textSecondary, marginTop: 2, fontWeight: '600', textAlign: 'right' }}>
-                                        👥 {p.participantPaidCount}/{p.participantTotalCount} paid
+                                        👥 {p.participantPaidCount}/{p.participantTotalCount} settled
                                       </Text>
                                     )}
                                   </View>
+                                </View>
+                                {order.isShared && <InstallmentShares title={`Month ${p.monthNumber} · Monthly shares`}
+                                  shares={p.participantShares ?? installmentShares(order.participants || [], p.id)}
+                                  groupAmountDue={p.groupAmountDue} viewerId={order.viewerId} isDarkMode={isDarkMode} />}
                                 </View>
                               );
                             })}
                           </View>
 
                           {order.isShared && order.participants && (
-                            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: t.divider }}>
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                                <Text style={[styles.scheduleHeading, { color: t.textSecondary }]}>
-                                  SHARING PARTICIPANTS
-                                </Text>
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>
-                                  {order.participants.filter((p: any) => p.isPaid).length}/{order.participants.length} Paid
-                                </Text>
-                              </View>
-                              {order.participants.map((part: any) => (
-                                <View key={part.id || part.email} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
-                                  <Text style={{ fontSize: 11, fontWeight: '700', color: t.textPrimary }}>
-                                    {part.name}{part.userId === (order as any).viewerId ? ' (You)' : ''}{part.splitMode ? ` · ${part.splitMode}` : ''}{part.splitPercentageLabel ? ` · ${part.splitPercentageLabel}` : ''}
-                                  </Text>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: t.textSecondary }}>
-                                      {formatCurrency(part.splitAmount)}
-                                    </Text>
-                                    <View style={{
-                                      backgroundColor: part.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                      paddingHorizontal: 6,
-                                      paddingVertical: 2,
-                                      borderRadius: 4,
-                                    }}>
-                                      <Text style={{
-                                        fontSize: 9,
-                                        fontWeight: '800',
-                                        color: part.isPaid ? t.successText : '#ef4444',
-                                      }}>
-                                        {part.isPaid ? 'PAID' : 'UNPAID'}
-                                      </Text>
-                                    </View>
-                                  </View>
-                                </View>
-                              ))}
+                            <View style={{ marginTop: 12 }}>
+                              <Text style={[styles.scheduleHeading, { color: t.textSecondary }]}>WHOLE-ORDER ALLOCATION</Text>
+                              <SplitBreakdown compact total={order.orderTotal ?? order.amount} config={order.splitConfig}
+                                participants={order.participants} currentUserId={order.viewerId} />
                             </View>
                           )}
 
@@ -1042,7 +1012,7 @@ export default function OrdersScreen() {
                 {unpaidInstallments.map((p, idx) => {
                   const isPaymentOverdue = parseUtcDate(p.dueDate).getTime() < Date.now();
                   return (
-                    <View key={p.id || idx} style={[styles.dueRow, { borderColor: t.divider }]}>
+                    <View key={p.id || idx} style={[styles.dueRow, { borderColor: t.divider, flexWrap: 'wrap' }]}>
                       <View>
                         <Text style={[styles.dueRowMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
                         <Text style={[styles.dueRowDate, { color: t.textSecondary }]}>
@@ -1057,6 +1027,7 @@ export default function OrdersScreen() {
                           </View>
                         )}
                       </View>
+                      {orderToPay?.isShared && <View style={{ width: '100%' }}><InstallmentShares title={`Month ${p.monthNumber} · Shared installment`} shares={p.participantShares ?? installmentShares(orderToPay.participants || [], p.id)} groupAmountDue={p.groupAmountDue} viewerId={orderToPay.viewerId} isDarkMode={isDarkMode} /></View>}
                     </View>
                   );
                 })}
@@ -1064,7 +1035,7 @@ export default function OrdersScreen() {
 
               {/* Dues summary */}
               <View style={[styles.duesSummaryBlock, { backgroundColor: t.divider }]}>
-                <Text style={[styles.summaryLabel, { color: t.textSecondary }]}>Total Outstanding</Text>
+                <Text style={[styles.summaryLabel, { color: t.textSecondary }]}>{orderToPay?.isShared ? 'Your total outstanding' : 'Total Outstanding'}</Text>
                 <Text style={[styles.summaryValue, { color: t.textPrimary }]}>{formatCurrency(totalUnpaidAmount)}</Text>
               </View>
 
@@ -1328,6 +1299,8 @@ const styles = StyleSheet.create({
   },
   scheduleRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
@@ -1342,9 +1315,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   scheduleRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    alignItems: 'flex-end',
+    flexShrink: 1,
+    gap: 4,
   },
   scheduleAmount: {
     fontSize: 13,

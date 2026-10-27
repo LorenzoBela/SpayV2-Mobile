@@ -1,3 +1,4 @@
+import { CountdownBill, CountdownClientSummary } from '../../components/CountdownBreakdown';
 import { useSplitValidity } from '../../hooks/useSplitValidity';
 import SplitEditor from '../../components/SplitEditor';
 import SplitOptionsHint from '../../components/SplitOptionsHint';
@@ -1062,42 +1063,12 @@ export default function AdminDashboardScreen() {
                         onPress={() => toggleClientExpand(client.clientId)}
                         activeOpacity={0.7}
                       >
-                        <View style={styles.scheduleItemLeft}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={[styles.clientNameText, { color: t.textPrimary }]}>{client.clientName}</Text>
-                            {(client.hasShared || client.items?.some((i: any) => i.isShared)) && (
-                              <View style={{ backgroundColor: '#fee2e2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6, flexDirection: 'row', alignItems: 'center' }}>
-                                <Users size={10} color="#ee4d2d" style={{ marginRight: 2 }} />
-                                <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '700' }}>SHARED</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={styles.clientEmailText}>{client.email}</Text>
-                        </View>
-                        <View style={styles.scheduleItemRight}>
-                          <Text style={[styles.clientOwedText, { color: t.textPrimary }]}>{formatCurrency(client.totalOwed)}</Text>
-                          {expanded ? <ChevronUp size={14} color={t.textSecondary} /> : <ChevronDown size={14} color={t.textSecondary} />}
-                        </View>
-                      </TouchableOpacity>
+                          <CountdownClientSummary name={client.clientName} email={client.email} amountDue={client.totalOwed} isShared={client.hasShared || client.items?.some((item: any) => item.isShared)}  trailing={expanded ? <ChevronUp size={14} color={t.textSecondary} /> : <ChevronDown size={14} color={t.textSecondary} />} isDarkMode={isDarkMode} />
+                        </TouchableOpacity>
 
                       {expanded && (
                         <View style={styles.clientPaymentsList}>
-                          {client.items.map((item: any, idx: number) => (
-                            <View key={idx} style={styles.subPaymentRow}>
-                                <View style={{ flex: 1 }}>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={[styles.subPaymentItem, { color: t.textPrimary }]}>{item.itemName}{item.splitPercentageLabel ? ` · ${item.splitPercentageLabel}` : ''}{item.splitMode ? ` · ${item.splitMode}` : ''}</Text>
-                                    {item.isShared && (
-                                      <View style={{ backgroundColor: '#fee2e2', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, marginLeft: 6 }}>
-                                        <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED</Text>
-                                      </View>
-                                    )}
-                                  </View>
-                                  <Text style={styles.subPaymentTerm}>Month {item.monthNumber} of {item.installmentMonths}</Text>
-                                </View>
-                              <Text style={[styles.subPaymentAmount, { color: t.textPrimary }]}>{formatCurrency(item.amountDue)}</Text>
-                            </View>
-                          ))}
+                          {client.items.map((item: any, idx: number) => <CountdownBill key={item.id || idx} itemName={item.itemName} amountDue={item.amountDue} amountLabel={item.isShared ? 'Client share' : 'Installment due'} metadata={[`Month ${item.monthNumber} of ${item.installmentMonths}`, item.splitPercentageLabel, item.splitMode].filter(Boolean).join(' · ')} isShared={item.isShared} isDarkMode={isDarkMode} />)}
                         </View>
                       )}
                     </View>

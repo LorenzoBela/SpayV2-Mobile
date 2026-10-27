@@ -1,3 +1,4 @@
+import { CountdownBill } from '../../components/CountdownBreakdown';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { formatAmount } from '../../utils/money';
@@ -1451,94 +1452,7 @@ export default function DashboardScreen() {
             <View style={[styles.breakdownBox, { backgroundColor: t.breakdownBg }]}>
               <Text style={[styles.breakdownTitle, { color: t.textSecondary }]}>Personal Bill Breakdown</Text>
               <View style={[styles.breakdownDivider, { backgroundColor: t.divider }]} />
-              {nextMonthlyPayment.payments.map((p: any, idx: number) => (
-                <View
-                  key={p.id || idx}
-                  style={[
-                    {
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      marginBottom: 8,
-                      borderRadius: 10,
-                      backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.5)' : 'rgba(248, 250, 252, 0.8)',
-                      borderWidth: 1,
-                      borderColor: t.divider,
-                    },
-                    p.isShared && { borderLeftWidth: 3, borderLeftColor: '#ee4d2d' }
-                  ]}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-SemiBold' }} numberOfLines={1}>
-                          {p.itemName}
-                        </Text>
-                        {p.isShared && (
-                          <View style={{
-                            backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.15)' : 'rgba(238, 77, 45, 0.1)',
-                            borderColor: 'rgba(238, 77, 45, 0.3)',
-                            borderWidth: 1,
-                            paddingHorizontal: 6,
-                            paddingVertical: 1.5,
-                            borderRadius: 4,
-                          }}>
-                            <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>SHARED (YOUR SPLIT)</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={{ fontSize: 11, color: t.textSecondary, fontFamily: 'Jakarta-Medium', marginTop: 4 }}>
-                        Due {parseUtcDate(p.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', paddingTop: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: t.textPrimary, fontFamily: 'Outfit-Bold' }}>
-                        {formatCurrency(p.amount)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Render sharingProgress participant splits and Paid/Unpaid status badges */}
-                  {p.isShared && p.sharingProgress && p.sharingProgress.length > 0 && (
-                    <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: t.divider }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: t.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                          Participant Splits
-                        </Text>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>
-                          {p.sharingProgress.filter((sp: any) => sp.isPaid).length}/{p.sharingProgress.length} Paid
-                        </Text>
-                      </View>
-                      {p.sharingProgress.map((sp: any, spIdx: number) => (
-                        <View key={spIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 3 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '600', color: t.textPrimary, fontFamily: 'Jakarta-Medium' }} numberOfLines={1}>
-                            {sp.name}{sp.splitPercentageLabel ? ` · ${sp.splitPercentageLabel}` : ''}{sp.splitMode ? ` · ${sp.splitMode}` : ''}
-                          </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: t.textSecondary, fontFamily: 'Outfit-Bold' }}>
-                              {formatCurrency(sp.amountDue ?? sp.splitAmount ?? 0)}
-                            </Text>
-                            <View style={{
-                              backgroundColor: sp.isPaid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                              paddingHorizontal: 6,
-                              paddingVertical: 2,
-                              borderRadius: 4,
-                            }}>
-                              <Text style={{
-                                color: sp.isPaid ? '#10b981' : '#ef4444',
-                                fontSize: 9,
-                                fontWeight: '800',
-                                fontFamily: 'Jakarta-Bold',
-                              }}>
-                                {Number(sp.amountDue) === 0 ? 'No payment required' : sp.isPaid ? 'Paid' : 'Unpaid'}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ))}
+              {nextMonthlyPayment.payments.map((p: any, idx: number) => <CountdownBill key={p.id || idx} itemName={p.itemName} amountDue={p.amount} amountLabel={p.isShared ? 'Your installment' : 'Amount due'} dueLabel={`Due ${parseUtcDate(p.dueDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })}`} isShared={p.isShared} people={p.isShared ? p.sharingProgress : undefined} isDarkMode={isDarkMode} />)}
             </View>
           )}
         </View>

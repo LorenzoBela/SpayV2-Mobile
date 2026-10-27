@@ -1,3 +1,4 @@
+import { CountdownBill, CountdownClientSummary, CountdownParticipantRow } from '../../components/CountdownBreakdown';
 import { unpaidBillingLiabilities } from '../../utils/shared-billing';
 import { useSplitValidity } from '../../hooks/useSplitValidity';
 import SplitEditor from '../../components/SplitEditor';
@@ -2081,51 +2082,12 @@ export default function AdminPaymentsScreen() {
                           onPress={() => toggleClientExpand(client.clientId)}
                           activeOpacity={0.7}
                         >
-                            <View style={styles.scheduleItemLeft}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={[styles.clientNameText, { color: t.textPrimary }]}>{client.clientName}</Text>
-                                {(client.hasShared || client.items?.some((i: any) => i.isShared)) && (
-                                  <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6, flexDirection: 'row', alignItems: 'center' }}>
-                                    <Users size={10} color="#ee4d2d" style={{ marginRight: 2 }} />
-                                    <Text style={{ color: '#ee4d2d', fontSize: 9, fontWeight: '800' }}>SHARED</Text>
-                                  </View>
-                                )}
-                              </View>
-                              {(() => {
-                                const itemNames = Array.from(new Set((client.items || []).map((i: any) => i.itemName).filter(Boolean)));
-                                const summary = itemNames.slice(0, 2).join(', ') + (itemNames.length > 2 ? ` +${itemNames.length - 2} more` : '');
-                                return summary ? (
-                                  <Text style={{ fontSize: 11, fontWeight: '600', color: t.accent, marginTop: 1 }} numberOfLines={1}>
-                                    📦 {summary}
-                                  </Text>
-                                ) : null;
-                              })()}
-                              <Text style={styles.clientEmailText}>{client.email}</Text>
-                            </View>
-                          <View style={styles.scheduleItemRight}>
-                            <Text style={[styles.clientOwedText, { color: t.textPrimary }]}>{formatCurrency(client.totalOwed)}</Text>
-                            {expanded ? <ChevronUp size={14} color={t.textSecondary} /> : <ChevronDown size={14} color={t.textSecondary} />}
-                          </View>
+                          <CountdownClientSummary name={client.clientName} email={client.email} amountDue={client.totalOwed} isShared={client.hasShared || client.items?.some((item: any) => item.isShared)} detail={Array.from(new Set<string>((client.items || []).map((item: any) => item.itemName).filter(Boolean))).slice(0, 2).join(', ')} trailing={expanded ? <ChevronUp size={14} color={t.textSecondary} /> : <ChevronDown size={14} color={t.textSecondary} />} isDarkMode={isDarkMode} />
                         </TouchableOpacity>
 
                         {expanded && (
                           <View style={styles.clientPaymentsList}>
-                            {client.items.map((item: any, idx: number) => (
-                              <View key={idx} style={styles.subPaymentRow}>
-                                <View style={{ flex: 1 }}>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={[styles.subPaymentItem, { color: t.textPrimary }]}>{item.itemName}</Text>
-                                    {item.isShared && (
-                                      <View style={{ backgroundColor: '#fee2e2', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, marginLeft: 6 }}>
-                                        <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '700' }}>SHARED</Text>
-                                      </View>
-                                    )}
-                                  </View>
-                                  <Text style={styles.subPaymentTerm}>Month {item.monthNumber} of {item.installmentMonths}</Text>
-                                </View>
-                                <Text style={[styles.subPaymentAmount, { color: t.textPrimary }]}>{formatCurrency(item.amountDue)}</Text>
-                              </View>
-                            ))}
+                            {client.items.map((item: any, idx: number) => <CountdownBill key={item.id || idx} itemName={item.itemName} amountDue={item.amountDue} amountLabel={item.isShared ? 'Client share' : 'Installment due'} metadata={[`Month ${item.monthNumber} of ${item.installmentMonths}`, item.splitPercentageLabel, item.splitMode].filter(Boolean).join(' · ')} isShared={item.isShared} isDarkMode={isDarkMode} />)}
                           </View>
                         )}
                       </View>
@@ -3470,30 +3432,20 @@ export default function AdminPaymentsScreen() {
                         <View 
                           key={pp.id} 
                           style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
+                            flexDirection: 'column',
+                            alignItems: 'stretch',
                             justifyContent: 'space-between',
                             paddingVertical: 8,
                             borderBottomWidth: 1,
                             borderBottomColor: t.border
                           }}
                         >
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: t.textPrimary }}>
-                                {pp.name || 'Unknown'}{pp.splitPercentageLabel ? ` · ${pp.splitPercentageLabel}` : ''}{pp.splitMode ? ` · ${pp.splitMode}` : ''}
-                              </Text>
-                              {isOwner && (
-                                <View style={{ backgroundColor: 'rgba(238, 77, 45, 0.1)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3 }}>
-                                  <Text style={{ fontSize: 9, color: '#ee4d2d', fontWeight: '800' }}>OWNER</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={{ fontSize: 10, color: t.textSecondary }}>{formatCurrency(pp.amountDue || 0)}</Text>
-                          </View>
+                          <View style={{ width: '100%' }}><CountdownParticipantRow person={pp} roleLabel={isOwner ? 'OWNER' : undefined} showStatus={!(Number(pp.amountDue) > 0)} isDarkMode={isDarkMode} /></View>
                           
-                          <TouchableOpacity
+                          {Number(pp.amountDue) > 0 && (<TouchableOpacity
                             style={{ 
+                              alignSelf: 'flex-start',
+                              marginTop: 8,
                               flexDirection: 'row', 
                               alignItems: 'center', 
                               gap: 6,
@@ -3518,7 +3470,7 @@ export default function AdminPaymentsScreen() {
                                 <Text style={{ fontSize: 10, fontWeight: '700', color: '#ee4d2d' }}>Mark Paid</Text>
                               </>
                             )}
-                          </TouchableOpacity>
+                          </TouchableOpacity>) }
                         </View>
                       );
                     })}

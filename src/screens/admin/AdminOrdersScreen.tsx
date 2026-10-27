@@ -1,5 +1,7 @@
 import { useSplitValidity } from '../../hooks/useSplitValidity';
 import SplitBreakdown from '../../components/SplitBreakdown';
+import InstallmentShares from '../../components/InstallmentShares';
+import { installmentPreview, installmentShares } from '../../utils/installment-shares';
 import SplitEditor from '../../components/SplitEditor';
 import SplitOptionsHint from '../../components/SplitOptionsHint';
 import type { SplitConfiguration } from '../../utils/split-allocation';
@@ -93,6 +95,7 @@ interface OrderListItemProps {
   order: any;
   viewMode: 'list' | 'grid';
   t: any;
+  isDarkMode: boolean;
   onPress: (order: any) => void;
 }
 
@@ -100,8 +103,15 @@ const OrderListItem = React.memo(function OrderListItem({
   order,
   viewMode,
   t,
+  isDarkMode,
   onPress,
 }: OrderListItemProps) {
+  const preview = order.is_shared ? installmentPreview<any>(order.payments || []) : undefined;
+  const monthlyShares = preview ? (
+    <InstallmentShares title={`Month ${preview.month_number} · Due ${formatDate(preview.due_date)}`}
+      shares={preview.participantShares ?? installmentShares(order.participants || [], preview.id)}
+      groupAmountDue={preview.groupAmountDue} isDarkMode={isDarkMode} />
+  ) : order.is_shared ? <InstallmentShares isDarkMode={isDarkMode} /> : null;
   if (viewMode === 'grid') {
     return (
       <TouchableOpacity
@@ -148,6 +158,7 @@ const OrderListItem = React.memo(function OrderListItem({
             <Text style={[styles.detailCardVal, { color: '#10b981', fontSize: 11 }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
           </View>
         </View>
+        {monthlyShares}
       </TouchableOpacity>
     );
   }
@@ -203,6 +214,7 @@ const OrderListItem = React.memo(function OrderListItem({
           <Text style={[styles.bottomValue, { color: '#10b981' }]}>{order.paidCount}/{order.installment_months} ({order.progressPercent}%)</Text>
         </View>
       </View>
+      {monthlyShares}
     </TouchableOpacity>
   );
 });
@@ -344,7 +356,7 @@ export default function AdminOrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: ordersData, isLoading: loading, error: queryError, refetch } = useQuery({
-    queryKey: ['admin-orders', currentPage, searchQuery, activeTab, filterMonthKey],
+    queryKey: ['admin-orders', 'monthly-shares-v1', currentPage, searchQuery, activeTab, filterMonthKey],
     queryFn: () => fetchAdminOrders({
       page: currentPage,
       pageSize: PAGE_SIZE,
@@ -387,7 +399,7 @@ export default function AdminOrdersScreen() {
   }, [searchQuery, activeTab, filterMonthKey]);
 
   useRealtimeSync(
-    ['orders', 'payments', 'account_limits', 'profiles'],
+    ['orders', 'payments', 'account_limits', 'profiles', 'order_participants', 'order_participant_payments'],
     undefined,
     [['admin-orders']]
   );
@@ -419,11 +431,18 @@ export default function AdminOrdersScreen() {
         due_date: p.dueDate,
         amount_due: p.amountDue,
         payment_date: p.paymentDate,
-        proof_of_payment: p.proofOfPayment
+        proof_of_payment: p.proofOfPayment,
+        participantShares: p.participantShares,
+        groupAmountDue: p.groupAmountDue,
+        groupIsPaid: p.groupIsPaid,
       })),
       participants: o.participants || []
     }));
   }, [ordersData]);
+
+  useEffect(() => {
+    setSelectedOrder((current: any) => current ? orders.find((order: any) => order.id === current.id) ?? current : current);
+  }, [orders]);
 
   const profiles = useMemo(() => ordersData?.profiles || [], [ordersData]);
   const monthlyOrdersBreakdown = useMemo(() => ordersData?.monthlyOrdersBreakdown || [], [ordersData]);
@@ -748,9 +767,10 @@ export default function AdminOrdersScreen() {
       order={item}
       viewMode={viewMode}
       t={t}
+      isDarkMode={isDarkMode}
       onPress={handleOrderPress}
     />
-  ), [viewMode, t, handleOrderPress]);
+  ), [viewMode, t, isDarkMode, handleOrderPress]);
 
   if (loading && !ordersData) {
     return (
@@ -1080,7 +1100,7 @@ export default function AdminOrdersScreen() {
                     <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>{selectedOrder.installment_months} Months</Text>
                   </View>
                   <View style={styles.detailBox}>
-                    <Text style={styles.detailBoxLabel}>Monthly Amortization</Text>
+                    <Text style={styles.detailBoxLabel}>{selectedOrder.is_shared ? 'Average group / month' : 'Monthly Amortization'}</Text>
                     <Text style={[styles.detailBoxValue, { color: t.textPrimary }]}>
                       {formatCurrency(Number(selectedOrder.amount) / (selectedOrder.installment_months || 1))}
                     </Text>
@@ -1106,11 +1126,11 @@ export default function AdminOrdersScreen() {
                     <Text style={[styles.sectionTitle, { color: t.textPrimary, marginBottom: 0 }]}>Shared Group Payment</Text>
                   </View>
                   <Text style={{ fontSize: 11, color: t.textSecondary, marginBottom: 12, lineHeight: 16 }}>
-                    This order is shared with a group. Here is the split breakdown and payment status of each participant:
+                    Whole-order allocation. Each person's monthly amount and status are shown in the schedule below.
                   </Text>
                   
                   <View style={{ gap: 8 }}>
-                    <SplitBreakdown total={selectedOrder.amount} config={selectedOrder.splitConfig} participants={selectedOrder.participants || []} />                  </View>
+                    <SplitBreakdown compact total={selectedOrder.amount} config={selectedOrder.splitConfig} participants={selectedOrder.participants || []} />                  </View>
                 </View>
               )}
 
@@ -1139,7 +1159,8 @@ export default function AdminOrdersScreen() {
                 {selectedOrder.payments.map((payment: any) => {
                   const isOverdue = !payment.is_paid && parseUtcDate(payment.due_date) < new Date();
                   return (
-                    <View key={payment.id} style={[styles.paymentRowItem, { borderBottomColor: t.border }]}>
+                    <View key={payment.id}>
+                    <View style={[styles.paymentRowItem, { borderBottomColor: t.border }]}>
                       <View style={styles.paymentRowItemLeft}>
                         <View style={[styles.numDot, payment.is_paid ? { backgroundColor: '#10b981' } : (isOverdue ? { backgroundColor: '#ef4444' } : { backgroundColor: t.border })]}>
                           <Text style={styles.numDotText}>{payment.month_number}</Text>
@@ -1155,6 +1176,11 @@ export default function AdminOrdersScreen() {
                           {payment.is_paid ? 'Cleared' : (isOverdue ? 'Overdue' : 'Unpaid')}
                         </Text>
                       </View>
+                    </View>
+                    {selectedOrder.is_shared && <InstallmentShares
+                      title={`Month ${payment.month_number} · Monthly shares`}
+                      shares={payment.participantShares ?? installmentShares(selectedOrder.participants || [], payment.id)}
+                      groupAmountDue={payment.groupAmountDue} isDarkMode={isDarkMode} />}
                     </View>
                   );
                 })}

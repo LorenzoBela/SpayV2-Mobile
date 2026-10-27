@@ -1,9 +1,13 @@
+import type { InstallmentShare } from '../utils/installment-shares';
 import { trpc } from '../utils/trpc';
 import { useQuery } from '@tanstack/react-query';
 import { fetchClientDashboard } from '../services/dashboardService';
 
 // --- ORDERS HOOK INTERFACES ---
 export interface OrderPaymentItem {
+  participantShares?: InstallmentShare[];
+  groupAmountDue?: number;
+  groupIsPaid?: boolean;
   id: string;
   monthNumber: number;
   amountDue: number;
@@ -99,7 +103,7 @@ export interface ClientPaymentItem {
 }
 
 export function useClientOrdersQuery() {
-  return trpc.orders.list.useQuery(undefined, { refetchOnMount: true });
+  return trpc.orders.list.useQuery(undefined, { refetchOnMount: 'always', staleTime: 0 });
 }
 
 export function useClientPaymentsQuery() {
