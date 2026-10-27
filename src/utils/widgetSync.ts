@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { getLinkedProfileForCurrentUser } from './authProfile';
 import { callAdminApi } from '../services/adminService';
+import { getSharedCreditLimits } from '../services/sharedCreditService';
 import { queryClient } from './queryClient';
 import { personalOrder } from './personal-liability';
 import { throwIfSplitReaderUpgrade } from './split-reader-contract';
@@ -57,20 +58,9 @@ export async function syncWidgetData(force: boolean = false) {
     const firstName = profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Premium Member';
     const role = (profile?.role || 'client').toLowerCase();
 
-    // Fetch limits
-    let globalLimit = 0;
-    let globalUnpaid = 0;
-    const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
-    throwIfSplitReaderUpgrade(rpcError);
-    if (!rpcError && globalStats && globalStats[0]) {
-      globalLimit = parseFloat(globalStats[0].credit_limit_total) || 0;
-      globalUnpaid = parseFloat(globalStats[0].unpaid_amount_total) || 0;
-    } else {
-      const { data: limitsData } = await supabase.from('account_limits').select('credit_limit');
-      if (limitsData && limitsData.length > 0) {
-        globalLimit = limitsData.reduce((sum: number, l: any) => sum + (parseFloat(l.credit_limit) || 0), 0);
-      }
-    }
+    const limits = await getSharedCreditLimits(force);
+    const globalLimit = limits.limit;
+    const globalUnpaid = limits.unpaid;
     const globalAvailable = Math.max(0, globalLimit - globalUnpaid);
 
     // Initial base payload structure
@@ -90,6 +80,11 @@ export async function syncWidgetData(force: boolean = false) {
       const allQueries = queryClient.getQueryCache().getAll();
       for (const query of allQueries) {
         const keyStr = JSON.stringify(query.queryKey);
+        if (keyStr.includes('dashboard') && keyStr.includes('summary')) {
+          const summary = query.state.data as any;
+          cachedOrdersData = summary?.orders;
+          cachedPaymentsData = summary?.payments;
+        }
         if (keyStr.includes('orders') && keyStr.includes('list')) {
           cachedOrdersData = query.state.data;
         }

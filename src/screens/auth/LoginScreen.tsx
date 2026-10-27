@@ -178,7 +178,7 @@ export default function LoginScreen() {
   }) => {
     console.log('[Auth] completeSupabaseSignIn called with user email:', user?.email);
     try {
-      const { error } = await supabase.auth.signInWithIdToken({
+      const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
         token: idToken,
       });
@@ -190,33 +190,14 @@ export default function LoginScreen() {
 
       console.log('[Auth] Supabase authentication successful');
 
-      // Sync Google profile picture and name to Supabase user metadata
-      try {
-        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
-        if (supabaseUser) {
-          const currentAvatar = supabaseUser.user_metadata?.avatar_url || supabaseUser.user_metadata?.picture;
-          const currentFullName = supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name;
-          
-          const targetPhoto = user?.photo || null;
-          const targetName = user?.name || null;
-          
-          if ((targetPhoto && currentAvatar !== targetPhoto) || (targetName && currentFullName !== targetName)) {
-            console.log('[Auth] Google profile info needs sync, updating Supabase user metadata...');
-            await supabase.auth.updateUser({
-              data: {
-                avatar_url: targetPhoto || currentAvatar,
-                picture: targetPhoto || currentAvatar,
-                full_name: targetName || currentFullName || '',
-              }
-            });
-            console.log('[Auth] Supabase user metadata updated successfully');
-          }
-        }
-      } catch (syncError) {
-        console.error('[Auth] Failed to sync Google profile data to Supabase:', syncError);
-      }
-
-      await saveGoogleAccount(user);
+      // The sign-in response already supplies the provider profile. Another auth
+      // read/write here would hold up requests waiting for the auth session lock.
+      const metadata = data.user?.user_metadata;
+      await saveGoogleAccount({
+        name: user?.name || metadata?.full_name || metadata?.name,
+        email: user?.email || data.user?.email,
+        photo: user?.photo || metadata?.avatar_url || metadata?.picture,
+      });
     } catch (err) {
       console.error('[Auth] completeSupabaseSignIn catch block error:', err);
       throw err;

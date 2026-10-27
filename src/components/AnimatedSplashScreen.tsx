@@ -99,7 +99,7 @@ export default function AnimatedSplashScreen({
           // 6. Subtitle Fade In
           Animated.timing(subtitleOpacity, {
             toValue: 1,
-            duration: 650,
+            duration: 250,
             useNativeDriver: true,
           }).start(() => {
             // 7. Reading pause, then scale/zoom exit animation
@@ -107,12 +107,12 @@ export default function AnimatedSplashScreen({
               Animated.parallel([
                 Animated.timing(containerOpacity, {
                   toValue: 0,
-                  duration: 450,
+                  duration: 200,
                   useNativeDriver: true,
                 }),
                 Animated.timing(containerScale, {
                   toValue: 1.06,
-                  duration: 450,
+                  duration: 200,
                   useNativeDriver: true,
                 }),
               ]).start(() => {
@@ -120,11 +120,11 @@ export default function AnimatedSplashScreen({
                 auraAnimation.stop();
                 onAnimationComplete();
               });
-            }, 1100);
+            }, 150);
           });
         }
-      }, 110);
-    }, 700);
+      }, 40);
+    }, 250);
 
     return () => {
       clearTimeout(typewriterTimeout);

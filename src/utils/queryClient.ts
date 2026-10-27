@@ -9,6 +9,12 @@ export const queryClient = new QueryClient({
       refetchOnMount: false,
       refetchOnWindowFocus: false,
       refetchOnReconnect: 'always',
+      // Four 10s attempts plus backoff can hide a network failure for ~47s.
+      // Retry a transient read once; permission/session errors need user action.
+      retry: (failureCount, error: any) => {
+        const status = error?.data?.httpStatus ?? error?.status;
+        return failureCount < 1 && status !== 401 && status !== 403;
+      },
     },
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
@@ -21,7 +21,6 @@ import GlobalProgressBar from './src/components/GlobalProgressBar';
 import RootErrorBoundary from './src/components/RootErrorBoundary';
 import PrivacyCurtain from './src/components/PrivacyCurtain';
 import { useNetworkReconciliation } from './src/hooks/useNetworkReconciliation';
-import { syncWidgetData } from './src/utils/widgetSync';
 import * as SplashScreen from 'expo-splash-screen';
 import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
 
@@ -76,10 +75,6 @@ const darkTheme = {
 
 function AppContent() {
   useNetworkReconciliation();
-
-  React.useEffect(() => {
-    void syncWidgetData(true);
-  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -137,17 +132,18 @@ export default function App() {
     return null; // Hold the native splash screen until fonts are loaded
   }
 
-  if (!isSplashAnimationComplete) {
-    return (
-      <AnimatedSplashScreen
-        onAnimationComplete={() => setIsSplashAnimationComplete(true)}
-      />
-    );
-  }
-
   return (
     <RootErrorBoundary>
-      <AppContent />
+      <View style={{ flex: 1 }}>
+        <AppContent />
+        {!isSplashAnimationComplete && (
+          <View style={StyleSheet.absoluteFill}>
+            <AnimatedSplashScreen
+              onAnimationComplete={() => setIsSplashAnimationComplete(true)}
+            />
+          </View>
+        )}
+      </View>
     </RootErrorBoundary>
   );
 }

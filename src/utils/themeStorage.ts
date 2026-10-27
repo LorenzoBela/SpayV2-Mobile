@@ -51,6 +51,29 @@ export function getPersistedTheme(): ThemePreference {
   return 'auto';
 }
 
+/** Apply a startup preference only while its account and user choice are current. */
+export async function syncStartupTheme(
+  userId: string,
+  shouldApply: () => boolean,
+): Promise<ThemePreference | null> {
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('setting_value')
+    .eq('user_id', userId)
+    .eq('setting_name', 'theme')
+    .maybeSingle();
+  if (error) throw error;
+  if (!shouldApply()) return null;
+
+  const local = getPersistedTheme();
+  const remote = data?.setting_value;
+  const theme: ThemePreference = local === 'dark' || local === 'light'
+    ? local
+    : remote === 'dark' || remote === 'light' || remote === 'auto' ? remote : 'auto';
+  savePersistedTheme(theme, userId);
+  return theme;
+}
+
 /**
  * Persists theme preference across MMKV, AsyncStorage, cached profile, and Supabase.
  */

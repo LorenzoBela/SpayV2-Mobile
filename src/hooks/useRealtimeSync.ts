@@ -62,7 +62,7 @@ export function useRealtimeSync(
         // tRPC keys are path tuples, not legacy ['client-orders'] aliases.
         queryClient.invalidateQueries({ predicate: query => {
           const path = query.queryKey[0];
-          return Array.isArray(path) && ['orders', 'payments', 'admin', 'expenses'].includes(String(path[0]));
+          return Array.isArray(path) && ['orders', 'payments', 'dashboard', 'admin', 'expenses'].includes(String(path[0]));
         } });
         
         if (onSyncRef.current) {

@@ -27,16 +27,20 @@ export function getClientAvatarUrl(
 }
 
 export type CachedUserProfile = {
+  authUserId?: string;
   role: string;
   linkedProfileId: string;
   theme?: string;
 };
 
-export function getCachedUserProfile(): CachedUserProfile | null {
+export function getCachedUserProfile(authUserId?: string): CachedUserProfile | null {
   try {
     const raw = storage.getString('cached_user_profile');
     if (raw) {
-      return JSON.parse(raw);
+      const cached = JSON.parse(raw);
+      if (authUserId && (cached?.authUserId !== authUserId ||
+        !cached?.linkedProfileId || !['ADMIN', 'CLIENT'].includes(cached?.role))) return null;
+      return cached;
     }
   } catch (e) {
     console.warn('[AuthProfile] Failed to read cached_user_profile from MMKV:', e);
@@ -54,7 +58,20 @@ export function setCachedUserProfile(cached: CachedUserProfile): void {
 
 const PROFILE_SELECT = 'id, email, name, role, mobile_number';
 
-export async function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
+const pendingProfiles = new Map<string, Promise<LinkedProfile | null>>();
+
+export function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
+  const key = JSON.stringify([user.id, user.email ?? null]);
+  const pending = pendingProfiles.get(key);
+  if (pending) return pending;
+  const request = lookupLinkedProfile(user).finally(() => {
+    if (pendingProfiles.get(key) === request) pendingProfiles.delete(key);
+  });
+  pendingProfiles.set(key, request);
+  return request;
+}
+
+async function lookupLinkedProfile(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
   const { data: linkedProfile, error: rpcError } = await supabase
     .rpc('get_current_linked_profile')
     .maybeSingle();
@@ -98,8 +115,15 @@ export async function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>):
 }
 
 let memoryProfileCache: { userId: string; profile: LinkedProfile | null; profileId: string; timestamp: number } | null = null;
+let profileCacheGeneration = 0;
+
+export function primeCurrentUserProfile(userId: string, profile: LinkedProfile | null): void {
+  memoryProfileCache = { userId, profile, profileId: profile?.id || userId, timestamp: Date.now() };
+}
 
 export function clearMemoryProfileCache(): void {
+  profileCacheGeneration += 1;
+  pendingProfiles.clear();
   memoryProfileCache = null;
 }
 
@@ -161,7 +185,7 @@ export async function getLinkedProfileForCurrentUser() {
     return { user: null, profile: null, profileId: null };
   }
 
-  if (memoryProfileCache && memoryProfileCache.userId === user.id) {
+  if (memoryProfileCache && memoryProfileCache.userId === user.id && Date.now() - memoryProfileCache.timestamp < 5 * 60_000) {
     return {
       user,
       profile: memoryProfileCache.profile,
@@ -169,18 +193,16 @@ export async function getLinkedProfileForCurrentUser() {
     };
   }
 
+  const generation = profileCacheGeneration;
   const profile = await getLinkedProfileForUser(user);
   const profileId = profile?.id || user.id;
 
-  memoryProfileCache = {
-    userId: user.id,
-    profile,
-    profileId,
-    timestamp: Date.now(),
-  };
+  if (generation !== profileCacheGeneration) return { user: null, profile: null, profileId: null };
+  primeCurrentUserProfile(user.id, profile);
 
   if (profile) {
     setCachedUserProfile({
+      authUserId: user.id,
       role: profile.role || 'CLIENT',
       linkedProfileId: profileId,
     });

@@ -65,9 +65,10 @@ import {
   markWhatsNewSeenAsync,
 } from '../../services/changelogService';
 import { ReleaseChangelog } from '../../types/changelog';
-import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
+import { useClientDashboardQuery } from '../../hooks/useClientQueries';
 import { useDynamicIsland } from '../../context/DynamicIslandContext';
 import { fetchFreshWeather } from '../../services/weatherService';
+import { getSharedCreditLimits } from '../../services/sharedCreditService';
 
 
 // Interfaces
@@ -580,8 +581,11 @@ export default function DashboardScreen() {
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
 
   // TRPC Client Queries
-  const { data: queryPayments, isLoading: queryPaymentsLoading, refetch: refetchPayments } = useClientPaymentsQuery();
-  const { data: queryOrdersData, isLoading: queryOrdersLoading, refetch: refetchOrders } = useClientOrdersQuery();
+  const { data: dashboardData, isLoading: queryOrdersLoading, error: ordersError, refetch: refetchDashboard } = useClientDashboardQuery();
+  const queryOrdersData = dashboardData?.orders;
+  const queryPayments = dashboardData?.payments;
+  const queryPaymentsLoading = queryOrdersLoading;
+  const paymentsError = ordersError;
 
   // Financial Limits States
   const [globalCreditLimit, setGlobalCreditLimit] = useState(0);
@@ -759,6 +763,16 @@ export default function DashboardScreen() {
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    const queryError = ordersError || paymentsError;
+    if (queryError && (!queryOrdersData || !queryPayments)) {
+      setError(queryError.message || 'Unable to load your account. Check your connection and try again.');
+      setLoading(false);
+    } else {
+      setError(null);
+    }
+  }, [ordersError, paymentsError, queryOrdersData, queryPayments]);
+
+  useEffect(() => {
     if (showOverlay) {
       hideTabBar();
     } else {
@@ -914,33 +928,16 @@ export default function DashboardScreen() {
   };
 
   // Global credit limit fetcher
-  const fetchGlobalLimits = useCallback(async () => {
+  const fetchGlobalLimits = useCallback(async (force = false) => {
     try {
-      const { data: globalStats, error: rpcError } = await supabase.rpc('get_global_shared_limits');
-      if (!rpcError && globalStats && globalStats[0]) {
-        const dynamicLimit = parseFloat(globalStats[0].credit_limit_total) || 0;
-        const dynamicUnpaid = parseFloat(globalStats[0].unpaid_amount_total) || 0;
-        setGlobalCreditLimit(dynamicLimit);
-        setGlobalAvailableCredit(Math.max(0, dynamicLimit - dynamicUnpaid));
-        return { limit: dynamicLimit, unpaid: dynamicUnpaid };
-      }
-      const [limitsRes, unpaidRes] = await Promise.all([
-        supabase.from('account_limits').select('credit_limit'),
-        supabase.from('payments').select('amount_due').eq('is_paid', false),
-      ]);
-      const limitsData = limitsRes.data;
-      const unpaidData = unpaidRes.data;
-      if (limitsData && limitsData.length > 0) {
-        const sumLimit = limitsData.reduce((acc: number, curr: any) => acc + (parseFloat(curr.credit_limit) || 0), 0);
-        const sumUnpaid = (unpaidData || []).reduce((acc: number, curr: any) => acc + (parseFloat(curr.amount_due) || 0), 0);
-        setGlobalCreditLimit(sumLimit);
-        setGlobalAvailableCredit(Math.max(0, sumLimit - sumUnpaid));
-        return { limit: sumLimit, unpaid: sumUnpaid };
-      }
+      const limits = await getSharedCreditLimits(force);
+      setGlobalCreditLimit(limits.limit);
+      setGlobalAvailableCredit(Math.max(0, limits.limit - limits.unpaid));
+      return limits;
     } catch (err) {
       console.warn('Failed to fetch global credit limits:', err);
+      return null;
     }
-    return null;
   }, []);
 
   // User Profile effect
@@ -955,7 +952,6 @@ export default function DashboardScreen() {
         setUserPhoto(photoUrl);
       }
     });
-    fetchGlobalLimits();
   }, [fetchGlobalLimits]);
 
   // Derive financial metrics, recent orders, payment countdowns, categories, and trends synchronously from query cache (0ms MMKV)
@@ -980,7 +976,6 @@ export default function DashboardScreen() {
           });
           setSpendingCategories([]);
           setMonthlyTrends([]);
-          fetchGlobalLimits();
           setLoading(false);
           return;
         }
@@ -1024,7 +1019,6 @@ export default function DashboardScreen() {
     );
 
     // Global credit limit calculations
-    fetchGlobalLimits();
     const personalUnpaidTotal = paymentsList.reduce((sum: number, p: any) => (p.isPaid ? sum : sum + p.amountDue), 0);
 
     // 2. Orders & Recent Orders
@@ -1165,32 +1159,36 @@ export default function DashboardScreen() {
     setLoading(false);
   }, [queryPayments, queryOrdersData, queryPaymentsLoading, queryOrdersLoading]);
 
-  // Instantly refetch live data whenever screen becomes focused
+  const hasFocusedDashboard = useRef(false);
+
+  // The query hooks already fetch on first mount. Refresh only on later visits.
   useFocusEffect(
     useCallback(() => {
-      refetchPayments();
-      refetchOrders();
-      fetchGlobalLimits();
-    }, [refetchPayments, refetchOrders, fetchGlobalLimits])
+      if (!hasFocusedDashboard.current) {
+        hasFocusedDashboard.current = true;
+        void fetchGlobalLimits();
+        return;
+      }
+      refetchDashboard({ cancelRefetch: false });
+      fetchGlobalLimits(true);
+    }, [refetchDashboard, fetchGlobalLimits])
   );
 
   // Instantly refetch live data whenever app returns from background
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        refetchPayments();
-        refetchOrders();
-        fetchGlobalLimits();
+        refetchDashboard({ cancelRefetch: false });
+        fetchGlobalLimits(true);
         void syncWidgetData();
       }
     });
     return () => subscription.remove();
-  }, [refetchPayments, refetchOrders, fetchGlobalLimits]);
+  }, [refetchDashboard, fetchGlobalLimits]);
 
   useRealtimeSync(['orders', 'payments', 'order_participants', 'order_participant_payments', 'account_limits'], () => {
-    refetchPayments();
-    refetchOrders();
-    fetchGlobalLimits();
+    refetchDashboard({ cancelRefetch: false });
+    fetchGlobalLimits(true);
     void syncWidgetData();
   });
 
@@ -1207,9 +1205,8 @@ export default function DashboardScreen() {
     });
     try {
       await Promise.allSettled([
-        refetchPayments(),
-        refetchOrders(),
-        fetchGlobalLimits(),
+        refetchDashboard({ cancelRefetch: false }),
+        fetchGlobalLimits(true),
         fetchFreshWeather(true),
       ]);
       void syncWidgetData();
@@ -1218,7 +1215,7 @@ export default function DashboardScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refetchPayments, refetchOrders, fetchGlobalLimits, triggerIsland]);
+  }, [refetchDashboard, fetchGlobalLimits, triggerIsland]);
 
 
 
@@ -1848,8 +1845,9 @@ export default function DashboardScreen() {
             subtitle="Loading your account..."
             error={error}
             onRetry={() => {
-              refetchPayments();
-              refetchOrders();
+              setError(null);
+              setLoading(true);
+              refetchDashboard({ cancelRefetch: false });
             }}
           />
         </Animated.View>

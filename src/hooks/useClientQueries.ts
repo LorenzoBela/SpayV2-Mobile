@@ -1,4 +1,6 @@
 import { trpc } from '../utils/trpc';
+import { useQuery } from '@tanstack/react-query';
+import { fetchClientDashboard } from '../services/dashboardService';
 
 // --- ORDERS HOOK INTERFACES ---
 export interface OrderPaymentItem {
@@ -97,48 +99,62 @@ export interface ClientPaymentItem {
 }
 
 export function useClientOrdersQuery() {
-  return trpc.orders.list.useQuery();
+  return trpc.orders.list.useQuery(undefined, { refetchOnMount: true });
 }
 
 export function useClientPaymentsQuery() {
   return trpc.payments.listClient.useQuery(undefined, {
-    select: (data: any): ClientPaymentItem[] => {
-      return (data?.payments || []).map((p: any) => ({
-        id: p.id,
-        orderId: p.orderId,
-        itemName: p.itemName,
-        installmentMonths: p.installmentMonths,
-        monthNumber: p.monthNumber,
-        amountDue: p.amountDue,
-        dueDate: new Date(p.dueDate).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          timeZone: 'Asia/Manila',
-        }),
-        rawDueDate: p.dueDate,
-        isPaid: p.isPaid,
-        paymentDate: p.paymentDate,
-        proofOfPayment: p.proofOfPayment || null,
-        status: p.status,
-        rescheduleHistory: (p.rescheduleHistory || []).map((r: any) => ({
-          id: r.id,
-          old_due_date: r.oldDueDate,
-          new_due_date: r.newDueDate,
-          reason: r.reason,
-          admin_approved: r.adminApproved,
-          created_at: r.createdAt,
-        })),
-        isShared: p.isShared,
-        splitConfig: p.splitConfig,
-        orderTotal: p.orderTotal,
-        splitPercentageLabel: p.splitPercentageLabel,
-        splitMode: p.splitMode,
-        sharingProgress: p.sharingProgress,
-      }));
-    },
+    refetchOnMount: true,
+    select: mapClientPayments,
   });
 }
+
+export function useClientDashboardQuery() {
+  return useQuery({
+    queryKey: [['dashboard', 'summary'], { type: 'query' }],
+    queryFn: fetchClientDashboard,
+    staleTime: 30_000,
+    refetchOnMount: true,
+    select: (data: any) => ({ orders: data.orders, payments: mapClientPayments(data.payments) }),
+  });
+}
+
+export function mapClientPayments(data: any): ClientPaymentItem[] {
+  return (data?.payments || []).map((p: any) => ({
+    id: p.id,
+    orderId: p.orderId,
+    itemName: p.itemName,
+    installmentMonths: p.installmentMonths,
+    monthNumber: p.monthNumber,
+    amountDue: p.amountDue,
+    dueDate: new Date(p.dueDate).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }),
+    rawDueDate: p.dueDate,
+    isPaid: p.isPaid,
+    paymentDate: p.paymentDate,
+    proofOfPayment: p.proofOfPayment || null,
+    status: p.status,
+    rescheduleHistory: (p.rescheduleHistory || []).map((r: any) => ({
+      id: r.id,
+      old_due_date: r.oldDueDate,
+      new_due_date: r.newDueDate,
+      reason: r.reason,
+      admin_approved: r.adminApproved,
+      created_at: r.createdAt,
+    })),
+    isShared: p.isShared,
+    splitConfig: p.splitConfig,
+    orderTotal: p.orderTotal,
+    splitPercentageLabel: p.splitPercentageLabel,
+    splitMode: p.splitMode,
+    sharingProgress: p.sharingProgress,
+  }));
+}
+
 
 /**
  * Optimistic Payment Reschedule Mutation Hook (0ms UI feedback)

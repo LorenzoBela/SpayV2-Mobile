@@ -1,6 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockMMKVStorage: Record<string, string> = {};
+const remote = vi.hoisted(() => ({ read: vi.fn(), write: vi.fn() }));
+
+vi.mock('../utils/supabase', () => ({
+  supabase: { from: () => {
+    const query: any = {
+      select: () => query,
+      eq: () => query,
+      maybeSingle: remote.read,
+      upsert: remote.write,
+    };
+    return query;
+  } },
+}));
 
 vi.mock('react-native-mmkv', () => ({
   createMMKV: vi.fn(() => ({
@@ -33,11 +46,42 @@ vi.mock('expo-secure-store', () => ({
   deleteItemAsync: vi.fn().mockResolvedValue(null),
 }));
 
-import { resolveIsDark, getPersistedTheme, savePersistedTheme, THEME_STORAGE_KEY } from '../utils/themeStorage';
+import { resolveIsDark, getPersistedTheme, savePersistedTheme, syncStartupTheme, THEME_STORAGE_KEY } from '../utils/themeStorage';
 
 describe('themeStorage module', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    remote.read.mockResolvedValue({ data: { setting_value: 'dark' }, error: null });
+    remote.write.mockResolvedValue({ error: null });
     Object.keys(mockMMKVStorage).forEach((k) => delete mockMMKVStorage[k]);
+  });
+
+  describe('startup theme synchronization', () => {
+    it('preserves System selected while an older remote preference is loading', async () => {
+      let finish!: (response: any) => void;
+      remote.read.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+      let version = 0;
+      const capturedVersion = version;
+      const pending = syncStartupTheme('owner', () => version === capturedVersion);
+      version += 1;
+      savePersistedTheme('auto', 'owner');
+      remote.write.mockClear();
+      finish({ data: { setting_value: 'dark' }, error: null });
+      expect(await pending).toBeNull();
+      expect(getPersistedTheme()).toBe('auto');
+      expect(remote.write).not.toHaveBeenCalled();
+    });
+
+    it('ignores a response after its account is no longer active', async () => {
+      expect(await syncStartupTheme('old-owner', () => false)).toBeNull();
+      expect(remote.write).not.toHaveBeenCalled();
+    });
+
+    it('loads the remote preference when no user change has superseded it', async () => {
+      expect(await syncStartupTheme('owner', () => true)).toBe('dark');
+      expect(getPersistedTheme()).toBe('dark');
+      expect(remote.write).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('resolveIsDark', () => {

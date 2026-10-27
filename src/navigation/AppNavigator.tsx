@@ -29,11 +29,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
 import { trpc } from '../utils/trpc';
 import { runIdlePrefetch } from '../utils/idlePrefetch';
-import { getPersistedTheme, savePersistedTheme, resolveIsDark, type ThemePreference } from '../utils/themeStorage';
+import { getPersistedTheme, savePersistedTheme, syncStartupTheme, resolveIsDark, type ThemePreference } from '../utils/themeStorage';
 
 import { supabase } from '../utils/supabase';
 import { posthog } from '../utils/posthog';
-import { getLinkedProfileForUser } from '../utils/authProfile';
+import { getLinkedProfileForUser, getCachedUserProfile, clearMemoryProfileCache, primeCurrentUserProfile } from '../utils/authProfile';
 import { syncWidgetData } from '../utils/widgetSync';
 import { useImpersonation } from '../context/ImpersonationContext';
 import { DynamicIslandProvider } from '../context/DynamicIslandContext';
@@ -413,14 +413,6 @@ const MainNavigator = () => {
     }, delayMs);
   }, []);
 
-  useEffect(() => {
-    // Warm client orders and payments in the background ONCE after initial animations complete
-    runIdlePrefetch('client_core_data', () => {
-      trpcUtils.orders.list.prefetch();
-      trpcUtils.payments.listClient.prefetch();
-    });
-  }, []);
-
   return (
     <Tab.Navigator
       detachInactiveScreens={true}
@@ -430,14 +422,6 @@ const MainNavigator = () => {
       <Tab.Screen
         name="Dashboard"
         component={DashboardGestureScreen}
-        listeners={{
-          tabPress: () => {
-            debouncedTabPrefetch('tab_dashboard', () => {
-              trpcUtils.orders.list.prefetch();
-              trpcUtils.payments.listClient.prefetch();
-            });
-          },
-        }}
       />
       <Tab.Screen
         name="Orders"
@@ -691,19 +675,6 @@ export default function AppNavigator() {
   const queryClient = useQueryClient();
   const { impersonatedUser, isImpersonating } = useImpersonation();
 
-  // Instant 0ms cached profile read from MMKV
-  const cachedProfile = React.useMemo(() => {
-    try {
-      const raw = storage.getString('cached_user_profile');
-      if (raw) {
-        return JSON.parse(raw) as { role?: string; linkedProfileId?: string; theme?: string };
-      }
-    } catch (e) {
-      console.warn('[AppNavigator] Failed to parse cached_user_profile:', e);
-    }
-    return null;
-  }, []);
-
   const [session, setSession] = useState<Session | null>(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null);
 
@@ -721,14 +692,11 @@ export default function AppNavigator() {
   useMobileInactivity(Boolean(session));
 
   const [loading, setLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(!cachedProfile);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(cachedProfile?.role || null);
-  const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(() => {
-    if (cachedProfile?.role === 'CLIENT') return 'client';
-    return null;
-  });
-  const [linkedProfileId, setLinkedProfileId] = useState<string | null>(cachedProfile?.linkedProfileId || null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
+  const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
   const navigationRef = React.useRef<any>(null);
 
   const effectiveUserId = isImpersonating && impersonatedUser?.id ? impersonatedUser.id : linkedProfileId;
@@ -791,13 +759,17 @@ export default function AppNavigator() {
     }
   }, [isDarkMode]);
 
+  const themeChangeVersion = useRef(0);
+
   const setTheme = useCallback((nextTheme: ThemePreference) => {
+    themeChangeVersion.current += 1;
     setThemePreference(nextTheme);
     const targetUserId = linkedProfileId || session?.user?.id;
     savePersistedTheme(nextTheme, targetUserId);
   }, [linkedProfileId, session?.user?.id]);
 
   const toggleTheme = useCallback(() => {
+    themeChangeVersion.current += 1;
     const nextPref: ThemePreference = isDarkMode ? 'light' : 'dark';
     setThemePreference(nextPref);
     const targetUserId = linkedProfileId || session?.user?.id;
@@ -821,17 +793,6 @@ export default function AppNavigator() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
-      if (session?.user?.id) {
-        pushRegistrationGate.resume();
-        void registerForFcmNotifications(session.user.id);
-        posthog.identify(session.user.id, {
-          email: session.user.email ?? '',
-          platform: 'mobile',
-        });
-        void syncWidgetData(true);
-      } else {
-        void syncWidgetData(true);
-      }
     });
 
     // Listen for auth changes
@@ -840,14 +801,14 @@ export default function AppNavigator() {
       setLoading(false);
       if (session?.user?.id) {
         if (event === 'SIGNED_IN') pushRegistrationGate.resume();
-        void registerForFcmNotifications(session.user.id);
         posthog.identify(session.user.id, {
           email: session.user.email ?? '',
           platform: 'mobile',
         });
-        void syncWidgetData(true);
       }
       if (event === 'SIGNED_OUT') {
+        profileRequestVersion.current += 1;
+        clearMemoryProfileCache();
         posthog.reset();
         try {
           queryClient.clear();
@@ -868,78 +829,72 @@ export default function AppNavigator() {
     };
   }, []);
 
-  const fetchProfileRole = async (user: Session['user'], active: boolean) => {
-    // Only set profileLoading to true if no cached profile exists
-    if (!storage.getString('cached_user_profile')) {
+  const profileRequestVersion = useRef(0);
+
+  const fetchProfileRole = async (user: Session['user']) => {
+    const initialThemeVersion = themeChangeVersion.current;
+    const requestVersion = ++profileRequestVersion.current;
+    const isActive = () => requestVersion === profileRequestVersion.current;
+    const hasCachedProfile = Boolean(getCachedUserProfile(user.id));
+    let accountReady = hasCachedProfile;
+    if (!hasCachedProfile) {
       setProfileLoading(true);
     }
     setProfileError(null);
     try {
       const data = await getLinkedProfileForUser(user);
 
-      if (!active) return;
+      if (!isActive()) return;
+      primeCurrentUserProfile(user.id, data);
       const targetId = data?.id || user.id;
       setLinkedProfileId(targetId);
 
-      // Fetch theme preference to sync on startup
-      const { data: themeSetting } = await supabase
-        .from('user_settings')
-        .select('setting_value')
-        .eq('user_id', targetId)
-        .eq('setting_name', 'theme')
-        .maybeSingle();
-
-      const currentLocalTheme = getPersistedTheme();
-      const remoteTheme = themeSetting?.setting_value as ThemePreference | undefined;
-
-      let effectiveTheme: ThemePreference = 'auto';
-      if (currentLocalTheme === 'dark' || currentLocalTheme === 'light') {
-        effectiveTheme = currentLocalTheme;
-      } else if (remoteTheme === 'dark' || remoteTheme === 'light' || remoteTheme === 'auto') {
-        effectiveTheme = remoteTheme;
-      }
-
-      setThemePreference(effectiveTheme);
-      savePersistedTheme(effectiveTheme, targetId);
-
+      // Account access is ready. Theme synchronization must not gate navigation.
       const role = data?.role === 'ADMIN' ? 'ADMIN' : 'CLIENT';
       setUserRole(role);
-      if (role === 'CLIENT') {
-        setActiveRole('client');
-      } else {
-        setActiveRole(null);
-      }
-
-      // Update MMKV cache on change (stale-while-revalidate)
+      setActiveRole(current => role === 'CLIENT' ? 'client' : current);
+      setProfileLoading(false);
+      accountReady = true;
       try {
         storage.set('cached_user_profile', JSON.stringify({
-          role,
-          linkedProfileId: targetId,
-          theme: effectiveTheme,
+          authUserId: user.id, role, linkedProfileId: targetId, theme: getPersistedTheme(),
         }));
-      } catch (e) {
-        console.warn('Failed to save cached_user_profile to MMKV:', e);
+      } catch (error) {
+        console.warn('[AppNavigator] Failed to cache account profile:', error);
       }
+
+      const effectiveTheme = await syncStartupTheme(targetId, () =>
+        isActive() && themeChangeVersion.current === initialThemeVersion);
+      if (effectiveTheme !== null) setThemePreference(effectiveTheme);
     } catch (error: any) {
       console.warn('[AppNavigator] Failed to fetch profile role:', error);
-      if (!active) return;
-      if (!storage.getString('cached_user_profile')) {
+      if (!isActive()) return;
+      if (!accountReady) {
         setProfileError(error?.message || 'Failed to sync account role settings.');
       }
     } finally {
-      if (active) {
+      if (isActive()) {
         setProfileLoading(false);
       }
     }
   };
   // Fetch profile to check role
   useEffect(() => {
-    let active = true;
+    if (loading) return;
     if (session?.user) {
-      if (!storage.getString('cached_user_profile')) {
+      const cached = getCachedUserProfile(session.user.id);
+      if (cached) {
+        setUserRole(cached.role);
+        setLinkedProfileId(cached.linkedProfileId);
+        setActiveRole(cached.role === 'CLIENT' ? 'client' : null);
+        setProfileLoading(false);
+      } else {
+        setUserRole(null);
+        setLinkedProfileId(null);
+        setActiveRole(null);
         setProfileLoading(true);
       }
-      fetchProfileRole(session.user, active);
+      void fetchProfileRole(session.user);
     } else {
       setUserRole(null);
       setActiveRole(null);
@@ -948,9 +903,9 @@ export default function AppNavigator() {
       setProfileError(null);
     }
     return () => {
-      active = false;
+      profileRequestVersion.current += 1;
     };
-  }, [session?.user?.id]);
+  }, [loading, session?.user?.id]);
 
   useEffect(() => {
     void setupAndroidNotificationChannels();
@@ -958,8 +913,16 @@ export default function AppNavigator() {
 
   const nativeFcmRegisteredRef = useRef(false);
 
+  // Refresh widgets once per account after role resolution, not on token refreshes.
   useEffect(() => {
-    if (!effectiveUserId) return;
+    if (!session?.user?.id || !effectiveUserId || profileLoading) return;
+    const timer = setTimeout(() => { void syncWidgetData(); }, 1500);
+    return () => clearTimeout(timer);
+  }, [session?.user?.id, effectiveUserId, profileLoading]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !effectiveUserId) return;
+    pushRegistrationGate.resume();
 
     let isMounted = true;
     let unsubscribeFcmTokenRefresh: (() => void) | undefined;
@@ -1099,7 +1062,7 @@ export default function AppNavigator() {
       appStateSubscription.remove();
       linkingSubscription.remove();
     };
-  }, [effectiveUserId]);
+  }, [effectiveUserId, session?.user?.id]);
 
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
@@ -1125,7 +1088,7 @@ export default function AppNavigator() {
 
   const handleRetry = () => {
     if (session?.user) {
-      fetchProfileRole(session.user, true);
+      void fetchProfileRole(session.user);
     }
   };
 

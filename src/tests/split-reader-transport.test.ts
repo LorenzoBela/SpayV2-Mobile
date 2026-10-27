@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   getSession: vi.fn(),
   storageGet: vi.fn(),
   dispatch: vi.fn(),
+  queryDispatch: vi.fn(),
   exportReport: vi.fn(),
   rpc: vi.fn(),
   from: vi.fn(),
@@ -15,7 +16,11 @@ const state = vi.hoisted(() => ({
 vi.mock('@supabase/supabase-js', () => ({
   createClient: (_url: string, _key: string, options: unknown) => {
     state.clientOptions = options;
-    return { auth: { getSession: state.getSession }, rpc: state.rpc, from: state.from };
+    return { auth: { getSession: state.getSession }, rpc: (...args: any[]) => {
+      const result = state.rpc(...args);
+      result.abortSignal = () => result;
+      return result;
+    }, from: state.from };
   },
 }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: state.storageGet }));
@@ -23,7 +28,7 @@ vi.mock('@trpc/react-query', () => ({ createTRPCReact: () => ({}) }));
 vi.mock('@trpc/client', () => ({
   httpBatchLink: (options: unknown) => options,
   createTRPCClient: () => ({ admin: {
-    dispatch: { query: state.dispatch, mutate: state.dispatch },
+    dispatch: { query: state.queryDispatch, mutate: state.dispatch },
     exportReport: { query: state.exportReport },
   } }),
 }));
@@ -32,9 +37,9 @@ vi.mock('../services/notificationService', () => ({
   markAllNotificationsRead: vi.fn(), clearNotification: vi.fn(),
 }));
 vi.mock('../utils/queryPersister', () => ({ storage: { getString: () => null, set: vi.fn() } }));
-vi.mock('../utils/queryClient', () => ({ queryClient: { getQueryCache: () => ({ getAll: () => [] }) } }));
+vi.mock('../utils/queryClient', () => ({ queryClient: { fetchQuery: (options: any) => options.queryFn(), getQueryCache: () => ({ getAll: () => [] }) } }));
 vi.mock('../utils/authProfile', () => ({
-  getLinkedProfileForCurrentUser: async () => ({ profileId: 'client-1', profile: { name: 'Client', role: 'client' } }),
+  getLinkedProfileForCurrentUser: async () => ({ user: { id: 'client-1' }, profileId: 'client-1', profile: { name: 'Client', role: 'client' } }),
 }));
 vi.mock('react-native', () => ({
   Platform: { OS: 'android' },
@@ -63,7 +68,7 @@ describe('split reader transport integration', () => {
     state.from.mockImplementation(() => {
       const response = { data: [], error: null };
       const query: any = { then: (resolve: any) => Promise.resolve(response).then(resolve) };
-      for (const method of ['select', 'eq', 'in', 'order', 'limit']) query[method] = () => query;
+      for (const method of ['select', 'eq', 'in', 'order', 'limit', 'abortSignal']) query[method] = () => query;
       return query;
     });
   });
@@ -72,6 +77,14 @@ describe('split reader transport integration', () => {
     expect(state.clientOptions.global.headers['x-spay-split-reader']).toBe('1');
     expect(state.clientOptions.auth.persistSession).toBe(true);
     expect(state.clientOptions.auth.storage).toBeDefined();
+  });
+
+  it('sends admin reads through the mutation procedure without a failed GET or REST retry', async () => {
+    state.dispatch.mockResolvedValueOnce({ success: true });
+    expect(await callAdminApi('fetch-admin-dashboard')).toEqual({ success: true });
+    expect(state.dispatch).toHaveBeenCalledWith({ action: 'fetch-admin-dashboard' });
+    expect(state.queryDispatch).not.toHaveBeenCalled();
+    expect(state.fetch).not.toHaveBeenCalled();
   });
 
   it('preserves authenticated and impersonation headers alongside compatibility', async () => {

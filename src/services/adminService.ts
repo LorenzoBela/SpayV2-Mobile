@@ -23,19 +23,11 @@ export const ADMIN_QUERY_OPTIONS = {
 export const callAdminApi = async (action: string, bodyData: any = {}) => {
   DeviceEventEmitter.emit('progress-start', action);
   try {
-    const isQueryAction = action.startsWith('fetch-') || action.startsWith('get-');
-    let result: any;
-    if (isQueryAction && (trpcVanillaClient.admin as any).dispatch?.query) {
-      result = await (trpcVanillaClient.admin as any).dispatch.query({
-        action,
-        ...bodyData,
-      });
-    } else {
-      result = await (trpcVanillaClient.admin as any).dispatch.mutate({
-        action,
-        ...bodyData,
-      });
-    }
+    // dispatch is a mutation on the server, including its read-only actions.
+    const result = await (trpcVanillaClient.admin as any).dispatch.mutate({
+      action,
+      ...bodyData,
+    });
     return result;
   } catch (trpcError) {
     console.warn(`[adminService] tRPC failed for action ${action}, falling back to REST:`, trpcError);
