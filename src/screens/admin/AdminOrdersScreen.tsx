@@ -1,3 +1,4 @@
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSplitValidity } from '../../hooks/useSplitValidity';
 import SplitBreakdown from '../../components/SplitBreakdown';
 import InstallmentShares from '../../components/InstallmentShares';
@@ -220,6 +221,9 @@ const OrderListItem = React.memo(function OrderListItem({
 });
 
 export default function AdminOrdersScreen() {
+  const route = useRoute<any>();
+  const notificationNavigation = useNavigation<any>();
+  const [notificationPaymentId, setNotificationPaymentId] = useState<string | null>(null);
   const { isDarkMode } = useContext(ThemeContext);
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
@@ -443,6 +447,32 @@ export default function AdminOrdersScreen() {
   useEffect(() => {
     setSelectedOrder((current: any) => current ? orders.find((order: any) => order.id === current.id) ?? current : current);
   }, [orders]);
+
+  useEffect(() => {
+    const targetId = route.params?.notificationOrderId;
+    if (typeof targetId !== 'string') return;
+    let active = true;
+    void callAdminApi('get-order-details', { id: targetId }).then(response => {
+      if (!active) return;
+      if (!response?.success || !response.order) {
+        setSelectedOrder(null);
+        setIsDetailsOpen(false);
+        PremiumAlert.alert('Order unavailable', 'This order is no longer available. Refresh your inbox for the latest status.');
+        return;
+      }
+      const o = response.order;
+      setSelectedOrder({ ...o, id: o.order_id, user_id: o.client_id, clientName: o.client_name, clientEmail: o.client_email,
+        paidCount: o.paid_installments, progressPercent: o.progress_percent,
+        payments: (o.payments || []).map((p: any) => ({ ...p, month_number: p.monthNumber, due_date: p.dueDate, amount_due: p.amountDue, is_paid: p.isPaid, payment_date: p.paymentDate, proof_of_payment: p.proofOfPayment })) });
+      setNotificationPaymentId(typeof route.params?.notificationPaymentId === 'string' ? route.params.notificationPaymentId : null);
+      setIsDetailsOpen(true);
+    }).catch(() => {
+      if (active) PremiumAlert.alert('Unable to open order', 'Reconnect and try the notification again.');
+    }).finally(() => {
+      if (active) notificationNavigation.setParams({ notificationOrderId: undefined, notificationPaymentId: undefined, notificationId: undefined });
+    });
+    return () => { active = false; };
+  }, [route.params?.notificationOrderId, route.params?.notificationPaymentId, notificationNavigation]);
 
   const profiles = useMemo(() => ordersData?.profiles || [], [ordersData]);
   const monthlyOrdersBreakdown = useMemo(() => ordersData?.monthlyOrdersBreakdown || [], [ordersData]);
@@ -1159,7 +1189,7 @@ export default function AdminOrdersScreen() {
                 {selectedOrder.payments.map((payment: any) => {
                   const isOverdue = !payment.is_paid && parseUtcDate(payment.due_date) < new Date();
                   return (
-                    <View key={payment.id}>
+                    <View key={payment.id} accessibilityLabel={notificationPaymentId === payment.id ? 'Installment from notification' : undefined} style={notificationPaymentId === payment.id ? { borderWidth: 1, borderColor: '#ee4d2d', borderRadius: 12, padding: 8 } : undefined}>
                     <View style={[styles.paymentRowItem, { borderBottomColor: t.border }]}>
                       <View style={styles.paymentRowItemLeft}>
                         <View style={[styles.numDot, payment.is_paid ? { backgroundColor: '#10b981' } : (isOverdue ? { backgroundColor: '#ef4444' } : { backgroundColor: t.border })]}>

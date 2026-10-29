@@ -24,6 +24,7 @@ import {
 import type { LucideIcon } from 'lucide-react-native';
 import { Session } from '@supabase/supabase-js';
 import * as Notifications from 'expo-notifications';
+import notifee, { EventType } from '@notifee/react-native';
 import * as SystemUI from 'expo-system-ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
@@ -78,10 +79,15 @@ import AdminSystemHealthScreen from '../screens/admin/AdminSystemHealthScreen';
 import AdminRequestsScreen from '../screens/admin/AdminRequestsScreen';
 import {
   mirrorToLocalTray,
+  flushNotificationReceipts,
+  markOwnedTrayNotificationRead,
+  readOwnedNotification,
   reportNotificationReceipt,
   setupAndroidNotificationChannels,
   subscribeToRealtimeNotifications,
 } from '../services/notificationService';
+import { notificationRuntime, queueNotificationAction, subscribeToPendingNotificationAction } from '../services/notificationRuntime';
+import { notificationDestination, validNotificationUuid } from '../services/notificationRuntimeState';
 import SamsungBatteryOptimizationModal from '../components/SamsungBatteryOptimizationModal';
 import {
   registerForFcmNotifications,
@@ -698,6 +704,8 @@ export default function AppNavigator() {
   const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
   const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
   const navigationRef = React.useRef<any>(null);
+  const [notificationActionVersion, setNotificationActionVersion] = useState(0);
+  const processingNotification = useRef(false);
 
   const effectiveUserId = isImpersonating && impersonatedUser?.id ? impersonatedUser.id : linkedProfileId;
 
@@ -913,6 +921,96 @@ export default function AppNavigator() {
 
   const nativeFcmRegisteredRef = useRef(false);
 
+  useEffect(() => {
+    if (loading) return;
+    const previous = notificationRuntime.owner();
+    if (!session) notificationRuntime.bind(null);
+    else if (linkedProfileId && !profileLoading && getCachedUserProfile(session.user.id)?.linkedProfileId === linkedProfileId) {
+      notificationRuntime.bind({ authUserId: session.user.id, profileId: linkedProfileId });
+    } else if (notificationRuntime.owner()?.authUserId !== session.user.id) {
+      notificationRuntime.bind(null);
+    }
+    const current = notificationRuntime.owner();
+    if (previous && (previous.authUserId !== current?.authUserId || previous.profileId !== current?.profileId)) {
+      // Delivered tray content belongs to the old account even after local cache removal.
+      void notifee.cancelAllNotifications().catch(() => undefined);
+      void Notifications.dismissAllNotificationsAsync().catch(() => undefined);
+      void notifee.setBadgeCount(0).catch(() => undefined);
+    }
+  }, [loading, session?.user?.id, linkedProfileId, profileLoading]);
+
+  // Capture taps even before authentication/profile/navigation are ready.
+  useEffect(() => {
+    const captureExpo = (response: Notifications.NotificationResponse | null) => {
+      if (!response || response.actionIdentifier === 'expo.modules.notifications.actions.DISMISS') return;
+      queueNotificationAction(response.notification.request.content.data || {}, response.actionIdentifier === 'mark_read' ? 'mark_read' : 'open');
+    };
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(captureExpo);
+    void Notifications.getLastNotificationResponseAsync().then(response => {
+      captureExpo(response);
+      if (response) void Notifications.clearLastNotificationResponseAsync();
+    }).catch(() => undefined);
+    const unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) return;
+      queueNotificationAction(detail.notification?.data || {}, detail.pressAction?.id === 'mark_read' ? 'mark_read' : 'open');
+    });
+    if (Platform.OS === 'android' && typeof notifee.getInitialNotification === 'function') {
+      void notifee.getInitialNotification().then(initial => {
+        if (initial) queueNotificationAction(initial.notification.data || {}, initial.pressAction?.id === 'mark_read' ? 'mark_read' : 'open');
+      }).catch(() => undefined);
+    }
+    const unsubscribePending = subscribeToPendingNotificationAction(() => setNotificationActionVersion(v => v + 1));
+    return () => { responseSubscription.remove(); unsubscribeNotifee(); unsubscribePending(); };
+  }, []);
+
+  useEffect(() => {
+    if (loading || profileLoading || !session || !linkedProfileId || !userRole || isImpersonating || processingNotification.current) return;
+    const pending = notificationRuntime.pending();
+    if (!pending) return;
+    const authUserId = session.user.id;
+    const adminAction = pending.data.screen?.startsWith('Admin') || pending.data.type === 'PURCHASE_REQUEST_SUBMITTED';
+    const role = userRole === 'ADMIN' ? (adminAction ? 'admin' : activeRole || 'admin') : 'client';
+    if (activeRole !== role) { setActiveRole(role); return; }
+    if (!navigationRef.current?.isReady()) return;
+    processingNotification.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const owned = await readOwnedNotification(pending.notificationId);
+        const owner = notificationRuntime.owner();
+        if (cancelled || owner?.authUserId !== authUserId || owner.profileId !== linkedProfileId) return;
+        const key = `${pending.notificationId}:${pending.action}`;
+        if (notificationRuntime.handled(key)) { notificationRuntime.clearPending(pending.notificationId, pending.action); return; }
+        if (pending.action === 'mark_read') {
+          if (!owned) { notificationRuntime.clearPending(pending.notificationId, pending.action); return; }
+          if (!(await markOwnedTrayNotificationRead(pending.notificationId, pending.notificationId))) return;
+        } else {
+          // The database-owned row is authoritative; remote route/IDs are never used without ownership.
+          const data = owned?.data && typeof owned.data === 'object' ? owned.data as Record<string, unknown> : {};
+          const trusted = owned ? { ...data, type: owned.type } : {};
+          const destination = notificationDestination(validNotificationUuid(data.orderId) ? { ...trusted, screen: 'Orders' } : trusted, role);
+          const params = {
+            notificationId: owned?.id,
+            notificationOrderId: validNotificationUuid(data.orderId) ? data.orderId : undefined,
+            notificationPaymentId: validNotificationUuid(data.paymentId) ? data.paymentId : undefined,
+          };
+          if (destination.screen) navigationRef.current?.navigate(destination.root, { screen: destination.screen, params });
+          else navigationRef.current?.navigate(destination.root, params);
+          if (owned) void reportNotificationReceipt(owned.id, 'opened');
+        }
+        notificationRuntime.recordHandled(key);
+        notificationRuntime.clearPending(pending.notificationId, pending.action);
+      } catch {
+        // Keep the bounded action for an authenticated foreground retry; no fake read success.
+        console.warn('[Notifications] Open/read action awaits a connection.');
+      } finally {
+        processingNotification.current = false;
+        if (cancelled) setNotificationActionVersion(v => v + 1);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loading, profileLoading, session?.user?.id, linkedProfileId, userRole, activeRole, isImpersonating, notificationActionVersion]);
+
   // Refresh widgets once per account after role resolution, not on token refreshes.
   useEffect(() => {
     if (!session?.user?.id || !effectiveUserId || profileLoading) return;
@@ -921,7 +1019,7 @@ export default function AppNavigator() {
   }, [session?.user?.id, effectiveUserId, profileLoading]);
 
   useEffect(() => {
-    if (!session?.user?.id || !effectiveUserId) return;
+    if (!session?.user?.id || !linkedProfileId || profileLoading || getCachedUserProfile(session.user.id)?.linkedProfileId !== linkedProfileId) return;
     pushRegistrationGate.resume();
 
     let isMounted = true;
@@ -930,11 +1028,11 @@ export default function AppNavigator() {
     // Startup auto-sync with automatic retry
     (async () => {
       try {
-        const fcmToken = await registerForFcmNotifications(effectiveUserId);
+        const fcmToken = await registerForFcmNotifications(linkedProfileId);
         if (!isMounted) return;
         nativeFcmRegisteredRef.current = Boolean(fcmToken);
         if (fcmToken) {
-          const unsub = subscribeToFcmTokenRefresh(effectiveUserId);
+          const unsub = subscribeToFcmTokenRefresh(linkedProfileId);
           if (!isMounted) {
             unsub();
           } else {
@@ -953,9 +1051,9 @@ export default function AppNavigator() {
         unsubscribeRealtime();
         unsubscribeRealtime = undefined;
       }
-      unsubscribeRealtime = subscribeToRealtimeNotifications(effectiveUserId, (notification) => {
+      unsubscribeRealtime = subscribeToRealtimeNotifications(linkedProfileId, (notification) => {
         if (nativeFcmRegisteredRef.current) return;
-        void mirrorToLocalTray(notification);
+        void mirrorToLocalTray(notification).catch(() => console.warn('[Notifications] Tray display unavailable.'));
       });
     };
 
@@ -964,11 +1062,13 @@ export default function AppNavigator() {
 
     // Auto-sync, 24h heartbeat, and WebSocket battery management on AppState changes
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && isMounted && effectiveUserId) {
+      if (nextAppState === 'active' && isMounted && linkedProfileId) {
         // Re-establish WebSocket when returning to foreground
         connectRealtime();
-        void ensureDeviceRegistration(effectiveUserId, 1);
-        void runFcmHeartbeatCheck(effectiveUserId);
+        setNotificationActionVersion(v => v + 1);
+        void flushNotificationReceipts();
+        void ensureDeviceRegistration(linkedProfileId, 1);
+        void runFcmHeartbeatCheck(linkedProfileId);
       } else if (nextAppState === 'background' || nextAppState === 'inactive') {
         // Gracefully disconnect WebSocket to conserve battery while minimized
         if (unsubscribeRealtime) {
@@ -984,38 +1084,6 @@ export default function AppNavigator() {
       const notificationId = event.request.content.data?.notificationId;
       if (typeof notificationId === 'string') {
         void reportNotificationReceipt(notificationId, 'received');
-      }
-    });
-
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      if (response.actionIdentifier === (Notifications as any).DISMISS_NOTIFICATION_ACTION_IDENTIFIER || response.actionIdentifier === 'expo.modules.notifications.actions.DISMISS') {
-        return;
-      }
-      const notificationId = response.notification.request.content.data?.notificationId;
-      if (typeof notificationId === 'string') {
-        void reportNotificationReceipt(notificationId, 'opened');
-      }
-      const data = response.notification.request.content.data || {};
-      const screen = data.screen;
-      const type = data.type;
-
-      if (screen === 'AdminRequests' || type === 'PURCHASE_REQUEST_SUBMITTED') {
-        navigationRef.current?.navigate('AdminRequests');
-      } else if (screen === 'RequestBuy' || screen === 'MyRequests' || type === 'PURCHASE_REQUEST_APPROVED') {
-        navigationRef.current?.navigate('Main', { screen: 'RequestBuy' });
-      } else if (screen === 'Budget') {
-        navigationRef.current?.navigate('Main', { screen: 'Budget' });
-      } else {
-        const target =
-          screen === 'Payments'
-            ? 'Payments'
-            : screen === 'Orders'
-              ? 'Orders'
-              : screen === 'Settings'
-                ? 'Settings'
-                : 'Notifications';
-
-        navigationRef.current?.navigate('Main', { screen: target });
       }
     });
 
@@ -1054,15 +1122,15 @@ export default function AppNavigator() {
 
     return () => {
       isMounted = false;
+      nativeFcmRegisteredRef.current = false;
       unsubscribeFcmTokenRefresh?.();
       unsubscribeForegroundFcm();
       unsubscribeRealtime?.();
       receivedSubscription.remove();
-      responseSubscription.remove();
       appStateSubscription.remove();
       linkingSubscription.remove();
     };
-  }, [effectiveUserId, session?.user?.id]);
+  }, [linkedProfileId, profileLoading, session?.user?.id]);
 
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
@@ -1123,7 +1191,7 @@ export default function AppNavigator() {
 
                 {!isActuallyLoading && (
                   <BiometricLockOverlay sessionExists={!!session}>
-                    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+                    <NavigationContainer ref={navigationRef} theme={navigationTheme} onReady={() => setNotificationActionVersion(v => v + 1)}>
                       <Stack.Navigator screenOptions={{ headerShown: false }}>
                         {session ? (
                           userRole === 'ADMIN' && activeRole === null ? (

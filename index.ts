@@ -4,7 +4,8 @@ import notifee, { EventType } from '@notifee/react-native';
 
 import App from './App';
 import { displayFcmRemoteMessage, setupNotifeeChannels } from './src/services/fcmNotificationService';
-import { setupAndroidNotificationChannels } from './src/services/notificationService';
+import { markOwnedTrayNotificationRead, setupAndroidNotificationChannels } from './src/services/notificationService';
+import { notificationRuntime, queueNotificationAction } from './src/services/notificationRuntime';
 
 void setupAndroidNotificationChannels();
 void setupNotifeeChannels();
@@ -17,13 +18,15 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 
     if (type === EventType.ACTION_PRESS && detail.pressAction?.id === 'mark_read') {
       try {
-        await notifee.decrementBadgeCount();
-        if (detail.notification?.id) {
-          await notifee.cancelNotification(detail.notification.id);
-        }
+        const data = detail.notification?.data || {};
+        const id = typeof data.notificationId === 'string' ? data.notificationId : '';
+        if (id && await markOwnedTrayNotificationRead(id, detail.notification?.id)) notificationRuntime.recordHandled(`${id}:mark_read`);
+        else queueNotificationAction(data, 'mark_read');
       } catch {
-        // Non-blocking
+        queueNotificationAction(detail.notification?.data || {}, 'mark_read');
       }
+    } else if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+      queueNotificationAction(detail.notification?.data || {}, 'open');
     }
   } catch (err) {
     console.warn('[Notifee] Background event handler handled error:', err);

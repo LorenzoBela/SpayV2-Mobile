@@ -12,7 +12,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
@@ -89,6 +89,7 @@ interface OrderItem {
 }
 
 export default function OrdersScreen() {
+  const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { isDarkMode, toggleTheme } = React.useContext(ThemeContext);
   const layout = useResponsiveLayout();
@@ -148,12 +149,37 @@ export default function OrdersScreen() {
   const [sharingFilter, setSharingFilter] = useState<'all' | 'mine' | 'shared'>('all');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [notificationPaymentId, setNotificationPaymentId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   
   // Modal States
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+
+  // Resolve a fresh authorized response for each tap; stale offline cache cannot prove membership.
+  useEffect(() => {
+    const targetId = route.params?.notificationOrderId;
+    if (typeof targetId !== 'string') return;
+    let active = true;
+    void refetch().then((result: { isError: boolean; data?: { orders: OrderItem[] } }) => {
+      if (!active) return;
+      const target = !result.isError ? result.data?.orders.find((order: OrderItem) => order.id === targetId) : undefined;
+      if (target && result.data) {
+        setOrders(result.data.orders);
+        setSearchTerm(target.id);
+        setStatusFilter('all'); setSharingFilter('all'); setCurrentPage(1);
+        setExpandedOrderId(target.id);
+        setNotificationPaymentId(target.payments.some((p: PaymentItem) => p.id === route.params?.notificationPaymentId) ? route.params.notificationPaymentId : null);
+      } else {
+        setNotificationPaymentId(null); setExpandedOrderId(null);
+        navigation.navigate('Notifications');
+      }
+    }).catch(() => { if (active) navigation.navigate('Notifications'); }).finally(() => {
+      if (active) navigation.setParams({ notificationOrderId: undefined, notificationPaymentId: undefined, notificationId: undefined });
+    });
+    return () => { active = false; };
+  }, [route.params?.notificationOrderId, route.params?.notificationPaymentId, navigation, refetch]);
 
   // Reset pagination page on filter/search change
   useEffect(() => {
@@ -616,7 +642,7 @@ export default function OrdersScreen() {
                               }
 
                               return (
-                                <View key={p.id}>
+                                <View key={p.id} style={notificationPaymentId === p.id ? { borderWidth: 1, borderColor: '#ee4d2d', borderRadius: 12, padding: 8 } : undefined}>
                                 <View style={[styles.scheduleRow, { borderColor: t.divider }]}>
                                   <View>
                                     <Text style={[styles.scheduleMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>
@@ -813,7 +839,7 @@ export default function OrdersScreen() {
                               }
 
                               return (
-                                <View key={p.id}>
+                                <View key={p.id} style={notificationPaymentId === p.id ? { borderWidth: 1, borderColor: '#ee4d2d', borderRadius: 12, padding: 8 } : undefined}>
                                 <View style={[styles.scheduleRow, { borderColor: t.divider }]}>
                                   <View>
                                     <Text style={[styles.scheduleMonth, { color: t.textPrimary }]}>Month {p.monthNumber}</Text>

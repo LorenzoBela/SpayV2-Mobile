@@ -8,7 +8,9 @@ import { supabase } from '../utils/supabase';
 import { storage } from '../utils/queryPersister';
 import { ANDROID_CHANNELS } from './notificationServiceConfig';
 import { buildDisplayNotificationInput } from './fcmNotificationServiceConfig';
-import { ensureTrayNotificationPermissions, setupAndroidNotificationChannels } from './notificationService';
+import { currentNotificationOwner, ensureTrayNotificationPermissions, flushNotificationReceipts, reportNotificationReceipt, setupAndroidNotificationChannels, syncNotificationBadge } from './notificationService';
+import { notificationRuntime, presentNotificationOnce } from './notificationRuntime';
+import { notificationPresentation } from './notificationRuntimeState';
 
 export async function setupNotifeeChannels() {
   if (Platform.OS !== 'android') return;
@@ -86,14 +88,14 @@ export function getNotificationAndroidOptions(category: string, type?: string) {
     groupId = 'spay_payments';
     actions = [
       {
-        title: '💳 View & Pay',
+        title: '💳 View payment',
         pressAction: {
           id: 'view_pay',
           launchActivity: 'default',
         },
       },
       {
-        title: '✓ Mark Read',
+        title: '✓ Mark as read',
         pressAction: {
           id: 'mark_read',
         },
@@ -104,7 +106,7 @@ export function getNotificationAndroidOptions(category: string, type?: string) {
     groupAlertBehavior = AndroidGroupAlertBehavior.SUMMARY;
     actions = [
       {
-        title: '📢 Open Update',
+        title: '📢 View update',
         pressAction: {
           id: 'view_ad',
           launchActivity: 'default',
@@ -149,15 +151,24 @@ export async function displayFcmRemoteMessage(remoteMessage: FirebaseMessagingTy
     // Data-only FCM: title/body are in remoteMessage.data, not remoteMessage.notification
     const input = buildDisplayNotificationInput(remoteMessage);
     if (!input) return;
+    const id = typeof input.data.notificationId === 'string' ? input.data.notificationId : remoteMessage.messageId;
+    if (!id) return;
+    const owner = await currentNotificationOwner();
+    const copy = notificationPresentation(input.data, owner, input.title, input.body);
+    if (!copy) return;
+    if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
 
     await setupNotifeeChannels();
+    const currentOwner = await currentNotificationOwner();
+    if (!owner || currentOwner?.authUserId !== owner.authUserId || currentOwner.profileId !== owner.profileId) return;
     const category = String(input.data?.category || 'SYSTEM');
     const type = String(input.data?.type || '');
     const androidOpts = getNotificationAndroidOptions(category, type);
 
-    await notifee.displayNotification({
-      title: input.title,
-      body: input.body,
+    const displayed = await presentNotificationOnce(id, () => notifee.displayNotification({
+      id,
+      title: copy.title,
+      body: copy.body,
       data: input.data as Record<string, string>,
       android: {
         channelId: input.channelId,
@@ -168,10 +179,11 @@ export async function displayFcmRemoteMessage(remoteMessage: FirebaseMessagingTy
         groupAlertBehavior: androidOpts.groupAlertBehavior,
         actions: androidOpts.actions,
       },
-    });
+    }).then(() => undefined));
 
-    if (category !== 'ADS') {
-      void incrementAppBadge();
+    if (displayed) {
+      void reportNotificationReceipt(typeof input.data.notificationId === 'string' ? input.data.notificationId : undefined, 'received');
+      void syncNotificationBadge();
     }
   } catch (err) {
     console.warn('[FCM] displayFcmRemoteMessage caught error:', err);
@@ -248,6 +260,14 @@ async function upsertFcmToken(userId: string, fcmToken: string, customDeviceId?:
           }),
         });
         if (!response.ok) console.warn('[FCM] Device registration rejected:', response.status);
+        else {
+          const result = await response.json();
+          const current = await supabase.auth.getSession();
+          if (!signal.aborted && registrationVersion === pushRegistrationGate.version && current.data.session?.user.id === sessionData.session?.user.id) {
+            notificationRuntime.rememberRegistration({ authUserId: sessionData.session!.user.id, profileId: userId }, result.registrationId);
+            void flushNotificationReceipts();
+          }
+        }
       } catch (err) {
         console.warn('[FCM] register-device fetch error:', err);
       }
@@ -338,31 +358,6 @@ export function subscribeToFcmTokenRefresh(userId: string) {
 
 export function subscribeToForegroundFcmMessages() {
   return messaging().onMessage(async (remoteMessage) => {
-    const input = buildDisplayNotificationInput(remoteMessage);
-    if (!input) return;
-
-    await setupNotifeeChannels();
-    const category = String(input.data?.category || 'SYSTEM');
-    const type = String(input.data?.type || '');
-    const androidOpts = getNotificationAndroidOptions(category, type);
-
-    await notifee.displayNotification({
-      title: input.title,
-      body: input.body,
-      data: input.data as Record<string, string>,
-      android: {
-        channelId: input.channelId,
-        importance: AndroidImportance.HIGH,
-        sound: 'default',
-        pressAction: { id: 'default' },
-        groupId: androidOpts.groupId,
-        groupAlertBehavior: androidOpts.groupAlertBehavior,
-        actions: androidOpts.actions,
-      },
-    });
-
-    if (category !== 'ADS') {
-      void incrementAppBadge();
-    }
+    await displayFcmRemoteMessage(remoteMessage);
   });
 }

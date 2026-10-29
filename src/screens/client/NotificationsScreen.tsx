@@ -1,4 +1,5 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import NotificationDeliveryPreferences from '../../components/NotificationDeliveryPreferences';
 import { formatAmount } from '../../utils/money';
 import { generatePaymentRef } from '../../utils/id';
 import {
@@ -10,6 +11,7 @@ import {
   View,
   StatusBar,
   Modal,
+  ScrollView,
   Pressable,
   Platform,
 } from 'react-native';
@@ -53,6 +55,9 @@ import { clearAppBadge, setAppBadgeCount } from '../../services/fcmNotificationS
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
+import FinancialNotificationDetails from '../../components/FinancialNotificationDetails';
+import { notificationDestination, validNotificationUuid } from '../../services/notificationRuntimeState';
+import { supabase } from '../../utils/supabase';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { useNotifications } from '../../hooks/useNotifications';
 import { parseUtcDate } from '../../utils/date';
@@ -139,6 +144,12 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') setSelectedNotification(null);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -354,11 +365,17 @@ export default function NotificationsScreen() {
       selectedNotification.data &&
       typeof selectedNotification.data.screen === 'string'
     ) {
-      const screen = selectedNotification.data.screen;
-      const params = selectedNotification.data.params as any;
+      const data = selectedNotification.data;
+      const destination = notificationDestination(data, 'client');
+      const target = validNotificationUuid(data.orderId) ? 'Orders' : destination.screen || 'Notifications';
+      const params = {
+        notificationId: selectedNotification.id,
+        notificationOrderId: validNotificationUuid(data.orderId) ? data.orderId : undefined,
+        notificationPaymentId: validNotificationUuid(data.paymentId) ? data.paymentId : undefined,
+      };
       setSelectedNotification(null);
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      navigation.navigate(screen, params);
+      navigation.navigate(target, params);
     }
   };
 
@@ -537,6 +554,7 @@ export default function NotificationsScreen() {
       ) : (
         <View style={[styles.listContainer, layout.centeredContentStyle]}>
           <FlashList
+            ListHeaderComponent={<NotificationDeliveryPreferences />}
             data={paginatedItems}
             keyExtractor={(item: any) => item.id}
             renderItem={renderItem}
@@ -725,12 +743,16 @@ export default function NotificationsScreen() {
                 </TouchableOpacity>
               </View>
 
+              <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false}>
               <Text style={[styles.modalTitle, { color: t.textPrimary }]}>{selectedNotification.title}</Text>
 
               <Text style={[styles.modalBody, { color: t.textSecondary }]}>{selectedNotification.body}</Text>
+              <FinancialNotificationDetails key={selectedNotification.id} notificationId={selectedNotification.id} data={selectedNotification.data} snapshotAt={selectedNotification.created_at}
+                onOpenCurrent={params => { setSelectedNotification(null); navigation.navigate('Orders', params); }} />
+              </ScrollView>
 
               <View style={styles.modalFooterActions}>
-                {selectedNotification.data && typeof selectedNotification.data.screen === 'string' && (
+                {selectedNotification.data && !selectedNotification.data.sharedContext && typeof selectedNotification.data.screen === 'string' && (
                   <TouchableOpacity
                     style={styles.modalActionBtn}
                     onPress={handleTakeAction}
@@ -753,7 +775,7 @@ export default function NotificationsScreen() {
                     styles.modalDeleteBtn,
                     {
                       borderColor: isDarkMode ? '#222d42' : '#e2e8f0',
-                      width: selectedNotification.data?.screen ? '32%' : '100%',
+                      width: selectedNotification.data?.screen && !selectedNotification.data?.sharedContext ? '32%' : '100%',
                     },
                   ]}
                   onPress={() => handleClear(selectedNotification.id)}

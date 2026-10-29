@@ -1,3 +1,5 @@
+import NotificationDeliveryPreferences from '../../components/NotificationDeliveryPreferences';
+import FinancialNotificationDetails from '../../components/FinancialNotificationDetails';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { clearAppBadge } from '../../services/fcmNotificationService';
@@ -158,6 +160,12 @@ export default function AdminNotificationsScreen() {
 
   // Detail Modal states
   const [selectedItem, setSelectedItem] = useState<NotificationItem | null>(null);
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN') setSelectedItem(null);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
   const [copiedFieldKey, setCopiedFieldKey] = useState<string | null>(null);
 
   const handleCopyValue = async (key: string, value: string) => {
@@ -405,6 +413,7 @@ export default function AdminNotificationsScreen() {
         scrollEventThrottle={16}
       >
         
+        <NotificationDeliveryPreferences />
         {/* Quick Batch Actions */}
         <View style={styles.batchActionsRow}>
           {unreadCount > 0 && (
@@ -701,9 +710,11 @@ export default function AdminNotificationsScreen() {
                 <View style={[styles.modalMessageCard, { backgroundColor: isDarkMode ? 'rgba(238, 77, 45, 0.04)' : '#f8fafc', borderLeftColor: t.accent }]}>
                   <Text style={[styles.modalMessageText, { color: t.textPrimary }]}>{selectedItem.body}</Text>
                 </View>
+                <FinancialNotificationDetails key={selectedItem.id} notificationId={selectedItem.id} data={selectedItem.data} snapshotAt={selectedItem.createdAt}
+                  onOpenCurrent={params => { setSelectedItem(null); navigation.navigate('AdminOrders', params); }} />
 
                 {/* Metadata Details (Receipt Visual style) */}
-                {selectedItem.data && (
+                {selectedItem.data && !selectedItem.data.sharedContext && (
                   <View style={styles.payloadDocketContainer}>
                     {/* 1. Financial Highlights Block */}
                     {partitionedPayload && partitionedPayload.financialKeys.length > 0 && (

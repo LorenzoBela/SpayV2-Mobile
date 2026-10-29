@@ -12,6 +12,8 @@ import {
   shouldAttemptRemotePushRegistration,
 } from './notificationServiceConfig';
 import { trpcVanillaClient } from '../utils/trpc';
+import { notificationRuntime, presentNotificationOnce } from './notificationRuntime';
+import { notificationPresentation, validNotificationUuid } from './notificationRuntimeState';
 
 export type NotificationCategory = 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
 
@@ -32,13 +34,17 @@ const ENABLE_REMOTE_PUSH_NOTIFICATIONS =
 
 // Enable notification alert & banner display for local system tray
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async notification => {
+    const data = notification.request.content.data || {};
+    const id = typeof data.notificationId === 'string' ? data.notificationId : notification.request.identifier;
+    const owner = await currentNotificationOwner();
+    const recipient = data.recipientUserId || data.targetUserId;
+    // Do not expose a former account's remote message after an account switch.
+    const displayKey = data.spayLocalTray === 'true' ? `${id}:expo-local` : id;
+    const allowed = !!owner && (!recipient || recipient === owner.profileId) && !notificationRuntime.displayed(displayKey);
+    if (allowed) notificationRuntime.recordDisplayed(displayKey);
+    return { shouldShowAlert: allowed, shouldPlaySound: allowed, shouldSetBadge: false, shouldShowBanner: allowed, shouldShowList: allowed };
+  },
 });
 
 function getProjectId(): string | undefined {
@@ -189,8 +195,16 @@ export async function registerForTrayNotifications(userId: string) {
           platform: Platform.OS,
           deviceId,
         }),
-      }).then(response => {
+      }).then(async response => {
         if (!response.ok) console.warn('[Notifications] Device registration rejected:', response.status);
+        else {
+          const result = await response.json();
+          const current = await supabase.auth.getSession();
+          if (!signal.aborted && registrationVersion === pushRegistrationGate.version && current.data.session?.user.id === sessionData.session?.user.id) {
+            notificationRuntime.rememberRegistration({ authUserId: sessionData.session!.user.id, profileId: userId }, result.registrationId);
+            void flushNotificationReceipts();
+          }
+        }
       }).catch(() => console.warn('[Notifications] Device registration unavailable'));
     } catch {
       // Non-blocking
@@ -289,37 +303,31 @@ export async function clearNotification(notificationId: string) {
   }
 }
 
-const MAX_DEDUP_SIZE = 100;
-const processedTrayNotificationIds = new Set<string>();
-
 export async function mirrorToLocalTray(notification: AppNotification) {
-  if (notification.id) {
-    if (processedTrayNotificationIds.has(notification.id)) {
-      return;
-    }
-    processedTrayNotificationIds.add(notification.id);
-    if (processedTrayNotificationIds.size > MAX_DEDUP_SIZE) {
-      const oldestKey = processedTrayNotificationIds.values().next().value;
-      if (oldestKey !== undefined) {
-        processedTrayNotificationIds.delete(oldestKey);
-      }
-    }
-  }
-
-  const hasPermission = await ensureTrayNotificationPermissions();
-  if (!hasPermission) return;
+  const owner = await currentNotificationOwner();
+  const copy = notificationPresentation(notification.data || {}, owner, notification.title, notification.body);
+  if (!copy) return;
+  // Delivery must not prompt unexpectedly; the explicit registration/settings flow owns permission prompts.
+  if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;
+  const stillCurrent = await currentNotificationOwner();
+  if (!owner || stillCurrent?.authUserId !== owner.authUserId || stillCurrent.profileId !== owner.profileId) return;
 
   const rawChannel = notification.data?.channelId;
   const requestedChannelId = typeof rawChannel === 'string' ? rawChannel : '';
   const channelId = normalizeAndroidChannelId(requestedChannelId, notification.category);
 
+  const data = { ...(notification.data || {}), notificationId: notification.id, type: notification.type, category: notification.category };
+  await presentNotificationOnce(notification.id, async () => {
   if (Platform.OS === 'android') {
     try {
       await setupAndroidNotificationChannels();
+      const current = notificationRuntime.owner();
+      if (current?.authUserId !== owner.authUserId || current.profileId !== owner.profileId) return;
       await notifee.displayNotification({
-        title: notification.title,
-        body: notification.body,
-        data: (notification.data as Record<string, string>) || {},
+        id: notification.id,
+        title: copy.title,
+        body: copy.body,
+        data: data as Record<string, string>,
         android: {
           channelId: channelId || ANDROID_CHANNELS.SYSTEM,
           importance: AndroidImportance.HIGH,
@@ -328,30 +336,24 @@ export async function mirrorToLocalTray(notification: AppNotification) {
         },
       });
       return;
-    } catch (err) {
-      console.warn('[mirrorToLocalTray] Notifee display notification error:', err);
-    }
+    } catch { throw new Error('Native tray display outcome unavailable'); }
   }
 
   await Notifications.scheduleNotificationAsync({
+    identifier: notification.id,
     content: {
-      title: notification.title,
-      body: notification.body,
+      title: copy.title,
+      body: copy.body,
       sound: true,
       priority: Notifications.AndroidNotificationPriority.MAX,
       vibrate: [250, 150, 250],
-      data: {
-        notificationId: notification.id,
-        type: notification.type,
-        category: notification.category,
-        screen: notification.data?.screen || 'Notifications',
-      },
+      data: { ...data, spayLocalTray: 'true' },
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 1,
-      channelId: Platform.OS === 'android' ? channelId : undefined,
     },
+  });
   });
 }
 
@@ -412,22 +414,86 @@ export async function reportNotificationReceipt(
   notificationId?: string,
   action: 'received' | 'opened' = 'received'
 ) {
-  if (!notificationId) return;
+  if (!validNotificationUuid(notificationId)) return;
   try {
+    const owner = await currentNotificationOwner();
+    if (!owner) return;
+    notificationRuntime.queueReceipt(owner, notificationId, action);
+    await flushNotificationReceipts();
+  } catch { /* Telemetry never blocks opening the app. */ }
+}
+
+let receiptFlush: Promise<void> | null = null;
+export async function flushNotificationReceipts() {
+  if (receiptFlush) return receiptFlush;
+  receiptFlush = (async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    const owner = notificationRuntime.owner();
+    if (!session || !owner || owner.authUserId !== session.user.id) return;
+    const registrationId = notificationRuntime.registration(owner);
+    if (!registrationId) return;
     const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
-    void fetch(`${serverUrl}/api/notifications/receipt`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        notificationId,
-        action,
-        platform: Platform.OS,
-        deviceId: `${Platform.OS}-${Device.modelName || 'device'}`,
-        timestamp: new Date().toISOString(),
-      }),
-    }).catch(() => undefined);
-  } catch {
-    // Non-blocking fire-and-forget
+    const deadline = Date.now() + 8000;
+    for (const receipt of notificationRuntime.receipts(owner).slice(0, 10)) {
+      const current = notificationRuntime.owner();
+      if (Date.now() >= deadline || current?.authUserId !== owner.authUserId || current.profileId !== owner.profileId) break;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.min(3000, Math.max(1, deadline - Date.now())));
+      try {
+        const response = await fetch(`${serverUrl}/api/notifications/receipt`, {
+          method: 'POST', signal: controller.signal,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ notificationId: receipt.notificationId, registrationId, action: receipt.action }),
+        });
+        if (response.ok || response.status === 400 || response.status === 404) notificationRuntime.clearReceipt(owner, receipt.notificationId, receipt.action);
+        else break;
+      } catch { break; }
+      finally { clearTimeout(timer); }
+    }
+  })().catch(() => undefined).finally(() => { receiptFlush = null; });
+  return receiptFlush;
+}
+
+export async function currentNotificationOwner() {
+  const { data, error } = await supabase.auth.getSession();
+  const owner = notificationRuntime.owner();
+  return !error && data.session && owner?.authUserId === data.session.user.id ? owner : null;
+}
+
+/** Resolve notification content from an authenticated, owner-scoped row before following payload IDs. */
+export async function readOwnedNotification(notificationId: string) {
+  if (!validNotificationUuid(notificationId)) return null;
+  const owner = await currentNotificationOwner();
+  if (!owner) return null;
+  const result = await supabase.from('notifications').select('id,user_id,type,data')
+    .eq('id', notificationId).eq('user_id', owner.profileId).maybeSingle();
+  if (result.error) throw result.error;
+  const current = notificationRuntime.owner();
+  if (current?.authUserId !== owner.authUserId || current.profileId !== owner.profileId) return null;
+  return result.data;
+}
+
+export async function markOwnedTrayNotificationRead(notificationId: string, trayId?: string) {
+  const before = await currentNotificationOwner();
+  if (!before) return false;
+  const row = await readOwnedNotification(notificationId);
+  if (!row) return false;
+  await markNotificationRead(notificationId);
+  const after = await currentNotificationOwner();
+  if (after?.authUserId !== before.authUserId || after.profileId !== before.profileId) return false;
+  if (trayId) await notifee.cancelNotification(trayId);
+  await syncNotificationBadge();
+  await reportNotificationReceipt(notificationId, 'opened');
+  return true;
+}
+
+export async function syncNotificationBadge() {
+  const owner = await currentNotificationOwner();
+  if (owner) {
+    const { count, error } = await supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', owner.profileId).is('read_at', null);
+    const current = notificationRuntime.owner();
+    if (!error && count !== null && current?.authUserId === owner.authUserId && current.profileId === owner.profileId) await notifee.setBadgeCount(count);
   }
 }
 
