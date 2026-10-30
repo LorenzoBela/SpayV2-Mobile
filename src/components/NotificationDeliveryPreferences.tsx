@@ -57,13 +57,13 @@ export default function NotificationDeliveryPreferences() {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save preferences.'); }
     finally { setSaving(false); }
   }
-  const toggle = (label: string, value: boolean, onValueChange: (value: boolean) => void) => <View key={label} style={{ flexDirection: 'row', minHeight: 48, alignItems: 'center', gap: 12 }}><Text style={{ flex: 1, flexShrink: 1, fontFamily: 'PlusJakartaSans_500Medium', fontSize: 12, lineHeight: 20, color }}>{label}</Text><Switch accessibilityLabel={label} disabled={saving} value={value} onValueChange={onValueChange} trackColor={{ false: border, true: '#ee4d2d' }} /></View>;
-  const inputStyle = { color, borderColor: border, borderWidth: 1, borderRadius: 12, minHeight: 44, paddingHorizontal: 12, fontFamily: 'PlusJakartaSans_500Medium', fontSize: 12 };
+  const toggle = (label: string, value: boolean, onValueChange: (value: boolean) => void) => <View key={label} style={{ flexDirection: 'row', minHeight: 48, alignItems: 'center', gap: 12 }}><Text style={{ flex: 1, flexShrink: 1, fontFamily: 'Jakarta-Medium', fontSize: 12, lineHeight: 20, color }}>{label}</Text><Switch accessibilityLabel={label} disabled={saving} value={value} onValueChange={onValueChange} trackColor={{ false: border, true: '#ee4d2d' }} /></View>;
+  const inputStyle = { color, borderColor: border, borderWidth: 1, borderRadius: 12, minHeight: 44, paddingHorizontal: 12, fontFamily: 'Jakarta-Medium', fontSize: 12 };
   return <View style={{ backgroundColor: isDarkMode ? '#161c2a' : '#ffffff', borderColor: border, borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 16 }}>
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={{ minHeight: 44, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><Text style={{ color, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 }}>Delivery preferences</Text><Text style={{ color: '#ee4d2d' }}>{expanded ? 'Hide' : 'Manage'}</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={{ minHeight: 44, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><Text style={{ color, fontFamily: 'Jakarta-Bold', fontSize: 13 }}>Delivery preferences</Text><Text style={{ color: '#ee4d2d' }}>{expanded ? 'Hide' : 'Manage'}</Text></Pressable>
     {expanded && <View>
       <Text style={{ color: muted, fontSize: 11, lineHeight: 18, marginVertical: 8 }}>Choose how you receive notifications. Your notification history stays in the inbox. Existing category switches and your phone’s notification settings still apply.</Text>
-      {categories.map(([key, label]) => <View key={key} style={{ borderBottomWidth: 1, borderColor: border, paddingVertical: 12 }}><Text style={{ color, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 }}>{label}</Text>
+      {categories.map(([key, label]) => <View key={key} style={{ borderBottomWidth: 1, borderColor: border, paddingVertical: 12 }}><Text style={{ color, fontFamily: 'Jakarta-Bold', fontSize: 13 }}>{label}</Text>
         {toggle(`${label} · Email`, policy.channels[key].email, value => change({ channels: { ...policy.channels, [key]: { ...policy.channels[key], email: value } } }))}
         {toggle(`${label} · Phone notifications`, policy.channels[key].push, value => change({ channels: { ...policy.channels, [key]: { ...policy.channels[key], push: value } } }))}
       </View>)}
@@ -77,7 +77,7 @@ export default function NotificationDeliveryPreferences() {
       {toggle('Weekly promotions and wishlist', policy.marketing !== 'off', value => change({ marketing: value ? 'weekly_digest' : 'off' }))}
       {toggle('Updates when someone sharing my order pays', policy.peerPayments, value => change({ peerPayments: value }))}
       {toggle('Hide names and amounts in phone notifications', policy.lockScreenPrivacy, value => change({ lockScreenPrivacy: value }))}
-      <Pressable accessibilityRole="button" disabled={saving} onPress={() => void save()} style={{ borderRadius: 12, backgroundColor: '#ee4d2d', minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 12, opacity: saving ? 0.5 : 1 }}><Text style={{ color: '#fff', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12 }}>{saving ? 'Saving…' : 'Save preferences'}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={saving} onPress={() => void save()} style={{ borderRadius: 12, backgroundColor: '#ee4d2d', minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 12, opacity: saving ? 0.5 : 1 }}><Text style={{ color: '#fff', fontFamily: 'Jakarta-Bold', fontSize: 12 }}>{saving ? 'Saving…' : 'Save preferences'}</Text></Pressable>
       {!!message && <Text accessibilityLiveRegion="polite" style={{ color: muted, fontSize: 11, lineHeight: 18, marginTop: 8 }}>{message}</Text>}
     </View>}
   </View>;

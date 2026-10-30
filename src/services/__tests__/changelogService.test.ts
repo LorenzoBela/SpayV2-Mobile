@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Filtering tests use fixed releases; the live bundled release list changes over time.
+vi.mock('../../data/changelogs', () => ({
+  BUNDLED_CHANGELOGS: Array.from({ length: 8 }, (_, index) => ({
+    version: `1.0.${8 - index}`, versionCode: 37 - index, releaseType: 'ota', releaseDate: '2026-08-27T10:00:00.000Z',
+    title: index === 0 ? 'Biometric security update' : `Release ${8 - index}`, summary: 'Synthetic release for pagination and filtering.',
+    highlights: [{ type: index === 0 ? 'security' : 'feature', title: index === 0 ? 'Biometric sign-in' : 'Feature update', description: 'Synthetic test detail.' }],
+  })),
+}));
+
 // In-memory mock storage map
 const mockStorageMap = new Map<string, string>();
 

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import React from 'react';
 
+// These component-construction tests do not execute native location APIs.
+vi.mock('expo-location', () => ({}));
+
 vi.mock('lucide-react-native', () => {
   const MockIcon = () => null;
   return new Proxy({}, {

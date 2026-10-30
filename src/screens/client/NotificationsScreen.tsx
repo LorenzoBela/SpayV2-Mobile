@@ -1,3 +1,4 @@
+import NotificationDigestDetails from '../../components/NotificationDigestDetails';
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import NotificationDeliveryPreferences from '../../components/NotificationDeliveryPreferences';
 import { formatAmount } from '../../utils/money';
@@ -749,10 +750,12 @@ export default function NotificationsScreen() {
               <Text style={[styles.modalBody, { color: t.textSecondary }]}>{selectedNotification.body}</Text>
               <FinancialNotificationDetails key={selectedNotification.id} notificationId={selectedNotification.id} data={selectedNotification.data} snapshotAt={selectedNotification.created_at}
                 onOpenCurrent={params => { setSelectedNotification(null); navigation.navigate('Orders', params); }} />
+              <NotificationDigestDetails key={`digest-${selectedNotification.id}`} notificationId={selectedNotification.id} data={selectedNotification.data}
+                onOpenCurrent={params => { setSelectedNotification(null); navigation.navigate('Orders', params); }} />
               </ScrollView>
 
               <View style={styles.modalFooterActions}>
-                {selectedNotification.data && !selectedNotification.data.sharedContext && typeof selectedNotification.data.screen === 'string' && (
+                {selectedNotification.data && !selectedNotification.data.sharedContext && !selectedNotification.data.digestItems && typeof selectedNotification.data.screen === 'string' && (
                   <TouchableOpacity
                     style={styles.modalActionBtn}
                     onPress={handleTakeAction}
@@ -775,7 +778,7 @@ export default function NotificationsScreen() {
                     styles.modalDeleteBtn,
                     {
                       borderColor: isDarkMode ? '#222d42' : '#e2e8f0',
-                      width: selectedNotification.data?.screen && !selectedNotification.data?.sharedContext ? '32%' : '100%',
+                      width: selectedNotification.data?.screen && !selectedNotification.data?.sharedContext && !selectedNotification.data?.digestItems ? '32%' : '100%',
                     },
                   ]}
                   onPress={() => handleClear(selectedNotification.id)}

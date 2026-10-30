@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import React from 'react';
 
+// These component-construction tests do not execute native location APIs.
+vi.mock('expo-location', () => ({}));
+// Component construction must not initialize the admin notification/native transport stack.
+vi.mock('../services/adminService', () => ({ fetchAdminClients: vi.fn().mockResolvedValue([]) }));
+
 vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn().mockResolvedValue(null),
   setItemAsync: vi.fn().mockResolvedValue(undefined),
@@ -9,7 +14,7 @@ vi.mock('expo-secure-store', () => ({
 
 vi.mock('lucide-react-native', () => {
   const MockIcon = (props: any) => null;
-  return new Proxy({}, { get: () => MockIcon });
+  return new Proxy({}, { get: (_target, prop) => prop === 'then' ? undefined : prop === '__esModule' ? true : MockIcon });
 });
 
 vi.mock('react-native-safe-area-context', () => ({

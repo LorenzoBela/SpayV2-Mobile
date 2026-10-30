@@ -1,3 +1,5 @@
+import NotificationDeliveryHistory from '../../components/NotificationDeliveryHistory';
+import NotificationDigestDetails from '../../components/NotificationDigestDetails';
 import NotificationDeliveryPreferences from '../../components/NotificationDeliveryPreferences';
 import FinancialNotificationDetails from '../../components/FinancialNotificationDetails';
 import { PremiumAlert } from '../../services/PremiumAlertService';
@@ -414,6 +416,7 @@ export default function AdminNotificationsScreen() {
       >
         
         <NotificationDeliveryPreferences />
+        <NotificationDeliveryHistory />
         {/* Quick Batch Actions */}
         <View style={styles.batchActionsRow}>
           {unreadCount > 0 && (
@@ -713,8 +716,11 @@ export default function AdminNotificationsScreen() {
                 <FinancialNotificationDetails key={selectedItem.id} notificationId={selectedItem.id} data={selectedItem.data} snapshotAt={selectedItem.createdAt}
                   onOpenCurrent={params => { setSelectedItem(null); navigation.navigate('AdminOrders', params); }} />
 
+                <NotificationDigestDetails key={`digest-${selectedItem.id}`} notificationId={selectedItem.id} data={selectedItem.data}
+                  onOpenCurrent={params => { setSelectedItem(null); navigation.navigate('AdminOrders', params); }} />
+
                 {/* Metadata Details (Receipt Visual style) */}
-                {selectedItem.data && !selectedItem.data.sharedContext && (
+                {selectedItem.data && !selectedItem.data.sharedContext && !selectedItem.data.digestItems && (
                   <View style={styles.payloadDocketContainer}>
                     {/* 1. Financial Highlights Block */}
                     {partitionedPayload && partitionedPayload.financialKeys.length > 0 && (

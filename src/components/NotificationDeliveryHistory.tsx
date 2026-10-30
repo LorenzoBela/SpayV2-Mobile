@@ -14,7 +14,8 @@ export const deliveryStatusLabels = {
 const statusSchema = z.enum(Object.keys(deliveryStatusLabels) as [keyof typeof deliveryStatusLabels, ...(keyof typeof deliveryStatusLabels)[]]);
 const channelSchema = z.enum(['EMAIL', 'PUSH', 'IN_APP']);
 const rowSchema = z.object({ id: z.string().uuid(), recipientName: z.string(), channel: channelSchema, status: statusSchema, attempts: z.number().int().nonnegative(), createdAt: z.string(), providerMessageId: z.string().nullish() });
-const historySchema = z.object({ available: z.boolean(), actorId: z.string().min(1).optional(), deliveries: z.array(rowSchema).max(30), nextCursor: z.string().uuid().nullish() });
+const operationRowSchema = z.object({ id: z.string().uuid(), label: z.string().max(80), recipientName: z.string(), status: z.string().max(80), attempts: z.number().int().nonnegative(), updatedAt: z.string() });
+const historySchema = z.object({ available: z.boolean(), actorId: z.string().min(1).optional(), deliveries: z.array(rowSchema).max(30), operations: z.array(operationRowSchema).max(30).optional(), nextCursor: z.string().uuid().nullish() });
 const previewSchema = z.object({ context: financialNotificationContextSchema.nullable(), originalStatus: statusSchema, canResend: z.boolean(), notice: z.string() });
 const operationSchema = z.object({ key: z.string().uuid(), reason: z.string().trim().min(5).max(300), state: z.enum(['unknown', 'queued']) });
 type Delivery = z.infer<typeof rowSchema>;
@@ -41,10 +42,12 @@ export default function NotificationDeliveryHistory() {
   const { isDarkMode } = useContext(ThemeContext);
   const [available, setAvailable] = useState(false), [expanded, setExpanded] = useState(false);
   const [rows, setRows] = useState<Delivery[]>([]), [cursor, setCursor] = useState<string | null>(null);
+  const [otherEmails, setOtherEmails] = useState<z.infer<typeof operationRowSchema>[]>([]);
   const [channel, setChannel] = useState(''), [status, setStatus] = useState('');
   const [showStatuses, setShowStatuses] = useState(false), [busy, setBusy] = useState(false), [previewBusy, setPreviewBusy] = useState(false), [sending, setSending] = useState(false);
   const [selected, setSelected] = useState<Delivery | null>(null), [preview, setPreview] = useState<Preview | null>(null);
   const [reason, setReason] = useState(''), [operation, setOperation] = useState<Operation | null>(null), [monthIndex, setMonthIndex] = useState(0), [message, setMessage] = useState('');
+  const serverActor = useRef<string | null>(null);
   const active = useRef(true), owner = useRef<string | null>(null), epoch = useRef(0), listSequence = useRef(0), previewSequence = useRef(0), selectedId = useRef<string | null>(null);
   const listAbort = useRef<AbortController | null>(null), previewAbort = useRef<AbortController | null>(null);
   const sendingRef = useRef(false), operations = useRef(new Map<string, Operation>()), filters = useRef({ channel: '', status: '' });
@@ -59,7 +62,7 @@ export default function NotificationDeliveryHistory() {
   }
   function clearOwner() {
     epoch.current++; listSequence.current++; listAbort.current?.abort(); clearPreview(); owner.current = null;
-    operations.current.clear(); setAvailable(false); setRows([]); setCursor(null); setMessage(''); setBusy(false); setSending(false); sendingRef.current = false;
+    operations.current.clear(); serverActor.current = null; setAvailable(false); setRows([]); setOtherEmails([]); setCursor(null); setMessage(''); setBusy(false); setSending(false); sendingRef.current = false;
   }
   async function authorizedFetch(url: string, init: RequestInit, expectedOwner: string) {
     const { data } = await supabase.auth.getSession(); const session = data.session;
@@ -81,8 +84,8 @@ export default function NotificationDeliveryHistory() {
       const parsed = historySchema.safeParse(await response.json());
       if (!parsed.success) throw new Error('Delivery history could not be read. Please try again.');
       if (!active.current || generation !== epoch.current || sequence !== listSequence.current || owner.current !== expectedOwner) return;
-      setAvailable(parsed.data.available);
-      if (!parsed.data.available) { setRows([]); setCursor(null); clearPreview(); return; }
+      serverActor.current = parsed.data.actorId ?? null; setOtherEmails(parsed.data.operations ?? []); setAvailable(parsed.data.available);
+      if (!parsed.data.available) { setRows([]); setOtherEmails([]); setCursor(null); clearPreview(); return; }
       setRows(previous => next ? [...new Map([...previous, ...parsed.data.deliveries].map(row => [row.id, row])).values()] : parsed.data.deliveries); setCursor(parsed.data.nextCursor ?? null);
     } catch (error) {
       if (active.current && generation === epoch.current && sequence === listSequence.current && !controller.signal.aborted) setMessage(error instanceof Error ? error.message : 'Unable to load delivery history.');
@@ -106,7 +109,7 @@ export default function NotificationDeliveryHistory() {
   }, []);
   function filter(nextChannel: string, nextStatus: string) {
     if (sendingRef.current) return;
-    filters.current = { channel: nextChannel, status: nextStatus }; setChannel(nextChannel); setStatus(nextStatus); setRows([]); setCursor(null); clearPreview(); void load();
+    filters.current = { channel: nextChannel, status: nextStatus }; setChannel(nextChannel); setStatus(nextStatus); setRows([]); setOtherEmails([]); setCursor(null); clearPreview(); void load();
   }
   function saveOperation(id: string, value: Operation) {
     operations.current.set(id, value); setOperation(value);
@@ -124,7 +127,10 @@ export default function NotificationDeliveryHistory() {
     selectedId.current = row.id; setSelected(row); setPreview(null); setMonthIndex(0); restoreOperation(row.id); setPreviewBusy(true); setMessage('');
     try {
       const response = await authorizedFetch(apiUrl(), { method: 'POST', signal: controller.signal, body: JSON.stringify({ id: row.id, action: 'preview' }) }, expectedOwner);
-      if (!response.ok) throw new Error('Unable to load current order details. Refresh the history and try again.');
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(response.status === 409 && typeof result?.error === 'string' && (result.error.startsWith('Payment summaries ') || result.error === 'Delivery format is not supported by this tool') ? 'Payment summaries cover several orders. Review the saved summary in the S-Pay inbox and open each order for its current status.' : 'Unable to load current order details. Refresh the history and try again.');
+      }
       const parsed = previewSchema.safeParse(await response.json()); if (!parsed.success) throw new Error('Current order details could not be read.');
       if (active.current && generation === epoch.current && sequence === previewSequence.current && selectedId.current === row.id) setPreview(parsed.data);
     } catch (error) {
@@ -132,7 +138,7 @@ export default function NotificationDeliveryHistory() {
     } finally { if (active.current && generation === epoch.current && sequence === previewSequence.current) setPreviewBusy(false); }
   }
   async function sendUpdate() {
-    if (!owner.current || !selected || !preview?.context || !preview.canResend || sendingRef.current || operation?.state === 'queued') return;
+    if (!owner.current || !serverActor.current || !selected || !preview?.context || !preview.canResend || sendingRef.current || operation?.state === 'queued') return;
     const normalized = reason.trim(); if (normalized.length < 5 || normalized.length > 300) { setMessage('Enter a reason of 5–300 characters.'); return; }
     const row = selected, expectedOwner = owner.current, generation = epoch.current;
     let request = operations.current.get(row.id);
@@ -140,7 +146,7 @@ export default function NotificationDeliveryHistory() {
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000);
     sendingRef.current = true; setSending(true); setMessage('');
     try {
-      const response = await authorizedFetch(apiUrl(), { method: 'POST', signal: controller.signal, body: JSON.stringify({ id: row.id, action: 'resend', operationKey: request.key, reason: request.reason }) }, expectedOwner);
+      const response = await authorizedFetch(apiUrl(), { method: 'POST', signal: controller.signal, body: JSON.stringify({ id: row.id, action: 'resend', ownerUserId: serverActor.current, operationKey: request.key, reason: request.reason }) }, expectedOwner);
       const result = await response.json().catch(() => null);
       if (!active.current || generation !== epoch.current || selectedId.current !== row.id) return;
       if (!response.ok || result?.queued !== true) throw new Error(response.status === 409 ? 'This delivery changed or the request could not be confirmed. Refresh the preview before trying again.' : 'The update was not confirmed. Check or retry this request using the same reason.');
@@ -163,6 +169,11 @@ export default function NotificationDeliveryHistory() {
       {rows.map(row => <View key={row.id} style={[styles.row, { borderColor: border }]}><Text style={[styles.name, textStyle]}>{row.recipientName}</Text><Text style={[styles.note, noteStyle]}>{channelLabels[row.channel]} · {dateLabel(row.createdAt)}</Text><Text style={[styles.label, { color: '#ee4d2d' }]}>{deliveryStateLabel(row.channel, row.status)}</Text><Text style={[styles.note, noteStyle]}>{row.attempts} attempt{row.attempts === 1 ? '' : 's'}</Text>{button('Preview current order', () => void openPreview(row), sending)}</View>)}
       {!rows.length && <Text style={[styles.note, noteStyle]}>{busy ? 'Loading delivery history…' : 'No delivery records match these filters.'}</Text>}
       {cursor && button('Load more', () => void load(cursor), busy || sending)}
+      {otherEmails.length > 0 && <View style={[styles.row, { borderColor: border }]}>
+        <Text accessibilityRole="header" style={[styles.heading, textStyle]}>Other email deliveries</Text>
+        <Text style={[styles.note, noteStyle]}>Latest 30 records, filtered by your choices. Processing completed does not confirm that an email was sent.</Text>
+        {otherEmails.map(row => <View key={row.id} style={[styles.row, { borderColor: border }]}><Text style={[styles.name, textStyle]}>{row.label}</Text><Text style={[styles.note, noteStyle]}>{row.recipientName}</Text><Text style={[styles.label, { color: '#ee4d2d' }]}>{row.status}</Text><Text style={[styles.note, noteStyle]}>{row.attempts} attempt{row.attempts === 1 ? '' : 's'} · {dateLabel(row.updatedAt)}</Text></View>)}
+      </View>}
       {selected && <View style={[styles.preview, { borderColor: border }]}>
         <View style={styles.wrap}><Text accessibilityRole="header" style={[styles.heading, textStyle]}>Current order details</Text>{button('Close preview', clearPreview, sending)}</View>
         <Text style={[styles.name, textStyle]}>{selected.recipientName} · {channelLabels[selected.channel]}</Text>
@@ -173,7 +184,7 @@ export default function NotificationDeliveryHistory() {
             {context.participants.map(person => <View key={person.userId} style={styles.person}><Text style={[styles.name, textStyle]}>{person.name}{person.own ? ' (Recipient)' : ''}</Text><Text style={[styles.note, noteStyle]}>{person.percentage} · {notificationDetailMoney(person.allocationMinor)} total</Text></View>)}
             {month && <View style={[styles.preview, { borderColor: border }]}><View style={styles.wrap}>{button('Previous month', () => setMonthIndex(index => index - 1), monthIndex === 0)}<Text style={[styles.label, textStyle]}>Month {month.monthNumber}</Text>{button('Next month', () => setMonthIndex(index => index + 1), monthIndex >= context.installments.length - 1)}</View>{month.participants.map(person => <View key={person.userId} style={styles.person}><Text style={[styles.name, textStyle]}>{person.name}{person.own ? ' (Recipient)' : ''}</Text><Text style={[styles.note, noteStyle]}>{notificationDetailMoney(person.amountMinor)} · {statusText(person)}</Text></View>)}</View>}
           </> : <Text style={[styles.note, noteStyle]}>Current order details are unavailable for this recipient. An update cannot be sent.</Text>}
-          {context && preview.canResend ? <View style={styles.content}><Text style={[styles.note, noteStyle]}>Send the latest order details using the original channel. This does not replay the old message. Your reason will be saved.</Text><Text style={[styles.label, textStyle]}>Reason for sending an update</Text><TextInput accessibilityLabel="Reason for sending an update" editable={!sending && !operation} multiline maxLength={300} value={reason} onChangeText={setReason} style={[styles.input, { color: textColor, borderColor: border }]} /><Text style={[styles.note, noteStyle]}>{operation ? 'This reason and request ID are retained so retrying does not create another request.' : 'Use 5–300 characters. Do not include passwords or payment proof details.'}</Text>{button(sending ? 'Checking request…' : operation?.state === 'queued' ? 'Update queued' : operation ? 'Check or retry request' : 'Send current order update', () => void sendUpdate(), sending || operation?.state === 'queued' || reason.trim().length < 5, true)}</View> : <Text style={[styles.note, noteStyle]}>Reconcile unconfirmed or active delivery attempts before sending another update.</Text>}
+          {context && preview.canResend ? <View style={styles.content}><Text style={[styles.note, noteStyle]}>Send the latest order details using the original channel. This does not replay the old message. Your reason will be saved.</Text><Text style={[styles.label, textStyle]}>Reason for sending an update</Text><TextInput accessibilityLabel="Reason for sending an update" editable={!sending && !operation} multiline maxLength={300} value={reason} onChangeText={setReason} style={[styles.input, { color: textColor, borderColor: border }]} /><Text style={[styles.note, noteStyle]}>{operation ? 'This reason and request ID are retained so retrying does not create another request.' : 'Use 5–300 characters. Do not include passwords or payment proof details.'}</Text>{button(sending ? 'Checking request…' : operation?.state === 'queued' ? 'Update queued' : operation ? 'Check or retry request' : 'Send current order update', () => void sendUpdate(), sending || operation?.state === 'queued' || reason.trim().length < 5, true)}</View> : <Text style={[styles.note, noteStyle]}>Check any active or unconfirmed delivery before sending another update.</Text>}
         </>}
       </View>}
       {!!message && <Text accessibilityLiveRegion="polite" style={[styles.note, noteStyle]}>{message}</Text>}
@@ -183,17 +194,17 @@ export default function NotificationDeliveryHistory() {
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 16, minWidth: 0 },
   header: { minHeight: 44, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  heading: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, lineHeight: 21, flexShrink: 1 },
-  link: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, lineHeight: 20 },
+  heading: { fontFamily: 'Jakarta-Bold', fontSize: 13, lineHeight: 21, flexShrink: 1 },
+  link: { fontFamily: 'Jakarta-Bold', fontSize: 12, lineHeight: 20 },
   content: { gap: 12, marginTop: 8, minWidth: 0 },
-  note: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, lineHeight: 18, flexShrink: 1 },
-  label: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, lineHeight: 20, flexShrink: 1 },
-  name: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, lineHeight: 21, flexShrink: 1 },
+  note: { fontFamily: 'Jakarta-Medium', fontSize: 11, lineHeight: 18, flexShrink: 1 },
+  label: { fontFamily: 'Jakarta-Bold', fontSize: 12, lineHeight: 20, flexShrink: 1 },
+  name: { fontFamily: 'Jakarta-Bold', fontSize: 13, lineHeight: 21, flexShrink: 1 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 },
   button: { minHeight: 44, borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 11, lineHeight: 18, flexShrink: 1 },
+  buttonText: { fontFamily: 'Jakarta-Bold', fontSize: 11, lineHeight: 18, flexShrink: 1 },
   row: { minWidth: 0, borderTopWidth: 1, paddingTop: 12, gap: 6 },
   person: { minWidth: 0, gap: 4, paddingVertical: 6 },
   preview: { minWidth: 0, borderWidth: 1, borderRadius: 12, padding: 12, gap: 12 },
-  input: { minHeight: 96, borderWidth: 1, borderRadius: 12, padding: 12, textAlignVertical: 'top', fontFamily: 'PlusJakartaSans_500Medium', fontSize: 12, lineHeight: 20 },
+  input: { minHeight: 96, borderWidth: 1, borderRadius: 12, padding: 12, textAlignVertical: 'top', fontFamily: 'Jakarta-Medium', fontSize: 12, lineHeight: 20 },
 });
