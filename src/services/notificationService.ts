@@ -39,9 +39,12 @@ Notifications.setNotificationHandler({
     const id = typeof data.notificationId === 'string' ? data.notificationId : notification.request.identifier;
     const owner = await currentNotificationOwner();
     const recipient = data.recipientUserId || data.targetUserId;
+    const expired = data.salaryTray === true && (
+      typeof data.expiresAt !== 'string' || !(Date.parse(data.expiresAt) > Date.now())
+    );
     // Do not expose a former account's remote message after an account switch.
     const displayKey = data.spayLocalTray === 'true' ? `${id}:expo-local` : id;
-    const allowed = !!owner && (!recipient || recipient === owner.profileId) && !notificationRuntime.displayed(displayKey);
+    const allowed = !expired && !!owner && (!recipient || recipient === owner.profileId) && !notificationRuntime.displayed(displayKey);
     if (allowed) notificationRuntime.recordDisplayed(displayKey);
     return { shouldShowAlert: allowed, shouldPlaySound: allowed, shouldSetBadge: false, shouldShowBanner: allowed, shouldShowList: allowed };
   },
@@ -192,6 +195,7 @@ export async function registerForTrayNotifications(userId: string) {
         body: JSON.stringify({
           userId,
           expoPushToken,
+          salaryTrayV1: true,
           platform: Platform.OS,
           deviceId,
         }),
@@ -305,7 +309,15 @@ export async function clearNotification(notificationId: string) {
 
 export async function mirrorToLocalTray(notification: AppNotification) {
   const owner = await currentNotificationOwner();
-  const copy = notificationPresentation(notification.data || {}, owner, notification.title, notification.body);
+  if (notification.type === 'SALARY_ALERT' && notification.data?.localTrayAllowed === false) return;
+  if (notification.type === 'SALARY_ALERT' && typeof notification.data?.expiresAt === 'string' && Date.parse(notification.data.expiresAt) <= Date.now()) return;
+  if (notification.type === 'SALARY_ALERT' && notification.data?.salaryTray === true && owner && notificationRuntime.registration(owner)) return;
+  const privateTray = notification.type === 'SALARY_ALERT' && notification.data?.privateTray === true;
+  const copy = notificationPresentation(
+    notification.data || {}, owner,
+    privateTray ? 'S-Pay update' : notification.title,
+    privateTray ? 'Open S-Pay to see your latest update.' : notification.body,
+  );
   if (!copy) return;
   // Delivery must not prompt unexpectedly; the explicit registration/settings flow owns permission prompts.
   if ((await Notifications.getPermissionsAsync()).status !== 'granted') return;

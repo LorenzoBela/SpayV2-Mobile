@@ -151,6 +151,9 @@ export async function displayFcmRemoteMessage(remoteMessage: FirebaseMessagingTy
     // Data-only FCM: title/body are in remoteMessage.data, not remoteMessage.notification
     const input = buildDisplayNotificationInput(remoteMessage);
     if (!input) return;
+    if (input.data.salaryTray === 'true' && (
+      typeof input.data.expiresAt !== 'string' || !(Date.parse(input.data.expiresAt) > Date.now())
+    )) return;
     const id = typeof input.data.notificationId === 'string' ? input.data.notificationId : remoteMessage.messageId;
     if (!id) return;
     const owner = await currentNotificationOwner();
@@ -255,6 +258,7 @@ async function upsertFcmToken(userId: string, fcmToken: string, customDeviceId?:
           body: JSON.stringify({
             userId,
             fcmToken,
+            salaryTrayV1: true,
             platform: Platform.OS,
             deviceId,
           }),

@@ -310,13 +310,7 @@ export default function AdminSystemHealthScreen() {
   }, [latencyHistory]);
 
   // 14-Day Uptime Heatmap
-  const uptimeHistoryDays = useMemo(() => {
-    return Array.from({ length: 14 }, (_, i) => ({
-      day: `Day -${14 - i}`,
-      status: 'ok',
-      uptimePct: 100,
-    }));
-  }, []);
+;
 
   const isRefetchingAny = isMetricsRefetching || isLogsRefetching || isManualPinging;
 
@@ -480,13 +474,13 @@ export default function AdminSystemHealthScreen() {
               <View style={{ flex: 1 }}>
                 <View style={styles.statusTitleRow}>
                   <Text style={[styles.statusTitle, { color: t.textPrimary }]}>
-                    {metrics?.overallStatus === 'ok'
+                    {!metrics ? 'Live status unavailable' : metrics.overallStatus === 'ok'
                       ? 'All Systems Operational'
                       : metrics?.overallStatus === 'degraded'
                       ? 'Degraded Performance'
                       : 'System Outage Detected'}
                   </Text>
-                  <View
+                  {metrics && <View
                     style={[
                       styles.slaBadge,
                       {
@@ -518,9 +512,9 @@ export default function AdminSystemHealthScreen() {
                         },
                       ]}
                     >
-                      SLA: {metrics?.healthScorePercent ?? 100}%
+                      Live health score: {metrics.healthScorePercent}%
                     </Text>
-                  </View>
+                  </View>}
                 </View>
 
                 <Text style={[styles.lastSyncedText, { color: t.textMuted }]}>
@@ -552,22 +546,11 @@ export default function AdminSystemHealthScreen() {
           </View>
         </View>
 
-        {/* 14-Day SLA Heatmap Strip */}
         <View style={[styles.heatmapCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>
-          <View style={styles.heatmapHeader}>
-            <Text style={[styles.heatmapTitle, { color: t.textMuted }]}>
-              14-DAY UPTIME HISTORY
-            </Text>
-            <Text style={[styles.heatmapUptime, { color: t.emerald }]}>99.99% Operational</Text>
-          </View>
-          <View style={styles.heatmapGrid}>
-            {uptimeHistoryDays.map((d, idx) => (
-              <View
-                key={idx}
-                style={[styles.heatmapBlock, { backgroundColor: t.emerald }]}
-              />
-            ))}
-          </View>
+          <Text style={[styles.heatmapTitle, { color: t.textPrimary }]}>14-DAY UPTIME HISTORY</Text>
+          <Text style={[styles.lastSyncedText, { color: t.textMuted }]}>
+            Uptime history is unavailable. This view shows live checks only.
+          </Text>
         </View>
 
         {/* Bento Grid - Core Telemetry Service Probes */}
@@ -1473,29 +1456,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
   },
-  heatmapHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   heatmapTitle: {
     fontSize: 9,
     fontFamily: 'Jakarta-Bold',
     letterSpacing: 1,
-  },
-  heatmapUptime: {
-    fontSize: 10,
-    fontFamily: 'Jakarta-Bold',
-  },
-  heatmapGrid: {
-    flexDirection: 'row',
-    gap: 4,
-    height: 10,
-  },
-  heatmapBlock: {
-    flex: 1,
-    borderRadius: 2,
   },
   sectionHeader: {
     marginTop: 4,

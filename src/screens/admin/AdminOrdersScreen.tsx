@@ -1,3 +1,4 @@
+import { RepeatOrderItemInput } from '../../components/RepeatOrderItemInput';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSplitValidity } from '../../hooks/useSplitValidity';
 import SplitBreakdown from '../../components/SplitBreakdown';
@@ -1272,7 +1273,7 @@ export default function AdminOrdersScreen() {
                 </View>
               </LinearGradient>
 
-              <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false}>
+              <ScrollView contentContainerStyle={styles.premiumFormContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 {/* Bulk Mode Toggle */}
                 <View style={styles.toggleRow}>
                   <Text style={[styles.toggleLabel, { color: t.textPrimary }]}>Bulk Order Scheduling</Text>
@@ -1353,7 +1354,10 @@ export default function AdminOrdersScreen() {
                     <View style={styles.inputGrid}>
                       <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#111827' : '#ffffff', borderColor: t.cardBorder }]}>
                         <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME</Text>
-                        <TextInput
+                        <RepeatOrderItemInput
+                          enabled={isAssignOpen && clientSelectorActiveOrderId === null && participantSelectorActiveOrderId === null}
+                          textColor={t.textPrimary}
+                          borderColor={t.cardBorder}
                           style={[styles.premiumInput, { color: t.textPrimary }]}
                           placeholder="MacBook Pro M3"
                           placeholderTextColor={t.textSecondary}
@@ -1548,12 +1552,15 @@ export default function AdminOrdersScreen() {
                         <View style={styles.inputGrid}>
                           <View style={[styles.premiumInputCard, { backgroundColor: isDarkMode ? '#000000' : '#f8fafc', borderColor: t.cardBorder }]}>
                             <Text style={[styles.premiumLabel, { color: t.textSecondary }]}>ITEM NAME *</Text>
-                            <TextInput
+                            <RepeatOrderItemInput
+                              enabled={isAssignOpen && clientSelectorActiveOrderId === null && participantSelectorActiveOrderId === null}
+                              textColor={t.textPrimary}
+                              borderColor={t.cardBorder}
                               style={[styles.premiumInput, { color: t.textPrimary }]}
                               placeholder="e.g. Phone, Laptop"
                               placeholderTextColor={t.textSecondary}
                               value={order.itemName}
-                              onChangeText={(text) => updateBulkOrderRow(order.id, 'itemName', text)}
+                              onChangeText={name => updateBulkOrderRow(order.id, 'itemName', name)}
                             />
                           </View>
 

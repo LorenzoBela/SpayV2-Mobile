@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   from: vi.fn(),
   fetch: vi.fn(),
   widgetUpdate: vi.fn(),
+  progress: vi.fn(),
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -44,12 +45,12 @@ vi.mock('../utils/authProfile', () => ({
 vi.mock('react-native', () => ({
   Platform: { OS: 'android' },
   NativeModules: { SpayWidgetModule: { updateWidgetData: state.widgetUpdate } },
-  DeviceEventEmitter: { emit: vi.fn() },
+  DeviceEventEmitter: { emit: state.progress },
 }));
 vi.mock('@react-native-community/netinfo', () => ({ default: { fetch: async () => ({ isConnected: true }) } }));
 
 import { getTrpcHeaders, setCachedImpersonatedUserId } from '../utils/trpc';
-import { callAdminApi, getExportLedgerCsv } from '../services/adminService';
+import { callAdminApi, fetchOrderItemSuggestions, getExportLedgerCsv } from '../services/adminService';
 import { getAdminIponData } from '../services/iponService';
 import { syncWidgetData } from '../utils/widgetSync';
 import { SPLIT_READER_UPGRADE_CODE } from '../utils/split-reader-contract';
@@ -95,6 +96,25 @@ describe('split reader transport integration', () => {
     state.getSession.mockResolvedValue({ data: { session: null } });
     setCachedImpersonatedUserId(null);
     expect(await getTrpcHeaders()).toEqual({ Authorization: '', 'x-spay-split-reader': '1' });
+  });
+
+  it('uses a quiet, cancellable suggestions request without fallback on denial', async () => {
+    setCachedImpersonatedUserId('target-client');
+    state.fetch.mockResolvedValueOnce(new Response('{}', { status: 403 }));
+    const { signal } = new AbortController();
+
+    expect(await fetchOrderItemSuggestions('phone', 'test-token', signal)).toBeUndefined();
+    expect(state.fetch).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/\/api\/admin\/orders\/item-suggestions$/), {
+      method: 'POST',
+      headers: expect.objectContaining({
+        Authorization: 'Bearer test-token',
+        'x-impersonate-user-id': 'target-client',
+      }),
+      body: JSON.stringify({ query: 'phone' }),
+      signal,
+    });
+    expect(state.dispatch).not.toHaveBeenCalled();
+    expect(state.progress).not.toHaveBeenCalled();
   });
 
   it('declares compatibility on admin REST fallback and retains upgrade failures', async () => {

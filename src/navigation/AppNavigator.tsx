@@ -1052,7 +1052,7 @@ export default function AppNavigator() {
         unsubscribeRealtime = undefined;
       }
       unsubscribeRealtime = subscribeToRealtimeNotifications(linkedProfileId, (notification) => {
-        if (nativeFcmRegisteredRef.current) return;
+        if (nativeFcmRegisteredRef.current && notification.type !== 'SALARY_ALERT') return;
         void mirrorToLocalTray(notification).catch(() => console.warn('[Notifications] Tray display unavailable.'));
       });
     };

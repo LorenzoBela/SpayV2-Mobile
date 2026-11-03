@@ -1,6 +1,6 @@
 import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../utils/supabase';
-import { trpcVanillaClient } from '../utils/trpc';
+import { getTrpcHeaders, trpcVanillaClient } from '../utils/trpc';
 import { SPLIT_READER_HEADERS } from '../utils/split-reader-contract';
 import {
   fetchNotifications,
@@ -14,6 +14,23 @@ const getApiUrl = () => {
   if (url) return url.replace(/\/$/, '');
   return 'https://nootspaytracker.vercel.app';
 };
+
+export async function fetchOrderItemSuggestions(
+  query: string, token: string, signal: AbortSignal,
+): Promise<string[] | undefined> {
+  const headers = await getTrpcHeaders();
+  if (signal.aborted || headers.Authorization !== `Bearer ${token}`) return;
+
+  const response = await fetch(`${getApiUrl()}/api/admin/orders/item-suggestions`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+    signal,
+  });
+  if (!response.ok) return;
+  const { names } = await response.json() as { names: string[] };
+  return names;
+}
 
 export const ADMIN_QUERY_OPTIONS = {
   staleTime: 5 * 60 * 1000,
