@@ -62,9 +62,10 @@ import {
 import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import AdminErrorBanner from '../../components/AdminErrorBanner';
 import PremiumLoader from '../../components/PremiumLoader';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
-import { fetchAdminOrders, callAdminApi } from '../../services/adminService';
+import { fetchAdminActionOrThrow, callAdminApi } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -360,23 +361,27 @@ export default function AdminOrdersScreen() {
   const PAGE_SIZE = 6;
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: ordersData, isLoading: loading, error: queryError, refetch } = useQuery({
+  const { data: ordersData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-orders', 'monthly-shares-v1', currentPage, searchQuery, activeTab, filterMonthKey],
-    queryFn: () => fetchAdminOrders({
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-orders', {
       page: currentPage,
       pageSize: PAGE_SIZE,
       searchQuery,
       status: activeTab,
       filterMonthKey: filterMonthKey || undefined,
-    }),
+    }, signal),
     staleTime: 30000,
     placeholderData: keepPreviousData,
   });
 
-  const error = queryError ? (queryError as Error).message : (ordersData && !ordersData.success ? ordersData.error : null);
+  const hasOrdersData = Boolean(ordersData && ordersData.success !== false);
+  const error = queryError
+    ? (queryError as Error).message
+    : (ordersData && ordersData.success === false ? (ordersData.error || 'Failed to load orders.') : null);
+  const showBlockingLoader = !hasOrdersData && (loading || isFetching || Boolean(error));
 
   useEffect(() => {
-    if (loading) {
+    if (showBlockingLoader) {
       hideTabBar();
     } else {
       showTabBar();
@@ -384,13 +389,13 @@ export default function AdminOrdersScreen() {
     return () => {
       showTabBar();
     };
-  }, [loading, hideTabBar, showTabBar]);
+  }, [showBlockingLoader, hideTabBar, showTabBar]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.allSettled([
-        refetch(),
+        refetch({ cancelRefetch: true }),
       ]);
     } catch (err) {
       console.warn('AdminOrders pull-to-refresh error:', err);
@@ -803,13 +808,13 @@ export default function AdminOrdersScreen() {
     />
   ), [viewMode, t, isDarkMode, handleOrderPress]);
 
-  if (loading && !ordersData) {
+  if (showBlockingLoader) {
     return (
       <PremiumLoader
         title="Orders"
         subtitle="Loading orders and records..."
-        error={error}
-        onRetry={() => refetch()}
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
       />
     );
   }
@@ -899,6 +904,8 @@ export default function AdminOrdersScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
+        <AdminErrorBanner error={error} onRetry={() => refetch({ cancelRefetch: true })} />
+
         {/* Collapsible Monthly Orders Breakdown */}
         {monthlyOrdersBreakdown.length > 0 && (
           <View style={[styles.breakdownCollapsibleCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder, marginBottom: 12 }]}>

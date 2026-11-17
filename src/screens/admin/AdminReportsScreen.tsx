@@ -56,8 +56,9 @@ import {
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
+import AdminErrorBanner from '../../components/AdminErrorBanner';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAdminReports, fetchAdminClients, getExportLedgerCsv, callAdminApi } from '../../services/adminService';
+import { fetchAdminActionOrThrow, getExportLedgerCsv, callAdminApi } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -149,31 +150,35 @@ export default function AdminReportsScreen() {
 
   const queryClient = useQueryClient();
 
-  const { data: reportsData, isLoading: loading, error: queryError, refetch } = useQuery({
+  const { data: reportsData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-reports', { allTime, startMonth, startYear, endMonth, endYear }],
-    queryFn: () => fetchAdminReports({ allTime, startMonth, startYear, endMonth, endYear }),
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-reports', { allTime, startMonth, startYear, endMonth, endYear }, signal),
     staleTime: 30000,
     placeholderData: keepPreviousData,
   });
 
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
-    queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+    queryFn: ({ signal }) => fetchAdminActionOrThrow('fetch-admin-clients', { page: 1, pageSize: 1000 }, signal),
     staleTime: 30000,
   });
 
-  const { data: clientAnalyticsData, isLoading: loadingClient } = useQuery({
+  const { data: clientAnalyticsData, isLoading: loadingClient, error: clientAnalyticsError, refetch: refetchClientAnalytics } = useQuery({
     queryKey: ['admin-client-analytics', selectedClientId],
-    queryFn: () => callAdminApi('get-client-analytics', { clientId: selectedClientId }),
+    queryFn: ({ signal }) => fetchAdminActionOrThrow('get-client-analytics', { clientId: selectedClientId }, signal),
     enabled: !!selectedClientId,
     staleTime: 30000,
   });
 
   const allProfiles = clientsSelectionData?.clients || [];
-  const error = queryError ? (queryError as Error).message : null;
+  const hasReportsData = Boolean(reportsData && reportsData.success !== false);
+  const error = queryError
+    ? (queryError as Error).message
+    : (reportsData && reportsData.success === false ? (reportsData.error || 'Failed to load reports.') : null);
+  const showBlockingLoader = !hasReportsData && (loading || isFetching || Boolean(error));
 
   useEffect(() => {
-    if (loading) {
+    if (showBlockingLoader) {
       hideTabBar();
     } else {
       showTabBar();
@@ -181,11 +186,11 @@ export default function AdminReportsScreen() {
     return () => {
       showTabBar();
     };
-  }, [loading, hideTabBar, showTabBar]);
+  }, [showBlockingLoader, hideTabBar, showTabBar]);
 
   const loadData = async (showLoader?: boolean) => {
     await Promise.allSettled([
-      refetch(),
+      refetch({ cancelRefetch: true }),
       queryClient.invalidateQueries({ queryKey: ['admin-clients-selection'] })
     ]);
   };
@@ -549,13 +554,13 @@ export default function AdminReportsScreen() {
     }
   };
 
-  if (loading && !reportsData) {
+  if (showBlockingLoader) {
     return (
       <PremiumLoader
         title="Reports & Analytics"
         subtitle="Preparing reports and analytics..."
-        error={error}
-        onRetry={() => loadData()}
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
       />
     );
   }
@@ -622,6 +627,14 @@ export default function AdminReportsScreen() {
         scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
+        <AdminErrorBanner
+          error={error || (clientAnalyticsError ? (clientAnalyticsError as Error).message : null)}
+          onRetry={() => {
+            if (error) refetch({ cancelRefetch: true });
+            if (clientAnalyticsError && selectedClientId) refetchClientAnalytics({ cancelRefetch: true });
+          }}
+        />
+
         {/* KPI Container (Symmetrical Premium Layout) */}
         <View style={styles.kpiContainer}>
           {/* Card 1: Financial Health Score Hero Card */}

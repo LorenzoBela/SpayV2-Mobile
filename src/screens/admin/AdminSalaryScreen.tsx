@@ -50,11 +50,16 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
+import AdminErrorBanner from '../../components/AdminErrorBanner';
 import CountdownTimer from '../../components/CountdownTimer';
 import { parseUtcDate } from '../../utils/date';
 import { PremiumAlert } from '../../services/PremiumAlertService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { storage } from '../../utils/queryPersister';
+import { getSessionWithTimeout } from '../../utils/authProfile';
+import { withDeadline } from '../../utils/networkResilience';
 import {
-  getSalaryData,
+  normalizeSalaryPayload,
   updateSalarySettings,
   confirmPaycheck,
   addJobHistory,
@@ -62,6 +67,70 @@ import {
   SalaryPaycheckRecord,
   JobHistoryRecord,
 } from '../../services/salaryService';
+
+const SALARY_CACHE_KEY = '@salary_data_cache';
+
+export function readCachedSalaryData(): SalaryDataPayload | undefined {
+  try {
+    const raw = storage.getString(SALARY_CACHE_KEY);
+    return raw ? normalizeSalaryPayload(JSON.parse(raw)) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function fetchSalaryDataOrThrow(signal?: AbortSignal): Promise<SalaryDataPayload> {
+  if (signal?.aborted) {
+    const err = new Error(typeof signal.reason === 'string' ? signal.reason : 'Aborted');
+    err.name = 'AbortError';
+    throw err;
+  }
+  return withDeadline(
+    async (attemptSignal) => {
+      const session = await getSessionWithTimeout(5000, attemptSignal);
+      if (attemptSignal.aborted) {
+        const err = new Error('Aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim()?.replace(/\/$/, '') || 'https://nootspaytracker.vercel.app';
+      const response = await fetch(`${apiUrl}/api/admin/salary`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+        },
+        signal: attemptSignal,
+      });
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        let errMsg = `Failed to fetch salary data (${response.status})`;
+        try {
+          const parsed = JSON.parse(errText);
+          errMsg = parsed?.error || parsed?.message || errMsg;
+        } catch {
+          if (errText) errMsg = `${errMsg}: ${errText.slice(0, 100)}`;
+        }
+        const err = new Error(errMsg) as Error & { status?: number };
+        err.status = response.status;
+        throw err;
+      }
+      const result = await response.json();
+      const freshData = result?.data ?? result;
+      if (!freshData) {
+        throw new Error('Failed to fetch salary data.');
+      }
+      const normalized = normalizeSalaryPayload(freshData);
+      try {
+        storage.set(SALARY_CACHE_KEY, JSON.stringify(normalized));
+      } catch {}
+      return normalized;
+    },
+    10000,
+    signal,
+    'Admin salary',
+  );
+}
 
 interface CountdownTime {
   days: number;
@@ -284,9 +353,34 @@ export default function AdminSalaryScreen() {
   const insets = useSafeAreaInsets();
   const scrollHandler = useTabBarScroll();
 
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const cachedSalaryData = React.useMemo(() => readCachedSalaryData(), []);
   const [refreshing, setRefreshing] = useState(false);
-  const [salaryData, setSalaryData] = useState<SalaryDataPayload | null>(null);
+
+  const {
+    data: salaryData,
+    isLoading: loading,
+    isFetching,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ['admin-salary'],
+    queryFn: ({ signal }) => fetchSalaryDataOrThrow(signal),
+    staleTime: 30000,
+    ...(cachedSalaryData ? { initialData: cachedSalaryData, initialDataUpdatedAt: 0 } : {}),
+  });
+
+  const error = queryError ? (queryError as Error).message : null;
+  const hasSalaryData = Boolean(salaryData);
+  const showBlockingLoader = !hasSalaryData && (loading || isFetching || Boolean(error));
+
+  const updateSalaryCache = useCallback((updated: SalaryDataPayload) => {
+    const normalized = normalizeSalaryPayload(updated);
+    queryClient.setQueryData(['admin-salary'], normalized);
+    try {
+      storage.set(SALARY_CACHE_KEY, JSON.stringify(normalized));
+    } catch {}
+  }, [queryClient]);
 
   // Modals state
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
@@ -318,26 +412,16 @@ export default function AdminSalaryScreen() {
 
 
 
-  const loadData = useCallback(async () => {
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const data = await getSalaryData();
-      setSalaryData(data);
-    } catch (err: any) {
-      console.error('[AdminSalaryScreen] Failed to load salary data:', err);
+      await refetch({ cancelRefetch: true });
+    } catch (err) {
+      console.warn('[AdminSalaryScreen] Refresh error:', err);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadData();
-  }, [loadData]);
+  }, [refetch]);
 
 
 
@@ -362,7 +446,7 @@ export default function AdminSalaryScreen() {
         deductionsNum,
         deductionsReasonInput
       );
-      setSalaryData(updated);
+      updateSalaryCache(updated);
       setConfirmModalVisible(false);
       PremiumAlert.alert('Paycheck Confirmed', 'The paycheck has been recorded in your confirmed earnings ledger.');
     } catch (err: any) {
@@ -401,7 +485,7 @@ export default function AdminSalaryScreen() {
         endDate: endDateInput.trim() || null,
         promotionNote: promotionNoteInput.trim() || undefined,
       });
-      setSalaryData(updated);
+      updateSalaryCache(updated);
       setJobModalVisible(false);
       PremiumAlert.alert('Role Logged', 'Position and salary raise record logged successfully.');
     } catch (err: any) {
@@ -440,7 +524,7 @@ export default function AdminSalaryScreen() {
         frequency: settingsFrequency,
         customPayday: settingsFrequency === 'CUSTOM' ? settingsCustomPayday.trim() : null,
       });
-      setSalaryData(updated);
+      updateSalaryCache(updated);
       setSettingsModalVisible(false);
       PremiumAlert.alert('Settings Saved', 'Salary profile and pay cycle frequency updated successfully.');
     } catch (err: any) {
@@ -477,8 +561,15 @@ export default function AdminSalaryScreen() {
     modalOverlay: 'rgba(0, 0, 0, 0.7)',
   };
 
-  if (loading) {
-    return <PremiumLoader title="Loading Salary" subtitle="Preparing salary breakdown..." />;
+  if (showBlockingLoader) {
+    return (
+      <PremiumLoader
+        title="Loading Salary"
+        subtitle="Preparing salary breakdown..."
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
+      />
+    );
   }
 
   const tax = salaryData?.taxBreakdown;
@@ -543,6 +634,8 @@ export default function AdminSalaryScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <AdminErrorBanner error={error} onRetry={() => refetch({ cancelRefetch: true })} />
+
         {/* 1. 3D FLIP PAYDAY COUNTDOWN HERO */}
         <Animated.View
           style={[

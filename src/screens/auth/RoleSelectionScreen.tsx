@@ -26,7 +26,12 @@ import {
   LayoutDashboard,
   Sparkles,
 } from 'lucide-react-native';
-import { getLinkedProfileForUser, getSessionWithTimeout } from '../../utils/authProfile';
+import {
+  getCachedUserProfile,
+  getLinkedProfileForUser,
+  getSessionWithTimeout,
+  setCachedUserProfile,
+} from '../../utils/authProfile';
 import { retryWithJitter } from '../../utils/networkResilience';
 import PremiumLoader from '../../components/PremiumLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -91,10 +96,26 @@ const RoleClock = React.memo(function RoleClock({ isDarkMode }: { isDarkMode: bo
 
 export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSelectionScreenProps) {
   const layout = useResponsiveLayout();
-  const [userName, setUserName] = useState('Administrator');
-  const [userPhoto, setUserPhoto] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialCacheRef = useRef<ReturnType<typeof getCachedUserProfile> | undefined>(undefined);
+  if (initialCacheRef.current === undefined) {
+    initialCacheRef.current = getCachedUserProfile();
+  }
+  const cachedProfile = initialCacheRef.current;
+  const hasWarmAdminCache = Boolean(
+    cachedProfile &&
+      cachedProfile.role === 'ADMIN' &&
+      typeof cachedProfile.name === 'string' &&
+      cachedProfile.name.trim().length > 0,
+  );
+  const [userName, setUserName] = useState(() =>
+    hasWarmAdminCache && cachedProfile?.name ? cachedProfile.name : 'Administrator',
+  );
+  const [userPhoto, setUserPhoto] = useState<string | null>(() =>
+    hasWarmAdminCache && cachedProfile?.avatarUrl ? cachedProfile.avatarUrl : null,
+  );
+  const [loading, setLoading] = useState(() => !hasWarmAdminCache);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const hasVisibleUiRef = useRef(hasWarmAdminCache);
   const abortRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
   const onSelectRoleRef = useRef(onSelectRole);
@@ -113,21 +134,26 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setLoading(true);
-    setFetchError(null);
+    const isSilentRefresh = !force && hasVisibleUiRef.current;
+    if (!isSilentRefresh) {
+      setLoading(true);
+      setFetchError(null);
+    }
     try {
       const session = await getSessionWithTimeout(5000, controller.signal);
       const user = session?.user;
       if (!isMountedRef.current || controller.signal.aborted) return;
 
       if (!user) {
-        setFetchError('Session unavailable. Please try again.');
+        if (!isSilentRefresh) {
+          setFetchError('Session unavailable. Please try again.');
+        }
         return;
       }
 
-      const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
-      if (photoUrl) {
-        setUserPhoto(photoUrl);
+      const metadataPhotoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
+      if (metadataPhotoUrl) {
+        setUserPhoto(metadataPhotoUrl);
       }
 
       const data = await retryWithJitter(
@@ -151,17 +177,36 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
         return;
       }
 
-      if (data?.name) {
-        setUserName(data.name);
-      } else if (user.user_metadata?.full_name) {
-        setUserName(user.user_metadata.full_name);
+      const resolvedName = data?.name || user.user_metadata?.full_name || user.user_metadata?.name || null;
+      const resolvedPhoto =
+        (data as any)?.avatar_url || (data as any)?.avatarUrl || metadataPhotoUrl || null;
+      if (resolvedName) {
+        setUserName(resolvedName);
+      }
+      if (resolvedPhoto) {
+        setUserPhoto(resolvedPhoto);
+      }
+      hasVisibleUiRef.current = true;
+
+      const existingCache = getCachedUserProfile(user.id);
+      if (existingCache || resolvedName) {
+        setCachedUserProfile({
+          authUserId: user.id,
+          role: 'ADMIN',
+          linkedProfileId: existingCache?.linkedProfileId || data?.id || user.id,
+          ...(existingCache?.theme ? { theme: existingCache.theme } : {}),
+          name: resolvedName ?? existingCache?.name ?? null,
+          avatarUrl: resolvedPhoto ?? existingCache?.avatarUrl ?? null,
+        });
       }
     } catch (error: any) {
       if (!isMountedRef.current || controller.signal.aborted || error?.name === 'AbortError') return;
       console.warn('Failed to load user info:', error);
-      setFetchError(error?.message || 'Failed to retrieve profile data.');
+      if (!isSilentRefresh) {
+        setFetchError(error?.message || 'Failed to retrieve profile data.');
+      }
     } finally {
-      if (isMountedRef.current && !controller.signal.aborted) {
+      if (isMountedRef.current && !controller.signal.aborted && !isSilentRefresh) {
         setLoading(false);
       }
     }
@@ -205,11 +250,12 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
 
   const firstName = userName.split(' ')[0] || 'Admin';
 
-  const [showOverlay, setShowOverlay] = useState(true);
-  const overlayOpacity = useRef(new Animated.Value(1)).current;
+  const [showOverlay, setShowOverlay] = useState(() => !hasWarmAdminCache);
+  const overlayOpacity = useRef(new Animated.Value(hasWarmAdminCache ? 0 : 1)).current;
 
   useEffect(() => {
     if (!loading && !fetchError) {
+      if (!showOverlay) return;
       Animated.timing(overlayOpacity, {
         toValue: 0,
         duration: 350,
@@ -221,7 +267,7 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
       setShowOverlay(true);
       overlayOpacity.setValue(1);
     }
-  }, [loading, fetchError]);
+  }, [loading, fetchError, showOverlay]);
 
   const { isDarkMode } = useContext(ThemeContext);
   const containerBg = isDarkMode ? '#000000' : '#f8fafc';

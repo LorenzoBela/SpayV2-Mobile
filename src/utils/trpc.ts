@@ -26,23 +26,31 @@ export const setCachedImpersonatedUserId = (id: string | null) => {
 export const getCachedImpersonatedUserId = () => cachedImpersonatedUserId
 
 export const getTrpcHeaders = async () => {
+  let getCachedTokenFn: (() => string | null) | undefined
   let getSessionFn: typeof getSessionWithTimeout | undefined
   try {
-    getSessionFn = (authProfileNamespace as Record<string, any>).getSessionWithTimeout
+    const authProfileMod = authProfileNamespace as Record<string, any>
+    getCachedTokenFn = authProfileMod.getCachedAccessToken
+    getSessionFn = authProfileMod.getSessionWithTimeout
   } catch {
-    // Partial Vitest mocks of authProfile may omit getSessionWithTimeout.
+    // Partial Vitest mocks of authProfile may omit helpers.
   }
-  const session = typeof getSessionFn === 'function'
-    ? await getSessionFn(3000)
-    : await withDeadline(
-        async () => {
-          const res = await supabase.auth.getSession()
-          return res?.data?.session ?? null
-        },
-        3000,
-        undefined,
-        'trpc.getSession',
-      )
+
+  let accessToken = typeof getCachedTokenFn === 'function' ? getCachedTokenFn() : null
+  if (!accessToken) {
+    const session = typeof getSessionFn === 'function'
+      ? await getSessionFn(3000)
+      : await withDeadline(
+          async () => {
+            const res = await supabase.auth.getSession()
+            return res?.data?.session ?? null
+          },
+          3000,
+          undefined,
+          'trpc.getSession',
+        )
+    accessToken = session?.access_token ?? null
+  }
   
   if (cachedImpersonatedUserId === undefined) {
     try {
@@ -64,7 +72,7 @@ export const getTrpcHeaders = async () => {
 
   return {
     ...SPLIT_READER_HEADERS,
-    Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+    Authorization: accessToken ? `Bearer ${accessToken}` : '',
     ...(cachedImpersonatedUserId ? { 'x-impersonate-user-id': cachedImpersonatedUserId } : {}),
   }
 }

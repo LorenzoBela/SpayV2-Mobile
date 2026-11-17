@@ -1,14 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), cached: null as string | null, getSession: vi.fn() }));
+const state = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), cached: null as string | null, set: vi.fn(), getSession: vi.fn() }));
 vi.mock('./supabase', () => ({ supabase: { rpc: state.rpc, from: state.from, auth: { getSession: state.getSession } }, expoSecureStorage: { getItem: async () => null } }));
-vi.mock('./queryPersister', () => ({ storage: { getString: () => state.cached, set: vi.fn() } }));
+vi.mock('./queryPersister', () => ({
+  storage: {
+    getString: () => state.cached,
+    set: (key: string, value: string) => {
+      state.set(key, value);
+      if (key === 'cached_user_profile') state.cached = value;
+    },
+  },
+}));
 import {
   getLinkedProfileForUser,
   getLinkedProfileForCurrentUser,
   primeCurrentUserProfile,
   clearMemoryProfileCache,
   getCachedUserProfile,
+  setCachedUserProfile,
+  setCachedAuthSession,
+  getCachedAccessToken,
   getSessionWithTimeout,
 } from './authProfile';
 
@@ -130,5 +141,63 @@ describe('startup profile request coalescing', () => {
     const timeoutAssert = expect(hungReq).rejects.toMatchObject({ name: 'TimeoutError' });
     await vi.advanceTimersByTimeAsync(6000);
     await timeoutAssert;
+  });
+
+  it('persists and restores optional name and avatarUrl in CachedUserProfile', async () => {
+    const adminCache = {
+      authUserId: 'admin-1',
+      linkedProfileId: 'admin-profile-1',
+      role: 'ADMIN',
+      theme: 'dark',
+      name: 'Lorenzo Bela',
+      avatarUrl: 'https://cdn.example.com/avatar.png',
+    };
+    setCachedUserProfile(adminCache);
+    expect(getCachedUserProfile('admin-1')).toEqual(adminCache);
+
+    clearMemoryProfileCache();
+    state.cached = null;
+    state.getSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'tok-1',
+          expires_at: Math.floor(Date.now() / 1000) + 300,
+          user: {
+            id: 'admin-2',
+            email: 'admin2@example.com',
+            user_metadata: { avatar_url: 'https://cdn.example.com/meta.png' },
+          },
+        },
+      },
+      error: null,
+    });
+    state.rpc.mockReturnValueOnce({
+      maybeSingle: async () => ({
+        data: { id: 'linked-2', email: 'admin2@example.com', name: 'Admin Two', role: 'ADMIN' },
+        error: null,
+      }),
+    });
+
+    await getLinkedProfileForCurrentUser();
+    expect(getCachedUserProfile('admin-2')).toEqual({
+      authUserId: 'admin-2',
+      linkedProfileId: 'linked-2',
+      role: 'ADMIN',
+      name: 'Admin Two',
+      avatarUrl: 'https://cdn.example.com/meta.png',
+    });
+  });
+
+  it('caches valid access tokens in RAM, enforces 30s expiry buffer, and clears on sign-out', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    setCachedAuthSession({ access_token: 'fresh-token', expires_at: nowSec + 120 });
+    expect(getCachedAccessToken()).toBe('fresh-token');
+
+    setCachedAuthSession({ access_token: 'expiring-token', expires_at: nowSec + 20 });
+    expect(getCachedAccessToken()).toBeNull();
+
+    setCachedAuthSession({ access_token: 'fresh-token', expires_at: nowSec + 120 });
+    clearMemoryProfileCache();
+    expect(getCachedAccessToken()).toBeNull();
   });
 });

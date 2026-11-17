@@ -34,7 +34,15 @@ import { getPersistedTheme, savePersistedTheme, syncStartupTheme, resolveIsDark,
 
 import { supabase } from '../utils/supabase';
 import { posthog } from '../utils/posthog';
-import { getLinkedProfileForUser, getCachedUserProfile, clearMemoryProfileCache, primeCurrentUserProfile, getSessionWithTimeout } from '../utils/authProfile';
+import {
+  getLinkedProfileForUser,
+  getCachedUserProfile,
+  setCachedUserProfile,
+  setCachedAuthSession,
+  clearMemoryProfileCache,
+  primeCurrentUserProfile,
+  getSessionWithTimeout,
+} from '../utils/authProfile';
 import { isRetryableNetworkError, retryWithJitter, subscribeReconnect } from '../utils/networkResilience';
 import { syncWidgetData } from '../utils/widgetSync';
 import { useImpersonation } from '../context/ImpersonationContext';
@@ -134,43 +142,49 @@ const AdminTab = createBottomTabNavigator<AdminTabParamList>();
 
 const withClientTabGesture = (
   routeName: ClientVisibleTabName,
-  ScreenComponent: React.ComponentType<any>,
+  getScreenComponent: () => React.ComponentType<any>,
 ) => {
-  const GestureWrappedClientTab = (props: any) => (
-    <ClientTabGestureSurface routeName={routeName}>
-      <ScreenComponent {...props} />
-    </ClientTabGestureSurface>
-  );
+  const GestureWrappedClientTab = (props: any) => {
+    const ScreenComponent = getScreenComponent();
+    return (
+      <ClientTabGestureSurface routeName={routeName}>
+        <ScreenComponent {...props} />
+      </ClientTabGestureSurface>
+    );
+  };
 
   GestureWrappedClientTab.displayName = `${routeName}GestureScreen`;
   return GestureWrappedClientTab;
 };
 
-const DashboardGestureScreen = withClientTabGesture('Dashboard', DashboardScreen);
-const OrdersGestureScreen = withClientTabGesture('Orders', OrdersScreen);
-const PaymentsGestureScreen = withClientTabGesture('Payments', PaymentsScreen);
-const NotificationsGestureScreen = withClientTabGesture('Notifications', NotificationsScreen);
-const MoreGestureScreen = withClientTabGesture('More', MoreScreen);
+const DashboardGestureScreen = withClientTabGesture('Dashboard', () => DashboardScreen);
+const OrdersGestureScreen = withClientTabGesture('Orders', () => OrdersScreen);
+const PaymentsGestureScreen = withClientTabGesture('Payments', () => PaymentsScreen);
+const NotificationsGestureScreen = withClientTabGesture('Notifications', () => NotificationsScreen);
+const MoreGestureScreen = withClientTabGesture('More', () => MoreScreen);
 
 const withAdminTabGesture = (
   routeName: any,
-  ScreenComponent: React.ComponentType<any>,
+  getScreenComponent: () => React.ComponentType<any>,
 ) => {
-  const GestureWrappedAdminTab = (props: any) => (
-    <ClientTabGestureSurface routeName={routeName}>
-      <ScreenComponent {...props} />
-    </ClientTabGestureSurface>
-  );
+  const GestureWrappedAdminTab = (props: any) => {
+    const ScreenComponent = getScreenComponent();
+    return (
+      <ClientTabGestureSurface routeName={routeName}>
+        <ScreenComponent {...props} />
+      </ClientTabGestureSurface>
+    );
+  };
 
   GestureWrappedAdminTab.displayName = `${routeName}GestureScreen`;
   return GestureWrappedAdminTab;
 };
 
-const AdminDashboardGestureScreen = withAdminTabGesture('AdminDashboard', AdminDashboardScreen);
-const AdminClientsGestureScreen = withAdminTabGesture('AdminClients', AdminClientsScreen);
-const AdminOrdersGestureScreen = withAdminTabGesture('AdminOrders', AdminOrdersScreen);
-const AdminPaymentsGestureScreen = withAdminTabGesture('AdminPayments', AdminPaymentsScreen);
-const AdminMoreGestureScreen = withAdminTabGesture('AdminMore', AdminMoreScreen);
+const AdminDashboardGestureScreen = withAdminTabGesture('AdminDashboard', () => AdminDashboardScreen);
+const AdminClientsGestureScreen = withAdminTabGesture('AdminClients', () => AdminClientsScreen);
+const AdminOrdersGestureScreen = withAdminTabGesture('AdminOrders', () => AdminOrdersScreen);
+const AdminPaymentsGestureScreen = withAdminTabGesture('AdminPayments', () => AdminPaymentsScreen);
+const AdminMoreGestureScreen = withAdminTabGesture('AdminMore', () => AdminMoreScreen);
 
 // Auth Navigator
 const AuthNavigator = () => (
@@ -459,7 +473,7 @@ const MainNavigator = () => {
       <Tab.Screen name="More" component={MoreGestureScreen} />
       <Tab.Screen
         name="Budget"
-        component={BudgetScreen}
+        getComponent={() => BudgetScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -468,7 +482,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="Reports"
-        component={ReportsScreen}
+        getComponent={() => ReportsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -477,7 +491,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="Settings"
-        component={SettingsScreen}
+        getComponent={() => SettingsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -485,7 +499,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="Calendar"
-        component={CalendarScreen}
+        getComponent={() => CalendarScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -494,7 +508,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="NootAi"
-        component={NootAiScreen}
+        getComponent={() => NootAiScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -503,7 +517,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="ClientMilestones"
-        component={ClientMilestonesScreen}
+        getComponent={() => ClientMilestonesScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -511,7 +525,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="Wishlist"
-        component={WishlistScreen}
+        getComponent={() => WishlistScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -520,7 +534,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="RequestBuy"
-        component={RequestBuyScreen}
+        getComponent={() => RequestBuyScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -529,7 +543,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="MyRequests"
-        component={RequestBuyScreen}
+        getComponent={() => RequestBuyScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -578,7 +592,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminReminders"
-        component={AdminRemindersScreen}
+        getComponent={() => AdminRemindersScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -587,7 +601,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminReports"
-        component={AdminReportsScreen}
+        getComponent={() => AdminReportsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -596,7 +610,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminSettings"
-        component={AdminSettingsScreen}
+        getComponent={() => AdminSettingsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -604,7 +618,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminNotifications"
-        component={AdminNotificationsScreen}
+        getComponent={() => AdminNotificationsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -613,7 +627,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminMilestones"
-        component={AdminMilestonesScreen}
+        getComponent={() => AdminMilestonesScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -622,7 +636,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminSalary"
-        component={AdminSalaryScreen}
+        getComponent={() => AdminSalaryScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -631,7 +645,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminExpenses"
-        component={AdminExpensesScreen}
+        getComponent={() => AdminExpensesScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -640,7 +654,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminIpon"
-        component={AdminIponScreen}
+        getComponent={() => AdminIponScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -649,7 +663,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminSystemHealth"
-        component={AdminSystemHealthScreen}
+        getComponent={() => AdminSystemHealthScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -658,7 +672,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="AdminRequests"
-        component={AdminRequestsScreen}
+        getComponent={() => AdminRequestsScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -667,7 +681,7 @@ const AdminNavigator = () => {
       />
       <AdminTab.Screen
         name="NootAi"
-        component={NootAiScreen}
+        getComponent={() => NootAiScreen}
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
@@ -683,17 +697,38 @@ export default function AppNavigator() {
   const { impersonatedUser, isImpersonating } = useImpersonation();
 
   const [session, setSession] = useState<Session | null>(null);
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(null);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(() => {
+    try {
+      const cached = storage.getString(ONBOARDING_COMPLETED_KEY);
+      if (cached === 'true') return true;
+      if (cached === 'false') return false;
+    } catch {
+      // Fall back to AsyncStorage read below
+    }
+    return null;
+  });
 
   useEffect(() => {
+    if (hasCompletedOnboarding === true) return;
+    let cancelled = false;
     AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY)
       .then((val) => {
-        setHasCompletedOnboarding(val === 'true');
+        if (cancelled) return;
+        const completed = val === 'true';
+        setHasCompletedOnboarding(completed);
+        try {
+          storage.set(ONBOARDING_COMPLETED_KEY, completed ? 'true' : 'false');
+        } catch {
+          // Non-fatal MMKV backfill failure
+        }
       })
       .catch(() => {
-        setHasCompletedOnboarding(true);
+        if (!cancelled) setHasCompletedOnboarding(true);
       });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [hasCompletedOnboarding]);
 
   // Enable application-wide mobile session inactivity tracking
   useMobileInactivity(Boolean(session));
@@ -840,6 +875,7 @@ export default function AppNavigator() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       sessionAbortRef.current?.abort();
+      setCachedAuthSession(session);
       setSession(session);
       setSessionError(null);
       setLoading(false);
@@ -928,9 +964,19 @@ export default function AppNavigator() {
       setProfileLoading(false);
       accountReady = true;
       try {
-        storage.set('cached_user_profile', JSON.stringify({
-          authUserId: user.id, role, linkedProfileId: targetId, theme: getPersistedTheme(),
-        }));
+        setCachedUserProfile({
+          authUserId: user.id,
+          role,
+          linkedProfileId: targetId,
+          theme: getPersistedTheme(),
+          name: data?.name ?? user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+          avatarUrl:
+            (data as any)?.avatar_url ??
+            (data as any)?.avatarUrl ??
+            user.user_metadata?.avatar_url ??
+            user.user_metadata?.picture ??
+            null,
+        });
       } catch (error) {
         console.warn('[AppNavigator] Failed to cache account profile:', error);
       }
@@ -1257,7 +1303,14 @@ export default function AppNavigator() {
   if (hasCompletedOnboarding === false) {
     return (
       <OnboardingScreen
-        onComplete={() => setHasCompletedOnboarding(true)}
+        onComplete={() => {
+          try {
+            storage.set(ONBOARDING_COMPLETED_KEY, 'true');
+          } catch {
+            // Non-fatal MMKV write failure
+          }
+          setHasCompletedOnboarding(true);
+        }}
       />
     );
   }

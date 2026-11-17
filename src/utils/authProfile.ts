@@ -32,6 +32,8 @@ export type CachedUserProfile = {
   role: string;
   linkedProfileId: string;
   theme?: string;
+  name?: string | null;
+  avatarUrl?: string | null;
 };
 
 export function getCachedUserProfile(authUserId?: string): CachedUserProfile | null {
@@ -68,6 +70,40 @@ function withAbortSignal<T>(query: T, signal?: AbortSignal): T {
   return query;
 }
 
+type CachedAuthSession = {
+  accessToken: string;
+  expiresAtMs: number;
+};
+
+let cachedAuthSession: CachedAuthSession | null = null;
+
+/** Updates the synchronous RAM session cache used by hot-path request headers. */
+export function setCachedAuthSession(
+  session: Pick<Session, 'access_token' | 'expires_at'> | null | undefined,
+): void {
+  if (!session?.access_token) {
+    cachedAuthSession = null;
+    return;
+  }
+  const expiresAtMs =
+    typeof session.expires_at === 'number' && Number.isFinite(session.expires_at)
+      ? session.expires_at * 1000
+      : 0;
+  cachedAuthSession = {
+    accessToken: session.access_token,
+    expiresAtMs,
+  };
+}
+
+/** Returns the cached bearer token synchronously if valid for at least `minTtlMs`. */
+export function getCachedAccessToken(minTtlMs = 30_000): string | null {
+  if (!cachedAuthSession?.accessToken) return null;
+  if (cachedAuthSession.expiresAtMs - minTtlMs > Date.now()) {
+    return cachedAuthSession.accessToken;
+  }
+  return null;
+}
+
 /** Reads the Supabase session under a hard deadline so storage stalls never hang startup. */
 export async function getSessionWithTimeout(
   timeoutMs = 5000,
@@ -79,7 +115,9 @@ export async function getSessionWithTimeout(
       if (res?.error && !res?.data?.session) {
         throw res.error;
       }
-      return res?.data?.session ?? null;
+      const session = res?.data?.session ?? null;
+      setCachedAuthSession(session);
+      return session;
     },
     timeoutMs,
     signal,
@@ -184,6 +222,7 @@ export function clearMemoryProfileCache(): void {
   profileCacheGeneration += 1;
   pendingProfiles.clear();
   memoryProfileCache = null;
+  cachedAuthSession = null;
 }
 
 export async function getLinkedProfileForCurrentUser() {
@@ -235,6 +274,7 @@ export async function getLinkedProfileForCurrentUser() {
         );
         if (refreshed) {
           session = refreshed;
+          setCachedAuthSession(refreshed);
         }
       } catch (refreshErr) {
         console.warn('[AuthProfile] Failed to refresh expired session:', refreshErr);
@@ -265,10 +305,19 @@ export async function getLinkedProfileForCurrentUser() {
   primeCurrentUserProfile(user.id, profile);
 
   if (profile) {
+    const existingCache = getCachedUserProfile(user.id);
     setCachedUserProfile({
       authUserId: user.id,
       role: profile.role || 'CLIENT',
       linkedProfileId: profileId,
+      ...(existingCache?.theme ? { theme: existingCache.theme } : {}),
+      name: profile.name ?? user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+      avatarUrl:
+        profile.avatar_url ??
+        profile.avatarUrl ??
+        user.user_metadata?.avatar_url ??
+        user.user_metadata?.picture ??
+        null,
     });
   }
 

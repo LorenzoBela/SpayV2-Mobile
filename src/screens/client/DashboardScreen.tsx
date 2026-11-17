@@ -955,18 +955,24 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  // User Profile effect
+  // User Profile & shared credit limits parallel startup fetch
   useEffect(() => {
-    getLinkedProfileForCurrentUser().then(({ user, profile }) => {
-      if (user) {
+    let active = true;
+    void fetchGlobalLimits();
+    getLinkedProfileForCurrentUser()
+      .then(({ user, profile }) => {
+        if (!active || !user) return;
         const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
         const profileEmail = profile?.email || user.email || 'client@spay.com';
         const photoUrl = (profile as any)?.avatar_url || (profile as any)?.avatarUrl || user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
         setUserName(profileName);
         setUserEmail(profileEmail);
         setUserPhoto(photoUrl);
-      }
-    });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [fetchGlobalLimits]);
 
   // Derive financial metrics, recent orders, payment countdowns, categories, and trends synchronously from query cache (0ms MMKV)
@@ -1179,7 +1185,6 @@ export default function DashboardScreen() {
     useCallback(() => {
       if (!hasFocusedDashboard.current) {
         hasFocusedDashboard.current = true;
-        void fetchGlobalLimits();
         return;
       }
       refetchDashboard({ cancelRefetch: false });

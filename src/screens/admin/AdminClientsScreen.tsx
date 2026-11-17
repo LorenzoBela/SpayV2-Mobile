@@ -46,11 +46,12 @@ import {
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import AdminHeader from '../../components/AdminHeader';
+import AdminErrorBanner from '../../components/AdminErrorBanner';
 import PremiumLoader from '../../components/PremiumLoader';
 import BiometricReAuthModal from '../../components/BiometricReAuthModal';
 import { PremiumAlert } from '../../services/PremiumAlertService';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
-import { fetchAdminClients, callAdminApi } from '../../services/adminService';
+import { fetchAdminActionOrThrow, callAdminApi } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -443,22 +444,26 @@ export default function AdminClientsScreen() {
     }));
   };
 
-  const { data: clientsData, isLoading: loading, error: queryError, refetch } = useQuery({
+  const { data: clientsData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-clients', currentPage, searchQuery, activeTab],
-    queryFn: () => fetchAdminClients({
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-clients', {
       page: currentPage,
       pageSize: PAGE_SIZE,
       searchQuery,
-      status: activeTab
-    }),
+      status: activeTab,
+    }, signal),
     staleTime: 30000,
     placeholderData: keepPreviousData,
   });
 
-  const error = queryError ? (queryError as Error).message : (clientsData && !clientsData.success ? clientsData.error : null);
+  const hasClientsData = Boolean(clientsData && clientsData.success !== false);
+  const error = queryError
+    ? (queryError as Error).message
+    : (clientsData && clientsData.success === false ? (clientsData.error || 'Failed to load clients.') : null);
+  const showBlockingLoader = !hasClientsData && (loading || isFetching || Boolean(error));
 
   useEffect(() => {
-    if (loading) {
+    if (showBlockingLoader) {
       hideTabBar();
     } else {
       showTabBar();
@@ -466,13 +471,13 @@ export default function AdminClientsScreen() {
     return () => {
       showTabBar();
     };
-  }, [loading, hideTabBar, showTabBar]);
+  }, [showBlockingLoader, hideTabBar, showTabBar]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.allSettled([
-        refetch(),
+        refetch({ cancelRefetch: true }),
       ]);
     } catch (err) {
       console.warn('AdminClients pull-to-refresh error:', err);
@@ -726,13 +731,13 @@ export default function AdminClientsScreen() {
   const orderTotalPages = Math.max(1, Math.ceil(filteredOrders.length / ORDER_PAGE_SIZE));
   const paginatedOrders = filteredOrders.slice((orderPage - 1) * ORDER_PAGE_SIZE, orderPage * ORDER_PAGE_SIZE);
 
-  if (loading && !clientsData) {
+  if (showBlockingLoader) {
     return (
       <PremiumLoader
         title="Clients"
         subtitle="Loading client profiles..."
-        error={error}
-        onRetry={() => refetch()}
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
       />
     );
   }
@@ -788,6 +793,8 @@ export default function AdminClientsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
+        <AdminErrorBanner error={error} onRetry={() => refetch({ cancelRefetch: true })} />
+
         {/* KPI stats */}
         <View style={styles.statsRow}>
           <View style={[styles.miniStatCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>

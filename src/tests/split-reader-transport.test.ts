@@ -52,6 +52,8 @@ vi.mock('@react-native-community/netinfo', () => ({ default: { fetch: async () =
 import { getTrpcHeaders, setCachedImpersonatedUserId } from '../utils/trpc';
 import {
   callAdminApi,
+  fetchAdminActionOrThrow,
+  fetchAdminClients,
   fetchAdminDashboardOrThrow,
   fetchOrderItemSuggestions,
   getExportLedgerCsv,
@@ -203,5 +205,42 @@ describe('split reader transport integration', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(fetchAdminDashboardOrThrow(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('throws from fetchAdminActionOrThrow with preserved metadata and signal while keeping fetchAdminClients legacy contract', async () => {
+    const controller = new AbortController();
+    state.dispatch.mockResolvedValueOnce({ success: true, clients: [{ id: 'c1' }] });
+    await expect(
+      fetchAdminActionOrThrow('fetch-admin-clients', { page: 2, status: 'active' }, controller.signal),
+    ).resolves.toMatchObject({ success: true, clients: [{ id: 'c1' }] });
+    expect(state.dispatch).toHaveBeenLastCalledWith(
+      { action: 'fetch-admin-clients', page: 2, status: 'active' },
+      { signal: controller.signal },
+    );
+
+    state.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: SPLIT_READER_UPGRADE_CODE, error: 'Update Spay' }), { status: 426 }),
+    );
+    await expect(
+      fetchAdminActionOrThrow('fetch-admin-orders', { page: 1 }, controller.signal),
+    ).rejects.toMatchObject({ message: 'Update Spay', status: 426, code: SPLIT_READER_UPGRADE_CODE });
+    expect(state.fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+
+    const aborted = new AbortController();
+    aborted.abort();
+    const callsBeforeAbort = state.dispatch.mock.calls.length;
+    await expect(fetchAdminActionOrThrow('fetch-admin-payments', { page: 1 }, aborted.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(state.dispatch).toHaveBeenCalledTimes(callsBeforeAbort);
+
+    state.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: SPLIT_READER_UPGRADE_CODE, error: 'Update Spay' }), { status: 426 }),
+    );
+    await expect(fetchAdminClients({ page: 1, pageSize: 10 })).resolves.toEqual({
+      success: false,
+      error: 'Update Spay',
+      code: SPLIT_READER_UPGRADE_CODE,
+    });
   });
 });

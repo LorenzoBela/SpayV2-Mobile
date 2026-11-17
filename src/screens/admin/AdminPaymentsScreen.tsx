@@ -77,8 +77,9 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { getBillingMonthKey, formatBillingMonthKey, parseUtcDate, getUtc8DateParts } from '../../utils/date';
 import SPayLaterGuideModal from '../../components/SPayLaterGuideModal';
+import AdminErrorBanner from '../../components/AdminErrorBanner';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAdminPayments, callAdminApi } from '../../services/adminService';
+import { fetchAdminActionOrThrow, callAdminApi } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -465,21 +466,21 @@ export default function AdminPaymentsScreen() {
   // Shopee Imports search
   const [shopeeSearchQuery, setShopeeSearchQuery] = useState('');
 
-  const { data: paymentsData, isLoading: loading, error: queryError, refetch } = useQuery({
+  const { data: paymentsData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-payments', currentPage, searchQuery, ledgerFilter],
-    queryFn: () => fetchAdminPayments({
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-payments', {
       page: currentPage,
       pageSize: PAGE_SIZE,
       searchQuery,
-      ledgerFilter
-    }),
+      ledgerFilter,
+    }, signal),
     staleTime: 30000,
     placeholderData: keepPreviousData,
   });
 
   const { data: shopeeImportsData, refetch: refetchImports } = useQuery({
     queryKey: ['admin-shopee-imports'],
-    queryFn: () => callAdminApi('get-shopee-imports'),
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('get-shopee-imports', {}, signal),
     refetchInterval: ({ state }) => {
       // Poll every 5 seconds only when on this subtab
       return subTab === 'imports' ? 5000 : false;
@@ -499,10 +500,14 @@ export default function AdminPaymentsScreen() {
     );
   }, [shopeeImports, shopeeSearchQuery]);
 
-  const error = queryError ? (queryError as Error).message : (paymentsData && !paymentsData.success ? paymentsData.error : null);
+  const hasPaymentsData = Boolean(paymentsData && paymentsData.success !== false);
+  const error = queryError
+    ? (queryError as Error).message
+    : (paymentsData && paymentsData.success === false ? (paymentsData.error || 'Failed to load payments.') : null);
+  const showBlockingLoader = !hasPaymentsData && (loading || isFetching || Boolean(error));
 
   useEffect(() => {
-    if (loading) {
+    if (showBlockingLoader) {
       hideTabBar();
     } else {
       showTabBar();
@@ -510,7 +515,7 @@ export default function AdminPaymentsScreen() {
     return () => {
       showTabBar();
     };
-  }, [loading, hideTabBar, showTabBar]);
+  }, [showBlockingLoader, hideTabBar, showTabBar]);
 
   const paymentsList = useMemo(() => {
     const now = Date.now();
@@ -861,7 +866,7 @@ export default function AdminPaymentsScreen() {
     setRefreshing(true);
     try {
       await Promise.allSettled([
-        refetch(),
+        refetch({ cancelRefetch: true }),
       ]);
     } catch (err) {
       console.warn('AdminPayments pull-to-refresh error:', err);
@@ -1908,13 +1913,13 @@ export default function AdminPaymentsScreen() {
     />
   ), [selectedIdsSet, bulkMode, t, handlePaymentPress, handleSelectToggle, handleMarkPaid]);
 
-  if (loading && !paymentsData) {
+  if (showBlockingLoader) {
     return (
       <PremiumLoader
         title="Payments"
         subtitle="Loading payments and history..."
-        error={error}
-        onRetry={() => refetch()}
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
       />
     );
   }
@@ -1933,6 +1938,7 @@ export default function AdminPaymentsScreen() {
         stickyHeaderIndices={[1]}
       >
         <View style={{ display: 'flex', flexDirection: 'column' }}>
+        <AdminErrorBanner error={error} onRetry={() => refetch({ cancelRefetch: true })} />
         {/* Countdown card */}
         {nextBillingSchedule.earliestDueDate && (
           <View style={[styles.scheduleCard, { backgroundColor: t.cardBg, borderColor: t.cardBorder }]}>

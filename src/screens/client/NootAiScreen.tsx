@@ -26,6 +26,7 @@ import { PremiumAlert } from '../../services/PremiumAlertService';
 import NetInfo from '@react-native-community/netinfo';
 import { storage } from '../../utils/queryPersister';
 import { trpc } from '../../utils/trpc';
+import { withDeadline } from '../../utils/networkResilience';
 import { useClientPaymentsQuery, useClientOrdersQuery } from '../../hooks/useClientQueries';
 
 const formatCurrency = (val: number | string) => {
@@ -221,6 +222,36 @@ function renderFormattedMessage(text: string, t: any) {
   });
 }
 
+export function resolveNootAiQueryState<TPayments, TOrders>(opts: {
+  paymentsResult?: { isError?: boolean; error?: unknown; data?: TPayments };
+  ordersResult?: { isError?: boolean; error?: unknown; data?: TOrders };
+  fallbackPayments?: TPayments;
+  fallbackOrders?: TOrders;
+  fallbackPaymentsError?: unknown;
+  fallbackOrdersError?: unknown;
+}): { payments?: TPayments; orders?: TOrders; error: Error | null } {
+  const payments = opts.paymentsResult ? opts.paymentsResult.data : opts.fallbackPayments;
+  const orders = opts.ordersResult ? opts.ordersResult.data : opts.fallbackOrders;
+  const pErr = opts.paymentsResult
+    ? (opts.paymentsResult.isError ? opts.paymentsResult.error : null)
+    : opts.fallbackPaymentsError;
+  const oErr = opts.ordersResult
+    ? (opts.ordersResult.isError ? opts.ordersResult.error : null)
+    : opts.fallbackOrdersError;
+
+  if ((pErr || oErr) && !payments && !orders) {
+    const rawErr = pErr || oErr;
+    return {
+      payments,
+      orders,
+      error: rawErr instanceof Error
+        ? rawErr
+        : new Error(String((rawErr as any)?.message || rawErr || 'Unable to load NootAI insights.')),
+    };
+  }
+  return { payments, orders, error: null };
+}
+
 export default function NootAiScreen() {
   const navigation = useNavigation<any>();
   const { isDarkMode } = useContext(ThemeContext);
@@ -237,8 +268,8 @@ export default function NootAiScreen() {
   );
 
   const chatMutation = trpc.nootai.chat.useMutation();
-  const { data: paymentsList, isLoading: paymentsLoading } = useClientPaymentsQuery();
-  const { data: ordersData, isLoading: ordersLoading } = useClientOrdersQuery();
+  const { data: paymentsList, isLoading: paymentsLoading, error: paymentsError, refetch: refetchPayments } = useClientPaymentsQuery();
+  const { data: ordersData, isLoading: ordersLoading, error: ordersError, refetch: refetchOrders } = useClientOrdersQuery();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +285,18 @@ export default function NootAiScreen() {
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const metricsAbortRef = useRef<AbortController | null>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      metricsAbortRef.current?.abort();
+      chatAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -262,11 +305,50 @@ export default function NootAiScreen() {
     return () => unsubscribe();
   }, []);
 
-  const fetchNootAiMetrics = async () => {
+  const fetchNootAiMetrics = async (opts?: { forceRefetch?: boolean }) => {
+    metricsAbortRef.current?.abort();
+    const controller = new AbortController();
+    metricsAbortRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
-      const { user, profile } = await getLinkedProfileForCurrentUser();
+      let paymentsResult: any;
+      let ordersResult: any;
+      if (opts?.forceRefetch) {
+        const [pSettled, oSettled] = await Promise.allSettled([
+          refetchPayments({ cancelRefetch: true }),
+          refetchOrders({ cancelRefetch: true }),
+        ]);
+        if (controller.signal.aborted || !isMountedRef.current) return;
+        paymentsResult = pSettled.status === 'fulfilled'
+          ? pSettled.value
+          : { isError: true, error: pSettled.reason };
+        ordersResult = oSettled.status === 'fulfilled'
+          ? oSettled.value
+          : { isError: true, error: oSettled.reason };
+      }
+
+      const resolved = resolveNootAiQueryState({
+        paymentsResult,
+        ordersResult,
+        fallbackPayments: paymentsList,
+        fallbackOrders: ordersData,
+        fallbackPaymentsError: paymentsError,
+        fallbackOrdersError: ordersError,
+      });
+      if (resolved.error) {
+        throw resolved.error;
+      }
+
+      const { user, profile } = await withDeadline(
+        () => getLinkedProfileForCurrentUser(),
+        8000,
+        controller.signal,
+        'NootAI metrics',
+      );
+      if (controller.signal.aborted || !isMountedRef.current) return;
+
       if (!user) {
         setDemoParams('Client Guest');
         return;
@@ -274,7 +356,7 @@ export default function NootAiScreen() {
 
       const profileName = profile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Client User';
 
-      const ordersList = ordersData?.orders || [];
+      const ordersList = resolved.orders?.orders || [];
       if (!ordersList || ordersList.length === 0) {
         setDemoParams(profileName);
         return;
@@ -285,7 +367,7 @@ export default function NootAiScreen() {
       let onTimeCount = 0;
       let totalDaysLate = 0;
 
-      (paymentsList || []).forEach((p: any) => {
+      (resolved.payments || []).forEach((p: any) => {
         if (p.isPaid) {
           totalCompletedCount++;
           if (p.paymentDate && (p.rawDueDate || p.dueDate)) {
@@ -312,10 +394,15 @@ export default function NootAiScreen() {
       setFinancialMetrics({ healthScore });
       initializeChat(profileName, healthScore);
     } catch (e: any) {
-      console.warn('[NootAiScreen] Data fetch issues, defaulting to demo parameters:', e);
-      setDemoParams('Client User');
+      if (controller.signal.aborted || !isMountedRef.current || e?.name === 'AbortError') {
+        return;
+      }
+      console.warn('[NootAiScreen] Data fetch issues:', e);
+      setError(e?.message || 'Unable to load NootAI insights. Please retry.');
     } finally {
-      setLoading(false);
+      if (metricsAbortRef.current === controller && isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -461,19 +548,31 @@ export default function NootAiScreen() {
         }
       } catch (trpcErr: any) {
         console.warn('[NootAiScreen] tRPC chat failed, falling back to REST:', trpcErr);
-        
+
+        chatAbortRef.current?.abort();
+        const chatController = new AbortController();
+        chatAbortRef.current = chatController;
+
         // 2. Fallback to REST API nootai endpoint
-        const response = await fetch(`${apiUrl}/api/nootai`, {
-          method: 'POST',
-          headers: {
-            ...SPLIT_READER_HEADERS,
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token || ''}`,
-          },
-          body: JSON.stringify({ message: text, history: historyToSend }),
-        });
+        const response = await withDeadline(
+          (attemptSignal) =>
+            fetch(`${apiUrl}/api/nootai`, {
+              method: 'POST',
+              headers: {
+                ...SPLIT_READER_HEADERS,
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token || ''}`,
+              },
+              body: JSON.stringify({ message: text, history: historyToSend }),
+              signal: attemptSignal,
+            }),
+          20000,
+          chatController.signal,
+          'NootAI chat',
+        );
 
         const data = await response.json();
+        if (chatController.signal.aborted || !isMountedRef.current) return;
         if (data.success) {
           const safeResponse = checkOutputSafety(data.response);
           setMessages(prev => [...prev, { sender: 'ai', text: safeResponse, timestamp: new Date(), toolsUsed: data.toolsUsed }]);
@@ -482,6 +581,7 @@ export default function NootAiScreen() {
         }
       }
     } catch (e: any) {
+      if (!isMountedRef.current || e?.name === 'AbortError') return;
       console.warn('[NootAiScreen] Backend error:', e);
       const errMsg = e?.message || '';
       const displayMsg = errMsg.includes('Rate limit') || errMsg.includes('limit') || errMsg.includes('safeguard')
@@ -548,13 +648,13 @@ export default function NootAiScreen() {
     chatBubbleAiBorder: isDarkMode ? '#223049' : '#cbd5e1',
   };
 
-  if (loading) {
+  if (loading || (error && messages.length === 0)) {
     return (
       <PremiumLoader
         title="NootAI"
         subtitle="Loading insights and limits..."
-        error={error}
-        onRetry={fetchNootAiMetrics}
+        error={loading ? null : error}
+        onRetry={() => fetchNootAiMetrics({ forceRefetch: true })}
       />
     );
   }

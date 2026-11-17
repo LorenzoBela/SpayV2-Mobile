@@ -86,7 +86,7 @@ function AppContent() {
               persister: clientPersister,
               maxAge: 1000 * 60 * 60 * 24, // Match 24 hours cache retention
               dehydrateOptions: {
-                shouldDehydrateQuery: () => true, // Persist all queries
+                shouldDehydrateQuery: (query) => query.state.status === 'success',
               },
             }}
           >

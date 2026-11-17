@@ -270,11 +270,15 @@ export const fetchAdminDashboardData = async (signal?: AbortSignal) => {
   }
 };
 
-export const fetchAdminDashboardOrThrow = async (signal?: AbortSignal) => {
+export async function fetchAdminActionOrThrow<T = any>(
+  action: string,
+  bodyData: Record<string, any> = {},
+  signal?: AbortSignal,
+): Promise<T> {
   if (signal?.aborted) {
     throw createAbortError(typeof signal.reason === 'string' ? signal.reason : undefined);
   }
-  const res = await fetchAdminDashboardData(signal);
+  const res = await callAdminApi(action, bodyData, signal ? { signal } : undefined);
   if (signal?.aborted) {
     throw createAbortError(typeof signal.reason === 'string' ? signal.reason : undefined);
   }
@@ -283,7 +287,7 @@ export const fetchAdminDashboardOrThrow = async (signal?: AbortSignal) => {
     if (cause instanceof Error && cause.name === 'AbortError') {
       throw cause;
     }
-    const err = new Error(res?.error || 'Failed to load admin dashboard.') as Error & {
+    const err = new Error(res?.error || `Failed to execute ${action}.`) as Error & {
       code?: string;
       status?: number;
       cause?: unknown;
@@ -297,8 +301,11 @@ export const fetchAdminDashboardOrThrow = async (signal?: AbortSignal) => {
     }
     throw err;
   }
-  return res;
-};
+  return res as T;
+}
+
+export const fetchAdminDashboardOrThrow = (signal?: AbortSignal) =>
+  fetchAdminActionOrThrow('fetch-admin-dashboard', {}, signal);
 
 export const fetchAdminPayments = async (filters: { page?: number; pageSize?: number; searchQuery?: string; ledgerFilter?: string }) => {
   try {

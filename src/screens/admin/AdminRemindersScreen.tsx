@@ -51,7 +51,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAdminReminders, fetchAdminClients, callAdminApi, triggerNotificationScheduler } from '../../services/adminService';
+import { fetchAdminActionOrThrow, callAdminApi, triggerNotificationScheduler } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { WebView } from 'react-native-webview';
@@ -491,23 +491,27 @@ export default function AdminRemindersScreen() {
 
   const queryClient = useQueryClient();
 
-  const { data: remindersData, isLoading: loading, error: queryError, refetch } = useQuery({
+  const { data: remindersData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-reminders'],
-    queryFn: () => fetchAdminReminders(),
+    queryFn: ({ signal }) => fetchAdminActionOrThrow('fetch-admin-reminders', {}, signal),
     staleTime: 30000,
   });
 
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
-    queryFn: () => fetchAdminClients({ page: 1, pageSize: 1000 }),
+    queryFn: ({ signal }) => fetchAdminActionOrThrow('fetch-admin-clients', { page: 1, pageSize: 1000 }, signal),
     staleTime: 30000,
   });
 
-  const error = queryError ? (queryError as Error).message : null;
+  const hasRemindersData = Boolean(remindersData && remindersData.success !== false);
+  const error = queryError
+    ? (queryError as Error).message
+    : (remindersData && remindersData.success === false ? (remindersData.error || 'Failed to load reminders.') : null);
+  const showBlockingLoader = !hasRemindersData && (loading || isFetching || Boolean(error));
 
   const loadData = async (showLoader?: boolean) => {
     await Promise.allSettled([
-      refetch(),
+      refetch({ cancelRefetch: true }),
       queryClient.invalidateQueries({ queryKey: ['admin-clients-selection'] })
     ]);
   };
@@ -1314,6 +1318,17 @@ export default function AdminRemindersScreen() {
     );
   };
 
+  if (showBlockingLoader) {
+    return (
+      <PremiumLoader
+        title="Reminders"
+        subtitle="Loading payment reminders..."
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />
@@ -1381,8 +1396,10 @@ export default function AdminRemindersScreen() {
       {error ? (
         <View style={[styles.errorBanner, { backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2', borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : '#fee2e2' }]}>
           <AlertCircle size={16} color="#ef4444" />
-          <Text style={[styles.errorText, { color: '#ef4444', flex: 1 }]}>{error}</Text>
-          <TouchableOpacity onPress={() => loadData()}>
+          <Text style={[styles.errorText, { color: '#ef4444', flex: 1 }]} numberOfLines={2}>
+            {error} Showing cached data.
+          </Text>
+          <TouchableOpacity onPress={() => refetch({ cancelRefetch: true })}>
             <Text style={{ color: isDarkMode ? '#f87171' : '#ef4444', fontWeight: 'bold', fontSize: 12 }}>Retry</Text>
           </TouchableOpacity>
         </View>

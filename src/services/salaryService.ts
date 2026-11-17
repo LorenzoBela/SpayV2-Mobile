@@ -81,7 +81,7 @@ const getAuthHeaders = async () => {
   };
 };
 
-function normalizeSalaryPayload(data: any): SalaryDataPayload {
+export function normalizeSalaryPayload(data: any): SalaryDataPayload {
   if (!data) return getFallbackSalaryPayload();
   const profile = data.profile || {};
   const jobHist = data.jobHistory || [];
