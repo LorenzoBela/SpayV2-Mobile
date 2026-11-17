@@ -1,9 +1,6 @@
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { onlineManager } from '@tanstack/react-query';
-import pRetry from 'p-retry';
 import { isSplitReaderUpgradeError } from './split-reader-contract';
-
-const ORIGINAL_ERROR = Symbol('originalError');
 
 export class TimeoutError extends Error {
   constructor(message: string) {
@@ -26,13 +23,6 @@ function toAbortError(reason?: unknown): Error {
   err.name = 'AbortError';
   if (reason !== undefined) {
     (err as Error & { cause?: unknown }).cause = reason;
-  }
-  return err;
-}
-
-function unwrapError(err: unknown): unknown {
-  if (err && typeof err === 'object' && ORIGINAL_ERROR in err) {
-    return (err as { [ORIGINAL_ERROR]: unknown })[ORIGINAL_ERROR];
   }
   return err;
 }
@@ -124,12 +114,11 @@ export function withDeadline<T>(
  * Rejects 401/403 (and non-408/429 4xx), SPLIT_READER_UPGRADE_REQUIRED, and AbortError.
  */
 export function isRetryableNetworkError(err: unknown): boolean {
-  const raw = unwrapError(err);
-  if (raw == null) return false;
-  if (isSplitReaderUpgradeError(raw)) return false;
+  if (err == null) return false;
+  if (isSplitReaderUpgradeError(err)) return false;
 
-  if (typeof raw === 'object') {
-    const record = raw as Record<string, any>;
+  if (typeof err === 'object') {
+    const record = err as Record<string, any>;
     if (record.name === 'AbortError') return false;
 
     const status =
@@ -162,6 +151,27 @@ export function isRetryableNetworkError(err: unknown): boolean {
   return true;
 }
 
+function waitForRetryDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(toAbortError((signal as any).reason));
+  }
+  if (delayMs <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+      reject(toAbortError((signal as any)?.reason));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.('abort', onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+  });
+}
+
 export async function retryWithJitter<T>(
   fn: (attempt: number) => Promise<T>,
   opts?: {
@@ -172,39 +182,36 @@ export async function retryWithJitter<T>(
     shouldRetry?: (err: unknown) => boolean;
   },
 ): Promise<T> {
+  const maxRetries = Math.max(0, opts?.retries ?? 2);
   const maxTimeout = opts?.maxTimeoutMs ?? 1500;
   const minTimeout = Math.min(opts?.minTimeoutMs ?? 300, maxTimeout);
   const shouldRetry = opts?.shouldRetry ?? isRetryableNetworkError;
+  const signal = opts?.signal;
 
-  try {
-    return await pRetry(
-      async (attempt) => {
-        try {
-          return await fn(attempt);
-        } catch (err) {
-          // p-retry rejects non-Error throws without retrying; wrap plain-object SDK errors.
-          if (err instanceof Error) throw err;
-          const wrapped = new Error(
-            typeof (err as any)?.message === 'string' ? (err as any).message : String(err),
-          ) as Error & { [ORIGINAL_ERROR]?: unknown };
-          wrapped[ORIGINAL_ERROR] = err;
-          throw wrapped;
-        }
-      },
-      {
-        retries: opts?.retries ?? 2,
-        minTimeout,
-        maxTimeout,
-        randomize: true,
-        signal: opts?.signal,
-        shouldRetry: ({ error }) => shouldRetry(unwrapError(error)),
-      },
-    );
-  } catch (err) {
-    if (opts?.signal?.aborted) {
-      throw toAbortError(opts.signal.reason ?? unwrapError(err));
+  // Avoid p-retry's signal.throwIfAborted() which throws in RN Hermes's abort-controller polyfill.
+  for (let retriesConsumed = 0; ; retriesConsumed += 1) {
+    if (signal?.aborted) {
+      throw toAbortError((signal as any).reason);
     }
-    throw unwrapError(err);
+    try {
+      const result = await fn(retriesConsumed + 1);
+      if (signal?.aborted) {
+        throw toAbortError((signal as any).reason);
+      }
+      return result;
+    } catch (err) {
+      if (signal?.aborted) {
+        throw toAbortError((signal as any).reason ?? err);
+      }
+      if (retriesConsumed >= maxRetries || !shouldRetry(err)) {
+        throw err;
+      }
+      const jitteredDelay = Math.min(
+        maxTimeout,
+        Math.round(minTimeout * (1 + Math.random()) * 2 ** retriesConsumed),
+      );
+      await waitForRetryDelay(jitteredDelay, signal);
+    }
   }
 }
 

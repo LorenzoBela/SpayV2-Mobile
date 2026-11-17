@@ -180,6 +180,39 @@ describe('retryWithJitter', () => {
       expect(isRetryableNetworkError(err)).toBe(false);
     }
   });
+
+  it('works with React Native polyfilled AbortSignal lacking throwIfAborted and reason', async () => {
+    const controller = new AbortController();
+    const rnSignal = Object.create(Object.getPrototypeOf(controller.signal));
+    Object.defineProperties(rnSignal, {
+      aborted: { get: () => controller.signal.aborted },
+      throwIfAborted: { value: undefined },
+      reason: { value: undefined },
+      addEventListener: { value: controller.signal.addEventListener.bind(controller.signal) },
+      removeEventListener: { value: controller.signal.removeEventListener.bind(controller.signal) },
+    });
+
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(new TimeoutError('transient'))
+      .mockResolvedValueOnce('ok');
+
+    await expect(
+      retryWithJitter(fn, { retries: 1, minTimeoutMs: 1, maxTimeoutMs: 5, signal: rnSignal }),
+    ).resolves.toBe('ok');
+    expect(fn).toHaveBeenCalledTimes(2);
+
+    const hungFn = vi.fn().mockRejectedValue(new TimeoutError('slow'));
+    const abortedPromise = retryWithJitter(hungFn, {
+      retries: 2,
+      minTimeoutMs: 100,
+      maxTimeoutMs: 200,
+      signal: rnSignal,
+    });
+    await Promise.resolve();
+    controller.abort();
+    await expect(abortedPromise).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });
 
 describe('initNetworkMonitor and subscribeReconnect', () => {
