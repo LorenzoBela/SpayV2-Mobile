@@ -1,20 +1,21 @@
 import { trpcVanillaClient } from '../utils/trpc';
 import { posthog } from '../utils/posthog';
 
-export async function fetchClientDashboard() {
+export async function fetchClientDashboard(signal?: AbortSignal) {
   const started = Date.now();
   let transport = 'summary';
+  const queryProc = (proc: any) => (signal ? proc.query(undefined, { signal }) : proc.query());
   try {
     let data;
     try {
-      data = await (trpcVanillaClient as any).dashboard.summary.query();
+      data = await queryProc((trpcVanillaClient as any).dashboard.summary);
     } catch (error: any) {
       // Keep compatible with the previous backend during deployment or recovery.
       if (error?.data?.code !== 'NOT_FOUND') throw error;
       transport = 'legacy';
       const [orders, payments] = await Promise.all([
-        (trpcVanillaClient as any).orders.list.query(),
-        (trpcVanillaClient as any).payments.listClient.query(),
+        queryProc((trpcVanillaClient as any).orders.list),
+        queryProc((trpcVanillaClient as any).payments.listClient),
       ]);
       data = { orders, payments };
     }

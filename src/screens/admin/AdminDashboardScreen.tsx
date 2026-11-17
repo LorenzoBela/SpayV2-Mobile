@@ -75,6 +75,7 @@ import {
   Wallet,
   Banknote,
   PiggyBank,
+  RefreshCw,
 } from 'lucide-react-native';
 import Svg, { Path, Circle, Rect, Line, Text as SvgText, G } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
@@ -96,7 +97,7 @@ import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
 import DatePicker from '../../components/DatePicker';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
-import { fetchAdminDashboardData, callAdminApi } from '../../services/adminService';
+import { fetchAdminDashboardOrThrow, callAdminApi } from '../../services/adminService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useDynamicIsland } from '../../context/DynamicIslandContext';
@@ -305,16 +306,26 @@ export default function AdminDashboardScreen() {
 
   const queryClient = useQueryClient();
 
-  const { data: dashboardData, isLoading: loading, error: queryError, refetch } = useQuery({
+  const {
+    data: dashboardData,
+    isLoading: loading,
+    isFetching,
+    error: queryError,
+    refetch,
+  } = useQuery({
     queryKey: ['admin-dashboard'],
-    queryFn: fetchAdminDashboardData,
+    queryFn: ({ signal }) => fetchAdminDashboardOrThrow(signal),
     staleTime: 30000,
   });
 
-  const error = queryError ? (queryError as Error).message : (dashboardData && !dashboardData.success ? dashboardData.error : null);
+  const hasDashboardData = Boolean(dashboardData && dashboardData.success !== false);
+  const error = queryError
+    ? (queryError as Error).message
+    : (dashboardData && dashboardData.success === false ? (dashboardData.error || 'Failed to load admin dashboard.') : null);
+  const showBlockingLoader = !hasDashboardData && (loading || isFetching || Boolean(error));
 
   useEffect(() => {
-    if (loading) {
+    if (showBlockingLoader) {
       hideTabBar();
     } else {
       showTabBar();
@@ -322,7 +333,7 @@ export default function AdminDashboardScreen() {
     return () => {
       showTabBar();
     };
-  }, [loading, hideTabBar, showTabBar]);
+  }, [showBlockingLoader, hideTabBar, showTabBar]);
 
   const stats = dashboardData?.stats || {
     activeLimitExposure: 0,
@@ -642,7 +653,7 @@ export default function AdminDashboardScreen() {
     });
     try {
       await Promise.allSettled([
-        refetch(),
+        refetch({ cancelRefetch: true }),
         fetchFreshWeather(true),
       ]);
     } catch (err) {
@@ -866,13 +877,13 @@ export default function AdminDashboardScreen() {
     ? parsedGlobalLimit / clientsList.length
     : 0;
 
-  if (loading && !dashboardData) {
+  if (showBlockingLoader) {
     return (
       <PremiumLoader
         title="Admin Dashboard"
         subtitle="Loading dashboard and metrics..."
-        error={error}
-        onRetry={() => refetch()}
+        error={isFetching ? null : error}
+        onRetry={() => refetch({ cancelRefetch: true })}
       />
     );
   }
@@ -894,6 +905,27 @@ export default function AdminDashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.accent} />}
       >
+        {error && (
+          <TouchableOpacity
+            style={styles.alertBanner}
+            onPress={() => refetch({ cancelRefetch: true })}
+            activeOpacity={0.9}
+          >
+            <View style={styles.alertBannerLeft}>
+              <View style={styles.alertIconBox}>
+                <AlertCircle size={20} color="#ef4444" />
+              </View>
+              <View style={styles.alertTextContainer}>
+                <Text style={styles.alertTitle}>Unable to refresh live metrics</Text>
+                <Text style={styles.alertDesc} numberOfLines={2}>
+                  {error} Showing cached data — tap to retry.
+                </Text>
+              </View>
+            </View>
+            <RefreshCw size={16} color="#ef4444" />
+          </TouchableOpacity>
+        )}
+
         {/* Overdue alert */}
         {(stats.overduePaymentsCount > 0) && (
           <TouchableOpacity

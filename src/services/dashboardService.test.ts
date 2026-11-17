@@ -27,4 +27,28 @@ describe('dashboard transport compatibility and timing', () => {
     expect(state.orders).not.toHaveBeenCalled();
     expect(state.payments).not.toHaveBeenCalled();
   });
+  it('forwards AbortSignal to summary and legacy fallback without altering 0-arg calls', async () => {
+    const controller = new AbortController();
+    state.summary.mockResolvedValueOnce({ orders: { orders: [] }, payments: { payments: [] } });
+    await fetchClientDashboard(controller.signal);
+    expect(state.summary).toHaveBeenCalledWith(undefined, { signal: controller.signal });
+
+    state.summary.mockRejectedValueOnce({ data: { code: 'NOT_FOUND' } });
+    state.orders.mockResolvedValueOnce({ orders: [] });
+    state.payments.mockResolvedValueOnce({ payments: [] });
+    await fetchClientDashboard(controller.signal);
+    expect(state.orders).toHaveBeenCalledWith(undefined, { signal: controller.signal });
+    expect(state.payments).toHaveBeenCalledWith(undefined, { signal: controller.signal });
+
+    state.summary.mockResolvedValueOnce({ orders: { orders: [] }, payments: { payments: [] } });
+    await fetchClientDashboard();
+    expect(state.summary).toHaveBeenLastCalledWith();
+  });
+  it('skips legacy fallback when summary request is aborted', async () => {
+    const abortErr = Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    state.summary.mockRejectedValueOnce(abortErr);
+    await expect(fetchClientDashboard()).rejects.toThrow('Aborted');
+    expect(state.orders).not.toHaveBeenCalled();
+    expect(state.payments).not.toHaveBeenCalled();
+  });
 });

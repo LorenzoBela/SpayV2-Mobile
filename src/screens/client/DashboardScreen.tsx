@@ -41,6 +41,8 @@ import {
   ShoppingBag,
   Users,
   Info,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
@@ -582,11 +584,21 @@ export default function DashboardScreen() {
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
 
   // TRPC Client Queries
-  const { data: dashboardData, isLoading: queryOrdersLoading, error: ordersError, refetch: refetchDashboard } = useClientDashboardQuery();
+  const {
+    data: dashboardData,
+    isLoading: queryOrdersLoading,
+    isFetching: queryDashboardFetching,
+    error: ordersError,
+    refetch: refetchDashboard,
+  } = useClientDashboardQuery();
   const queryOrdersData = dashboardData?.orders;
   const queryPayments = dashboardData?.payments;
   const queryPaymentsLoading = queryOrdersLoading;
   const paymentsError = ordersError;
+  const hasCachedDashboardData = Boolean(queryOrdersData && queryPayments);
+  const staleRefreshError = hasCachedDashboardData && ordersError
+    ? ((ordersError as Error).message || 'Unable to refresh dashboard. Showing cached data.')
+    : null;
 
   // Financial Limits States
   const [globalCreditLimit, setGlobalCreditLimit] = useState(0);
@@ -765,16 +777,18 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     const queryError = ordersError || paymentsError;
-    if (queryError && (!queryOrdersData || !queryPayments)) {
+    if (queryError && !queryDashboardFetching && !hasCachedDashboardData) {
       setError(queryError.message || 'Unable to load your account. Check your connection and try again.');
       setLoading(false);
     } else {
       setError(null);
     }
-  }, [ordersError, paymentsError, queryOrdersData, queryPayments]);
+  }, [ordersError, paymentsError, queryDashboardFetching, hasCachedDashboardData]);
+
+  const shouldShowFullScreenLoader = showOverlay && !hasCachedDashboardData;
 
   useEffect(() => {
-    if (showOverlay) {
+    if (shouldShowFullScreenLoader) {
       hideTabBar();
     } else {
       showTabBar();
@@ -782,7 +796,7 @@ export default function DashboardScreen() {
     return () => {
       showTabBar();
     };
-  }, [showOverlay, hideTabBar, showTabBar]);
+  }, [shouldShowFullScreenLoader, hideTabBar, showTabBar]);
 
   // Live widgets
   const [timeLeft, setTimeLeft] = useState({
@@ -961,25 +975,23 @@ export default function DashboardScreen() {
     const hasPayments = queryPayments && queryPayments.length > 0;
 
     if (!hasOrders && !hasPayments) {
-      if (!queryPaymentsLoading && !queryOrdersLoading) {
-        if (queryOrdersData?.orders && queryOrdersData.orders.length === 0) {
-          // Logged in user with 0 orders -> genuine empty state
-          setIsDemo(false);
-          setUnpaidBillingMonths([]);
-          setRecentOrders([]);
-          setAllOrdersList([]);
-          setAllPaymentsList([]);
-          setFinancialMetrics({
-            healthScore: 100,
-            onTimeRate: 100,
-            paymentStreak: 0,
-            recommendedMonthlyBudget: 0,
-          });
-          setSpendingCategories([]);
-          setMonthlyTrends([]);
-          setLoading(false);
-          return;
-        }
+      if (queryOrdersData?.orders && queryOrdersData.orders.length === 0) {
+        // Logged in user with 0 orders -> genuine empty state
+        setIsDemo(false);
+        setUnpaidBillingMonths([]);
+        setRecentOrders([]);
+        setAllOrdersList([]);
+        setAllPaymentsList([]);
+        setFinancialMetrics({
+          healthScore: 100,
+          onTimeRate: 100,
+          paymentStreak: 0,
+          recommendedMonthlyBudget: 0,
+        });
+        setSpendingCategories([]);
+        setMonthlyTrends([]);
+        setLoading(false);
+        return;
       }
       return;
     }
@@ -1179,7 +1191,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        refetchDashboard({ cancelRefetch: false });
+        refetchDashboard({ cancelRefetch: true });
         fetchGlobalLimits(true);
         void syncWidgetData();
       }
@@ -1206,7 +1218,7 @@ export default function DashboardScreen() {
     });
     try {
       await Promise.allSettled([
-        refetchDashboard({ cancelRefetch: false }),
+        refetchDashboard({ cancelRefetch: true }),
         fetchGlobalLimits(true),
         fetchFreshWeather(true),
       ]);
@@ -1304,6 +1316,28 @@ export default function DashboardScreen() {
             <Sparkles size={14} color="#d97706" />
             <Text style={styles.demoBannerText}>Demo Mode Active</Text>
           </View>
+        )}
+
+        {staleRefreshError && (
+          <TouchableOpacity
+            style={styles.staleErrorBanner}
+            onPress={() => {
+              void refetchDashboard({ cancelRefetch: true });
+              void fetchGlobalLimits(true);
+            }}
+            activeOpacity={0.85}
+          >
+            <View style={styles.staleErrorLeft}>
+              <AlertCircle size={16} color="#ef4444" />
+              <Text style={styles.staleErrorText} numberOfLines={2}>
+                {staleRefreshError}
+              </Text>
+            </View>
+            <View style={styles.staleRetryPill}>
+              <RefreshCw size={12} color="#ffffff" />
+              <Text style={styles.staleRetryText}>Retry</Text>
+            </View>
+          </TouchableOpacity>
         )}
 
         {/* 1. Next Billing Cycle overview */}
@@ -1744,7 +1778,7 @@ export default function DashboardScreen() {
       </ScrollView>
 
       {/* Reusable Loading Screen Overlays */}
-      {showOverlay && (
+      {shouldShowFullScreenLoader && (
         <Animated.View
           style={[
             StyleSheet.absoluteFill,
@@ -1761,7 +1795,8 @@ export default function DashboardScreen() {
             onRetry={() => {
               setError(null);
               setLoading(true);
-              refetchDashboard({ cancelRefetch: false });
+              void refetchDashboard({ cancelRefetch: true });
+              void fetchGlobalLimits(true);
             }}
           />
         </Animated.View>
@@ -1938,6 +1973,46 @@ const styles = StyleSheet.create({
   },
   demoBannerText: {
     color: '#fbbf24',
+    fontFamily: 'Jakarta-Bold',
+    fontSize: 11,
+  },
+  staleErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  staleErrorLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  staleErrorText: {
+    flex: 1,
+    color: '#fca5a5',
+    fontFamily: 'Jakarta-Medium',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  staleRetryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#ee4d2d',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  staleRetryText: {
+    color: '#ffffff',
     fontFamily: 'Jakarta-Bold',
     fontSize: 11,
   },

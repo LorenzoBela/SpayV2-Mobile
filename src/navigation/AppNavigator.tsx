@@ -34,7 +34,8 @@ import { getPersistedTheme, savePersistedTheme, syncStartupTheme, resolveIsDark,
 
 import { supabase } from '../utils/supabase';
 import { posthog } from '../utils/posthog';
-import { getLinkedProfileForUser, getCachedUserProfile, clearMemoryProfileCache, primeCurrentUserProfile } from '../utils/authProfile';
+import { getLinkedProfileForUser, getCachedUserProfile, clearMemoryProfileCache, primeCurrentUserProfile, getSessionWithTimeout } from '../utils/authProfile';
+import { isRetryableNetworkError, retryWithJitter, subscribeReconnect } from '../utils/networkResilience';
 import { syncWidgetData } from '../utils/widgetSync';
 import { useImpersonation } from '../context/ImpersonationContext';
 import { DynamicIslandProvider } from '../context/DynamicIslandContext';
@@ -698,11 +699,27 @@ export default function AppNavigator() {
   useMobileInactivity(Boolean(session));
 
   const [loading, setLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
   const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+  const sessionAbortRef = useRef<AbortController | null>(null);
+  const profileAbortRef = useRef<AbortController | null>(null);
+  const sessionRef = useRef<Session | null>(session);
+  const loadingRef = useRef(loading);
+  const sessionErrorRef = useRef<string | null>(sessionError);
+  const profileLoadingRef = useRef(profileLoading);
+  const profileErrorRef = useRef<string | null>(profileError);
+  const userRoleRef = useRef<string | null>(userRole);
+  sessionRef.current = session;
+  loadingRef.current = loading;
+  sessionErrorRef.current = sessionError;
+  profileLoadingRef.current = profileLoading;
+  profileErrorRef.current = profileError;
+  userRoleRef.current = userRole;
   const navigationRef = React.useRef<any>(null);
   const [notificationActionVersion, setNotificationActionVersion] = useState(0);
   const processingNotification = useRef(false);
@@ -796,16 +813,35 @@ export default function AppNavigator() {
     };
   }, [isDarkMode]);
 
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+  const loadInitialSession = useCallback(async () => {
+    sessionAbortRef.current?.abort();
+    const controller = new AbortController();
+    sessionAbortRef.current = controller;
+    setSessionError(null);
+    setLoading(true);
+    try {
+      const initialSession = await getSessionWithTimeout(5000, controller.signal);
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      setSession(initialSession);
+      setSessionError(null);
       setLoading(false);
-    });
+    } catch (error: any) {
+      if (!isMountedRef.current || controller.signal.aborted || error?.name === 'AbortError') return;
+      console.warn('[AppNavigator] Failed to restore session:', error);
+      setSessionError(error?.message || 'Unable to verify your session. Please try again.');
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    void loadInitialSession();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      sessionAbortRef.current?.abort();
       setSession(session);
+      setSessionError(null);
       setLoading(false);
       if (session?.user?.id) {
         if (event === 'SIGNED_IN') pushRegistrationGate.resume();
@@ -816,6 +852,7 @@ export default function AppNavigator() {
       }
       if (event === 'SIGNED_OUT') {
         profileRequestVersion.current += 1;
+        profileAbortRef.current?.abort();
         clearMemoryProfileCache();
         posthog.reset();
         try {
@@ -833,16 +870,26 @@ export default function AppNavigator() {
     });
 
     return () => {
+      isMountedRef.current = false;
+      sessionAbortRef.current?.abort();
+      profileAbortRef.current?.abort();
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadInitialSession]);
 
   const profileRequestVersion = useRef(0);
 
-  const fetchProfileRole = async (user: Session['user']) => {
+  const fetchProfileRole = useCallback(async (user: Session['user'], options?: { force?: boolean }) => {
+    profileAbortRef.current?.abort();
+    const controller = new AbortController();
+    profileAbortRef.current = controller;
+
     const initialThemeVersion = themeChangeVersion.current;
     const requestVersion = ++profileRequestVersion.current;
-    const isActive = () => requestVersion === profileRequestVersion.current;
+    const isActive = () =>
+      isMountedRef.current &&
+      requestVersion === profileRequestVersion.current &&
+      !controller.signal.aborted;
     const hasCachedProfile = Boolean(getCachedUserProfile(user.id));
     let accountReady = hasCachedProfile;
     if (!hasCachedProfile) {
@@ -850,7 +897,24 @@ export default function AppNavigator() {
     }
     setProfileError(null);
     try {
-      const data = await getLinkedProfileForUser(user);
+      const data = await retryWithJitter(
+        (attempt) =>
+          getLinkedProfileForUser(user, {
+            signal: controller.signal,
+            force: Boolean(options?.force) || attempt > 1,
+          }),
+        {
+          retries: 1,
+          minTimeoutMs: 400,
+          maxTimeoutMs: 800,
+          signal: controller.signal,
+          shouldRetry: (err) => {
+            if (!isRetryableNetworkError(err)) return false;
+            const msg = typeof (err as any)?.message === 'string' ? (err as any).message.toLowerCase() : '';
+            return !msg.includes('jwt') && !msg.includes('refresh_token') && !msg.includes('invalid claim');
+          },
+        },
+      );
 
       if (!isActive()) return;
       primeCurrentUserProfile(user.id, data);
@@ -871,12 +935,18 @@ export default function AppNavigator() {
         console.warn('[AppNavigator] Failed to cache account profile:', error);
       }
 
-      const effectiveTheme = await syncStartupTheme(targetId, () =>
-        isActive() && themeChangeVersion.current === initialThemeVersion);
-      if (effectiveTheme !== null) setThemePreference(effectiveTheme);
+      const effectiveTheme = await syncStartupTheme(
+        targetId,
+        () => isActive() && themeChangeVersion.current === initialThemeVersion,
+        controller.signal,
+      ).catch((themeErr) => {
+        console.warn('[AppNavigator] Theme sync skipped:', themeErr);
+        return null;
+      });
+      if (effectiveTheme !== null && isActive()) setThemePreference(effectiveTheme);
     } catch (error: any) {
+      if (!isActive() || error?.name === 'AbortError') return;
       console.warn('[AppNavigator] Failed to fetch profile role:', error);
-      if (!isActive()) return;
       if (!accountReady) {
         setProfileError(error?.message || 'Failed to sync account role settings.');
       }
@@ -885,10 +955,11 @@ export default function AppNavigator() {
         setProfileLoading(false);
       }
     }
-  };
+  }, []);
+
   // Fetch profile to check role
   useEffect(() => {
-    if (loading) return;
+    if (loading || sessionError) return;
     if (session?.user) {
       const cached = getCachedUserProfile(session.user.id);
       if (cached) {
@@ -912,8 +983,25 @@ export default function AppNavigator() {
     }
     return () => {
       profileRequestVersion.current += 1;
+      profileAbortRef.current?.abort();
     };
-  }, [loading, session?.user?.id]);
+  }, [loading, sessionError, session?.user?.id, fetchProfileRole]);
+
+  // Auto-recover session or profile startup failures when network transitions offline -> online
+  useEffect(() => {
+    return subscribeReconnect(() => {
+      if (sessionErrorRef.current || (!sessionRef.current && loadingRef.current)) {
+        void loadInitialSession();
+        return;
+      }
+      if (
+        sessionRef.current?.user &&
+        (profileErrorRef.current || profileLoadingRef.current || userRoleRef.current === null)
+      ) {
+        void fetchProfileRole(sessionRef.current.user, { force: true });
+      }
+    });
+  }, [loadInitialSession, fetchProfileRole]);
 
   useEffect(() => {
     void setupAndroidNotificationChannels();
@@ -1135,7 +1223,11 @@ export default function AppNavigator() {
   const [showOverlay, setShowOverlay] = useState(true);
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
-  const isActuallyLoading = loading || (Boolean(session) && (userRole === null || profileLoading)) || Boolean(profileError);
+  const isActuallyLoading =
+    loading ||
+    Boolean(sessionError) ||
+    (Boolean(session) && (userRole === null || profileLoading)) ||
+    Boolean(profileError);
 
   useEffect(() => {
     if (!isActuallyLoading) {
@@ -1154,11 +1246,13 @@ export default function AppNavigator() {
     }
   }, [isActuallyLoading]);
 
-  const handleRetry = () => {
-    if (session?.user) {
-      void fetchProfileRole(session.user);
+  const handleRetry = useCallback(() => {
+    if (!session?.user) {
+      void loadInitialSession();
+      return;
     }
-  };
+    void fetchProfileRole(session.user, { force: true });
+  }, [session?.user, loadInitialSession, fetchProfileRole]);
 
   if (hasCompletedOnboarding === false) {
     return (
@@ -1255,7 +1349,7 @@ export default function AppNavigator() {
                     <PremiumLoader
                       title={session ? 'Loading Account' : 'Signing In'}
                       subtitle={session ? 'Loading your profile...' : 'Connecting...'}
-                      error={profileError}
+                      error={sessionError || profileError}
                       onRetry={handleRetry}
                     />
                   </Animated.View>

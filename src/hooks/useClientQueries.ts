@@ -116,7 +116,7 @@ export function useClientPaymentsQuery() {
 export function useClientDashboardQuery() {
   return useQuery({
     queryKey: [['dashboard', 'summary'], { type: 'query' }],
-    queryFn: fetchClientDashboard,
+    queryFn: ({ signal }) => fetchClientDashboard(signal),
     staleTime: 30_000,
     refetchOnMount: true,
     select: (data: any) => ({ orders: data.orders, payments: mapClientPayments(data.payments) }),

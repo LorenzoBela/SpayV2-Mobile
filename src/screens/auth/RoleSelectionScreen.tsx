@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import {
   StyleSheet,
@@ -26,8 +26,8 @@ import {
   LayoutDashboard,
   Sparkles,
 } from 'lucide-react-native';
-import { supabase } from '../../utils/supabase';
-import { getLinkedProfileForUser } from '../../utils/authProfile';
+import { getLinkedProfileForUser, getSessionWithTimeout } from '../../utils/authProfile';
+import { retryWithJitter } from '../../utils/networkResilience';
 import PremiumLoader from '../../components/PremiumLoader';
 import { useResponsiveLayout } from '../../utils/responsive';
 import WeatherWidget from '../../components/WeatherWidget';
@@ -95,42 +95,84 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+  const onSelectRoleRef = useRef(onSelectRole);
+  onSelectRoleRef.current = onSelectRole;
 
-  const fetchUserData = async () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const fetchUserData = useCallback(async (force = false) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setFetchError(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
-        if (photoUrl) {
-          setUserPhoto(photoUrl);
-        }
+      const session = await getSessionWithTimeout(5000, controller.signal);
+      const user = session?.user;
+      if (!isMountedRef.current || controller.signal.aborted) return;
 
-        const data = await getLinkedProfileForUser(user);
+      if (!user) {
+        setFetchError('Session unavailable. Please try again.');
+        return;
+      }
 
-        if (data?.role !== 'ADMIN') {
-          onSelectRole('client');
-          return;
-        }
+      const photoUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture;
+      if (photoUrl) {
+        setUserPhoto(photoUrl);
+      }
 
-        if (data?.name) {
-          setUserName(data.name);
-        } else if (user.user_metadata?.full_name) {
-          setUserName(user.user_metadata.full_name);
-        }
+      const data = await retryWithJitter(
+        (attempt) =>
+          getLinkedProfileForUser(user, {
+            signal: controller.signal,
+            force: force || attempt > 1,
+          }),
+        {
+          retries: 1,
+          minTimeoutMs: 400,
+          maxTimeoutMs: 800,
+          signal: controller.signal,
+        },
+      );
+
+      if (!isMountedRef.current || controller.signal.aborted) return;
+
+      if (data?.role !== 'ADMIN') {
+        onSelectRoleRef.current('client');
+        return;
+      }
+
+      if (data?.name) {
+        setUserName(data.name);
+      } else if (user.user_metadata?.full_name) {
+        setUserName(user.user_metadata.full_name);
       }
     } catch (error: any) {
+      if (!isMountedRef.current || controller.signal.aborted || error?.name === 'AbortError') return;
       console.warn('Failed to load user info:', error);
       setFetchError(error?.message || 'Failed to retrieve profile data.');
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && !controller.signal.aborted) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchUserData();
-  }, [onSelectRole]);
+    void fetchUserData(false);
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [fetchUserData]);
 
   // Scale animations for interactive buttons
   const adminScale = useRef(new Animated.Value(1)).current;
@@ -378,7 +420,9 @@ export default function RoleSelectionScreen({ onSelectRole, onSignOut }: RoleSel
             title="Loading Profile Data"
             subtitle="Loading your profile..."
             error={fetchError}
-            onRetry={fetchUserData}
+            onRetry={() => {
+              void fetchUserData(true);
+            }}
           />
         </Animated.View>
       )}

@@ -2,6 +2,7 @@ import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { storage } from './queryPersister';
 import { supabase } from './supabase';
+import { withDeadline } from './networkResilience';
 
 export type ThemePreference = 'dark' | 'light' | 'auto';
 
@@ -55,13 +56,24 @@ export function getPersistedTheme(): ThemePreference {
 export async function syncStartupTheme(
   userId: string,
   shouldApply: () => boolean,
+  signal?: AbortSignal,
 ): Promise<ThemePreference | null> {
-  const { data, error } = await supabase
-    .from('user_settings')
-    .select('setting_value')
-    .eq('user_id', userId)
-    .eq('setting_name', 'theme')
-    .maybeSingle();
+  const { data, error } = await withDeadline(
+    async (deadlineSignal) => {
+      const query = supabase
+        .from('user_settings')
+        .select('setting_value')
+        .eq('user_id', userId)
+        .eq('setting_name', 'theme');
+      const bounded = typeof (query as any).abortSignal === 'function'
+        ? (query as any).abortSignal(deadlineSignal)
+        : query;
+      return bounded.maybeSingle();
+    },
+    5000,
+    signal,
+    'themeStorage.syncStartupTheme',
+  );
   if (error) throw error;
   if (!shouldApply()) return null;
 

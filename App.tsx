@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -6,8 +6,8 @@ import { PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import { trpc, getTrpcHeaders, fetchWithTimeout } from './src/utils/trpc';
 import { httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
-import { supabase, expoSecureStorage } from './src/utils/supabase';
-import { QueryClient } from '@tanstack/react-query';
+import { getCachedUserProfile } from './src/utils/authProfile';
+import { initNetworkMonitor } from './src/utils/networkResilience';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { clientPersister } from './src/utils/queryPersister';
 import { ProgressProvider } from './src/context/ProgressContext';
@@ -111,9 +111,13 @@ function AppContent() {
 }
 
 export default function App() {
-  const [isSplashAnimationComplete, setIsSplashAnimationComplete] = useState(false);
+  const [hasCachedStartup] = useState(() => {
+    const cached = getCachedUserProfile();
+    return Boolean(cached?.linkedProfileId && ['ADMIN', 'CLIENT'].includes(cached?.role));
+  });
+  const [isSplashAnimationComplete, setIsSplashAnimationComplete] = useState(hasCachedStartup);
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     'Outfit-Light': Outfit_400Regular,
     'Outfit-Regular': Outfit_400Regular,
     'Outfit-Medium': Outfit_600SemiBold,
@@ -128,15 +132,31 @@ export default function App() {
     'Jakarta-ExtraBold': PlusJakartaSans_700Bold,
   });
 
-  if (!fontsLoaded) {
-    return null; // Hold the native splash screen until fonts are loaded
-  }
+  // Start network monitoring immediately on boot without waiting for fonts or splash animation.
+  useEffect(() => initNetworkMonitor(), []);
+
+  const fontsReady = fontsLoaded || Boolean(fontError);
+
+  useEffect(() => {
+    if (fontsReady && hasCachedStartup) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsReady, hasCachedStartup]);
+
+  // Safety net so native/animated splash can never wedge startup if an animation callback drops.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+      setIsSplashAnimationComplete(true);
+    }, 1600);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <RootErrorBoundary>
       <View style={{ flex: 1 }}>
         <AppContent />
-        {!isSplashAnimationComplete && (
+        {fontsReady && !isSplashAnimationComplete && (
           <View style={StyleSheet.absoluteFill}>
             <AnimatedSplashScreen
               onAnimationComplete={() => setIsSplashAnimationComplete(true)}

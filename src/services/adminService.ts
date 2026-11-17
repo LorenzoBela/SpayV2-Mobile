@@ -2,12 +2,64 @@ import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../utils/supabase';
 import { getTrpcHeaders, trpcVanillaClient } from '../utils/trpc';
 import { SPLIT_READER_HEADERS } from '../utils/split-reader-contract';
+import { withDeadline } from '../utils/networkResilience';
 import {
   fetchNotifications,
   markNotificationRead,
   markAllNotificationsRead,
   clearNotification,
 } from './notificationService';
+
+const ADMIN_REST_TIMEOUT_MS = 8000;
+const adminFailureCauses = new WeakMap<object, unknown>();
+
+function createAbortError(message = 'Aborted'): Error {
+  const err = new Error(message);
+  err.name = 'AbortError';
+  return err;
+}
+
+function shouldSkipRestFallback(err: unknown, externalSignal?: AbortSignal): boolean {
+  if (externalSignal?.aborted) return true;
+  if (!err || typeof err !== 'object') return false;
+  const record = err as Record<string, any>;
+  const cause = record.cause as Record<string, any> | undefined;
+  const name = record.name;
+  const causeName = cause?.name;
+  if (
+    name === 'AbortError' ||
+    name === 'TimeoutError' ||
+    causeName === 'AbortError' ||
+    causeName === 'TimeoutError'
+  ) {
+    return true;
+  }
+  const status =
+    record.data?.httpStatus ??
+    record.status ??
+    record.statusCode ??
+    record.response?.status ??
+    cause?.status;
+  if (status === 401 || status === 403 || status === 426) {
+    return true;
+  }
+  const trpcCode = record.data?.code;
+  if (trpcCode === 'UNAUTHORIZED' || trpcCode === 'FORBIDDEN') {
+    return true;
+  }
+  const msg = typeof record.message === 'string' ? record.message : '';
+  return msg.includes('SPLIT_READER_UPGRADE_REQUIRED');
+}
+
+function recordFailureCause<T extends { success: false; error: string; code?: string }>(
+  payload: T,
+  cause: unknown,
+): T {
+  if (cause !== undefined) {
+    adminFailureCauses.set(payload, cause);
+  }
+  return payload;
+}
 
 const getApiUrl = () => {
   const url = process.env.EXPO_PUBLIC_API_URL?.trim();
@@ -37,107 +89,169 @@ export const ADMIN_QUERY_OPTIONS = {
   gcTime: 10 * 60 * 1000,
 };
 
-export const callAdminApi = async (action: string, bodyData: any = {}) => {
+export const callAdminApi = async (
+  action: string,
+  bodyData: any = {},
+  opts?: { signal?: AbortSignal },
+) => {
+  const signal = opts?.signal;
+  if (signal?.aborted) {
+    return recordFailureCause(
+      { success: false, error: 'Request aborted.' },
+      createAbortError(
+        typeof signal.reason === 'string' ? signal.reason : undefined,
+      ),
+    );
+  }
+
   DeviceEventEmitter.emit('progress-start', action);
   try {
     // dispatch is a mutation on the server, including its read-only actions.
-    const result = await (trpcVanillaClient.admin as any).dispatch.mutate({
-      action,
-      ...bodyData,
-    });
+    const input = { action, ...bodyData };
+    const result = signal
+      ? await (trpcVanillaClient.admin as any).dispatch.mutate(input, { signal })
+      : await (trpcVanillaClient.admin as any).dispatch.mutate(input);
     return result;
-  } catch (trpcError) {
+  } catch (trpcError: any) {
+    if (shouldSkipRestFallback(trpcError, signal)) {
+      return recordFailureCause(
+        { success: false, error: trpcError?.message || 'Network error executing request.' },
+        signal?.aborted ? createAbortError() : trpcError,
+      );
+    }
+
     console.warn(`[adminService] tRPC failed for action ${action}, falling back to REST:`, trpcError);
-    
-    // 2. Fallback to original REST logic
+
+    // 2. Fallback to original REST logic (bounded by 8s deadline + caller signal)
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const apiUrl = getApiUrl();
+      return await withDeadline(
+        async (attemptSignal) => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (attemptSignal.aborted) {
+            throw attemptSignal.reason ?? createAbortError();
+          }
+          const token = session?.access_token;
+          const apiUrl = getApiUrl();
 
-      const response = await fetch(`${apiUrl}/api/admin/actions`, {
-        method: 'POST',
-        headers: {
-          ...SPLIT_READER_HEADERS,
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          const response = await fetch(`${apiUrl}/api/admin/actions`, {
+            method: 'POST',
+            headers: {
+              ...SPLIT_READER_HEADERS,
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action,
+              ...bodyData,
+            }),
+            signal: attemptSignal,
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            let errMsg = 'Failed to execute admin action.';
+            let errorCode: string | undefined;
+            try {
+              const parsed = JSON.parse(errText);
+              errMsg = parsed.error || parsed.message || errMsg;
+              errorCode = typeof parsed.code === 'string' ? parsed.code : undefined;
+            } catch {
+              if (errText) errMsg = errText.slice(0, 100);
+            }
+            return recordFailureCause(
+              { success: false, error: errMsg, ...(errorCode ? { code: errorCode } : {}) },
+              { status: response.status, code: errorCode },
+            );
+          }
+
+          return await response.json();
         },
-        body: JSON.stringify({
-          action,
-          ...bodyData,
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        let errMsg = 'Failed to execute admin action.';
-        let errorCode: string | undefined;
-        try {
-          const parsed = JSON.parse(errText);
-          errMsg = parsed.error || parsed.message || errMsg;
-          errorCode = typeof parsed.code === 'string' ? parsed.code : undefined;
-        } catch {
-          if (errText) errMsg = errText.slice(0, 100);
-        }
-        return { success: false, error: errMsg, ...(errorCode ? { code: errorCode } : {}) };
-      }
-
-      const result = await response.json();
-      return result;
+        ADMIN_REST_TIMEOUT_MS,
+        signal,
+        `Admin action ${action}`,
+      );
     } catch (error: any) {
       console.error(`[adminService] REST fallback error running action ${action}:`, error);
-      return { success: false, error: error?.message || 'Network error executing request.' };
+      return recordFailureCause(
+        { success: false, error: error?.message || 'Network error executing request.' },
+        error,
+      );
     }
   } finally {
     DeviceEventEmitter.emit('progress-finish', action);
   }
 };
 
-export const getExportLedgerCsv = async (filters: {
-  allTime: boolean;
-  startYear?: number;
-  startMonth?: number;
-  endYear?: number;
-  endMonth?: number;
-}) => {
+export const getExportLedgerCsv = async (
+  filters: {
+    allTime: boolean;
+    startYear?: number;
+    startMonth?: number;
+    endYear?: number;
+    endMonth?: number;
+  },
+  signal?: AbortSignal,
+) => {
+  if (signal?.aborted) {
+    return { success: false, error: 'Request aborted.' };
+  }
+
   try {
     // 1. Try tRPC query
-    const csvContent = await (trpcVanillaClient.admin as any).exportReport.query({
+    const input = {
       allTime: filters.allTime,
       startYear: filters.startYear,
       startMonth: filters.startMonth,
       endYear: filters.endYear,
       endMonth: filters.endMonth,
-    });
+    };
+    const csvContent = signal
+      ? await (trpcVanillaClient.admin as any).exportReport.query(input, { signal })
+      : await (trpcVanillaClient.admin as any).exportReport.query(input);
     return { success: true, csv: csvContent };
-  } catch (trpcError) {
+  } catch (trpcError: any) {
+    if (shouldSkipRestFallback(trpcError, signal)) {
+      return { success: false, error: trpcError?.message || 'Failed to download report ledger CSV.' };
+    }
+
     console.warn('[adminService] tRPC ledger export failed, falling back to REST:', trpcError);
-    
-    // 2. Fallback to REST
+
+    // 2. Fallback to REST (bounded by 8s deadline + caller signal)
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const apiUrl = getApiUrl();
+      return await withDeadline(
+        async (attemptSignal) => {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (attemptSignal.aborted) {
+            throw attemptSignal.reason ?? createAbortError();
+          }
+          const token = session?.access_token;
+          const apiUrl = getApiUrl();
 
-      let queryParams = `?allTime=${filters.allTime}`;
-      if (!filters.allTime && filters.startYear) {
-        queryParams += `&startYear=${filters.startYear}&startMonth=${filters.startMonth}&endYear=${filters.endYear}&endMonth=${filters.endMonth}`;
-      }
+          let queryParams = `?allTime=${filters.allTime}`;
+          if (!filters.allTime && filters.startYear) {
+            queryParams += `&startYear=${filters.startYear}&startMonth=${filters.startMonth}&endYear=${filters.endYear}&endMonth=${filters.endMonth}`;
+          }
 
-      const response = await fetch(`${apiUrl}/api/admin/reports/export${queryParams}`, {
-        method: 'GET',
-        headers: {
-          ...SPLIT_READER_HEADERS,
-          'Authorization': `Bearer ${token}`,
+          const response = await fetch(`${apiUrl}/api/admin/reports/export${queryParams}`, {
+            method: 'GET',
+            headers: {
+              ...SPLIT_READER_HEADERS,
+              'Authorization': `Bearer ${token}`,
+            },
+            signal: attemptSignal,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Server returned status ${response.status}`);
+          }
+
+          const csvContent = await response.text();
+          return { success: true, csv: csvContent };
         },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
-      }
-
-      const csvContent = await response.text();
-      return { success: true, csv: csvContent };
+        ADMIN_REST_TIMEOUT_MS,
+        signal,
+        'Admin ledger export',
+      );
     } catch (error: any) {
       console.error('[adminService] Error fetching ledger CSV:', error);
       return { success: false, error: error?.message || 'Failed to download report ledger CSV.' };
@@ -146,14 +260,44 @@ export const getExportLedgerCsv = async (filters: {
 };
 
 
-export const fetchAdminDashboardData = async () => {
+export const fetchAdminDashboardData = async (signal?: AbortSignal) => {
   try {
-    const response = await callAdminApi('fetch-admin-dashboard');
+    const response = await callAdminApi('fetch-admin-dashboard', {}, signal ? { signal } : undefined);
     return response;
   } catch (error: any) {
     console.error('[adminService] Error in fetchAdminDashboardData:', error);
     return { success: false, error: error?.message || 'Network error.' };
   }
+};
+
+export const fetchAdminDashboardOrThrow = async (signal?: AbortSignal) => {
+  if (signal?.aborted) {
+    throw createAbortError(typeof signal.reason === 'string' ? signal.reason : undefined);
+  }
+  const res = await fetchAdminDashboardData(signal);
+  if (signal?.aborted) {
+    throw createAbortError(typeof signal.reason === 'string' ? signal.reason : undefined);
+  }
+  if (!res || !res.success) {
+    const cause = res && typeof res === 'object' ? adminFailureCauses.get(res) : undefined;
+    if (cause instanceof Error && cause.name === 'AbortError') {
+      throw cause;
+    }
+    const err = new Error(res?.error || 'Failed to load admin dashboard.') as Error & {
+      code?: string;
+      status?: number;
+      cause?: unknown;
+    };
+    if (res?.code) err.code = res.code;
+    if (cause && typeof cause === 'object') {
+      err.cause = cause;
+      const causeRecord = cause as Record<string, any>;
+      const status = causeRecord.data?.httpStatus ?? causeRecord.status ?? causeRecord.statusCode;
+      if (typeof status === 'number') err.status = status;
+    }
+    throw err;
+  }
+  return res;
 };
 
 export const fetchAdminPayments = async (filters: { page?: number; pageSize?: number; searchQuery?: string; ledgerFilter?: string }) => {

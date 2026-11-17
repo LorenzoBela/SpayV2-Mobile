@@ -1,16 +1,26 @@
 import { createMMKV } from 'react-native-mmkv';
 import * as SecureStore from 'expo-secure-store';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import { withDeadline } from './networkResilience';
 
 const SECURE_KEY_ALIAS = 'spay_mmkv_encryption_key';
+const FALLBACK_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const RESTORE_DEADLINE_MS = 1500;
+
+let cachedEncryptionKey: string | null = null;
 
 /**
  * Helper to retrieve or generate a secure key for MMKV database encryption.
- * Stores a 64-character hex string (representing a 256-bit key) in Expo SecureStore.
+ * Cached in-process so SecureStore is hit at most once per startup.
  */
 function getOrCreateEncryptionKey(): string {
+  if (cachedEncryptionKey) {
+    return cachedEncryptionKey;
+  }
+
   try {
-    let key = SecureStore.getItem(SECURE_KEY_ALIAS);
+    const rawKey = typeof SecureStore?.getItem === 'function' ? SecureStore.getItem(SECURE_KEY_ALIAS) : null;
+    let key = typeof rawKey === 'string' && rawKey.length > 0 ? rawKey : null;
     if (!key) {
       // Generate a cryptographically secure 64-character hex key (32 bytes / 256 bits)
       const bytes = new Uint8Array(32);
@@ -26,40 +36,70 @@ function getOrCreateEncryptionKey(): string {
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      SecureStore.setItem(SECURE_KEY_ALIAS, generatedKey);
+      if (typeof SecureStore?.setItem === 'function') {
+        SecureStore.setItem(SECURE_KEY_ALIAS, generatedKey);
+      }
       key = generatedKey;
     }
+    cachedEncryptionKey = key;
     return key;
   } catch (error) {
     console.error('[queryPersister] Failed to get/create encryption key from SecureStore:', error);
     // Fallback to a stable local key in case SecureStore is failing, to avoid app crash.
-    return '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    cachedEncryptionKey = FALLBACK_ENCRYPTION_KEY;
+    return FALLBACK_ENCRYPTION_KEY;
   }
 }
 
+function createMemoryFallbackStorage() {
+  const map = new Map<string, string>();
+  return {
+    getString: (k: string) => map.get(k),
+    set: (k: string, v: string) => {
+      map.set(k, String(v));
+    },
+    remove: (k: string) => {
+      map.delete(k);
+    },
+    delete: (k: string) => {
+      map.delete(k);
+    },
+    clearAll: () => {
+      map.clear();
+    },
+  };
+}
+
 let mmkvInstance: any = null;
+
+function isValidStorage(candidate: any): boolean {
+  return Boolean(candidate && typeof candidate.getString === 'function' && typeof candidate.set === 'function');
+}
 
 function getStorageInstance(): any {
   if (!mmkvInstance) {
     const encryptionKey = getOrCreateEncryptionKey();
     try {
-      mmkvInstance = createMMKV({
+      const encrypted = createMMKV({
         id: 'spay-query-cache',
-        encryptionKey: encryptionKey,
+        encryptionKey,
         encryptionType: 'AES-256',
       });
+      if (!isValidStorage(encrypted)) {
+        throw new Error('Invalid MMKV instance');
+      }
+      mmkvInstance = encrypted;
     } catch (error) {
       console.error('[queryPersister] Failed to initialize encrypted MMKV. Re-initializing unencrypted fallback storage:', error);
       try {
-        mmkvInstance = createMMKV({ id: 'spay-query-cache-fallback' });
+        const unencrypted = createMMKV({ id: 'spay-query-cache-fallback' });
+        if (!isValidStorage(unencrypted)) {
+          throw new Error('Invalid fallback MMKV instance');
+        }
+        mmkvInstance = unencrypted;
       } catch (fallbackError) {
         console.error('[queryPersister] Fallback MMKV also failed. Using memory-only mock storage:', fallbackError);
-        mmkvInstance = {
-          getString: (k: string) => undefined,
-          set: (k: string, v: string) => {},
-          remove: (k: string) => {},
-          clearAll: () => {},
-        } as any;
+        mmkvInstance = createMemoryFallbackStorage();
       }
     }
   }
@@ -71,19 +111,14 @@ function getStorageInstance(): any {
  * and encryption key on first access rather than module load time.
  */
 export const storage = new Proxy({} as any, {
-  get(_target, prop, receiver) {
+  get(_target, prop) {
     const instance = getStorageInstance();
     const value = Reflect.get(instance, prop, instance);
     return typeof value === 'function' ? value.bind(instance) : value;
   },
 });
 
-/**
- * Custom Persister for TanStack Query using encrypted MMKV.
- * We use createAsyncStoragePersister because it provides built-in throttling,
- * serialization, and robust error handling.
- */
-export const clientPersister = createAsyncStoragePersister({
+const basePersister = createAsyncStoragePersister({
   storage: {
     getItem: (key) => {
       try {
@@ -114,7 +149,11 @@ export const clientPersister = createAsyncStoragePersister({
     },
     removeItem: (key) => {
       try {
-        storage.remove(key);
+        if (typeof storage.remove === 'function') {
+          storage.remove(key);
+        } else {
+          storage.delete?.(key);
+        }
       } catch (error) {
         console.error('[queryPersister] Decryption or remove failure in MMKV. Clearing cache to recover:', error);
         try {
@@ -130,3 +169,21 @@ export const clientPersister = createAsyncStoragePersister({
   // Custom key for the storage
   key: 'SPAY_QUERY_OFFLINE_CACHE',
 });
+
+/**
+ * Custom Persister for TanStack Query using encrypted MMKV.
+ * Bounds restoreClient so corrupt or stalled persistence cannot block startup.
+ */
+export const clientPersister: typeof basePersister = {
+  ...basePersister,
+  restoreClient: () =>
+    withDeadline(
+      () => Promise.resolve(basePersister.restoreClient()),
+      RESTORE_DEADLINE_MS,
+      undefined,
+      'queryPersister.restoreClient',
+    ).catch((error) => {
+      console.warn('[queryPersister] Restore skipped/failed; starting with fresh cache:', error);
+      return undefined;
+    }),
+};

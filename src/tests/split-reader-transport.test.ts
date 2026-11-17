@@ -50,7 +50,12 @@ vi.mock('react-native', () => ({
 vi.mock('@react-native-community/netinfo', () => ({ default: { fetch: async () => ({ isConnected: true }) } }));
 
 import { getTrpcHeaders, setCachedImpersonatedUserId } from '../utils/trpc';
-import { callAdminApi, fetchOrderItemSuggestions, getExportLedgerCsv } from '../services/adminService';
+import {
+  callAdminApi,
+  fetchAdminDashboardOrThrow,
+  fetchOrderItemSuggestions,
+  getExportLedgerCsv,
+} from '../services/adminService';
 import { getAdminIponData } from '../services/iponService';
 import { syncWidgetData } from '../utils/widgetSync';
 import { SPLIT_READER_UPGRADE_CODE } from '../utils/split-reader-contract';
@@ -160,5 +165,43 @@ describe('split reader transport integration', () => {
     });
     await syncWidgetData(true);
     expect(state.widgetUpdate).not.toHaveBeenCalled();
+  });
+
+  it('skips admin REST fallback on AbortError, TimeoutError, 401, and 403 while forwarding signal', async () => {
+    const abortErr = Object.assign(new Error('Aborted'), { name: 'AbortError' });
+    state.dispatch.mockRejectedValueOnce(abortErr);
+    expect(await callAdminApi('fetch-admin-dashboard')).toEqual({ success: false, error: 'Aborted' });
+    expect(state.fetch).not.toHaveBeenCalled();
+
+    const timeoutErr = Object.assign(new Error('Timed out'), { name: 'TimeoutError' });
+    state.dispatch.mockRejectedValueOnce(timeoutErr);
+    expect(await callAdminApi('fetch-admin-dashboard')).toEqual({ success: false, error: 'Timed out' });
+    expect(state.fetch).not.toHaveBeenCalled();
+
+    state.dispatch.mockRejectedValueOnce({ data: { httpStatus: 401, code: 'UNAUTHORIZED' }, message: 'Unauthorized' });
+    expect(await callAdminApi('fetch-admin-dashboard')).toEqual({ success: false, error: 'Unauthorized' });
+    expect(state.fetch).not.toHaveBeenCalled();
+
+    state.exportReport.mockRejectedValueOnce({ data: { httpStatus: 403, code: 'FORBIDDEN' }, message: 'Forbidden' });
+    expect(await getExportLedgerCsv({ allTime: true })).toEqual({ success: false, error: 'Forbidden' });
+    expect(state.fetch).not.toHaveBeenCalled();
+
+    const controller = new AbortController();
+    state.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    expect(await callAdminApi('fetch-admin-dashboard', {}, { signal: controller.signal })).toEqual({ success: true });
+    expect(state.dispatch).toHaveBeenLastCalledWith({ action: 'fetch-admin-dashboard' }, { signal: controller.signal });
+    expect(state.fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('throws from fetchAdminDashboardOrThrow on failure and preserves abort/auth metadata', async () => {
+    state.dispatch.mockResolvedValueOnce({ success: true, stats: { totalOrdersCount: 2 } });
+    await expect(fetchAdminDashboardOrThrow()).resolves.toMatchObject({ success: true, stats: { totalOrdersCount: 2 } });
+
+    state.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
+    await expect(fetchAdminDashboardOrThrow()).rejects.toMatchObject({ message: 'Unauthorized', status: 401 });
+
+    const controller = new AbortController();
+    controller.abort();
+    await expect(fetchAdminDashboardOrThrow(controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

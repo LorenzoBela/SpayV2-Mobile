@@ -4,6 +4,9 @@ import superjson from 'superjson'
 export type AppRouter = any
 import { supabase, expoSecureStorage } from './supabase'
 import { SPLIT_READER_HEADERS } from './split-reader-contract'
+import type { getSessionWithTimeout } from './authProfile'
+import * as authProfileNamespace from './authProfile'
+import { withDeadline } from './networkResilience'
 
 const getApiUrl = () => {
   const url = process.env.EXPO_PUBLIC_API_URL?.trim()
@@ -23,7 +26,23 @@ export const setCachedImpersonatedUserId = (id: string | null) => {
 export const getCachedImpersonatedUserId = () => cachedImpersonatedUserId
 
 export const getTrpcHeaders = async () => {
-  const { data: { session } } = await supabase.auth.getSession()
+  let getSessionFn: typeof getSessionWithTimeout | undefined
+  try {
+    getSessionFn = (authProfileNamespace as Record<string, any>).getSessionWithTimeout
+  } catch {
+    // Partial Vitest mocks of authProfile may omit getSessionWithTimeout.
+  }
+  const session = typeof getSessionFn === 'function'
+    ? await getSessionFn(3000)
+    : await withDeadline(
+        async () => {
+          const res = await supabase.auth.getSession()
+          return res?.data?.session ?? null
+        },
+        3000,
+        undefined,
+        'trpc.getSession',
+      )
   
   if (cachedImpersonatedUserId === undefined) {
     try {
@@ -50,14 +69,13 @@ export const getTrpcHeaders = async () => {
   }
 }
 
-export const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit) => {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 10000)
-  return fetch(url, {
-    ...options,
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeoutId))
-}
+export const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit) =>
+  withDeadline(
+    (signal) => fetch(url, { ...options, signal }),
+    7000,
+    options?.signal ?? undefined,
+    'trpc.fetch',
+  )
 
 export const trpcVanillaClient = createTRPCClient<AppRouter>({
   links: [

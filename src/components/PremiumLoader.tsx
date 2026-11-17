@@ -57,6 +57,55 @@ const AD_SLIDES: AdSlideItem[] = [
   },
 ];
 
+export const DEFAULT_LOADER_TIMEOUT_MS = 16000;
+
+export interface LoaderDisplayStateInput {
+  error?: string | null;
+  isTimeout: boolean;
+  isRetrying: boolean;
+  isRetryingProp?: boolean;
+  subtitle: string;
+  hasRetryHandler: boolean;
+}
+
+export function getLoaderDisplayState({
+  error,
+  isTimeout,
+  isRetrying,
+  isRetryingProp = false,
+  subtitle,
+  hasRetryHandler,
+}: LoaderDisplayStateInput) {
+  // Internal retry latch only applies when error is absent; callers that keep
+  // `error` truthy during refetch must never leave Retry permanently disabled.
+  const effectiveRetrying = Boolean(isRetryingProp || (!error && isRetrying));
+  const showErrorOrTimeout = Boolean(error || isTimeout);
+  const displaySubtitle = showErrorOrTimeout
+    ? (error || 'Connection is taking longer than expected.')
+    : effectiveRetrying
+      ? 'Retrying connection...'
+      : subtitle;
+
+  return {
+    effectiveRetrying,
+    showErrorOrTimeout,
+    displaySubtitle,
+    showRetryButton: showErrorOrTimeout && hasRetryHandler,
+    retryLabel: effectiveRetrying ? 'Retrying...' : 'Retry',
+  };
+}
+
+export function scheduleLoaderTimeout(
+  opts: { error?: string | null; timeoutMs: number; hasRetryHandler: boolean },
+  onTimeout: () => void,
+): (() => void) | undefined {
+  if (!opts.error && opts.timeoutMs > 0 && opts.hasRetryHandler) {
+    const timer = setTimeout(onTimeout, opts.timeoutMs);
+    return () => clearTimeout(timer);
+  }
+  return undefined;
+}
+
 interface PremiumLoaderProps {
   title?: string;
   subtitle?: string;
@@ -66,6 +115,7 @@ interface PremiumLoaderProps {
   onRetry?: () => void;
   timeoutMs?: number;
   useSystemFonts?: boolean;
+  isRetrying?: boolean;
 }
 
 export default function PremiumLoader({
@@ -75,14 +125,17 @@ export default function PremiumLoader({
   progress,
   error,
   onRetry,
-  timeoutMs = 12000,
+  timeoutMs = DEFAULT_LOADER_TIMEOUT_MS,
   useSystemFonts = false,
+  isRetrying: isRetryingProp = false,
 }: PremiumLoaderProps) {
   const title = text || titleProp;
   const [trackWidth, setTrackWidth] = useState(0);
   const themeContext = useContext(ThemeContext);
   const isDarkMode = themeContext ? themeContext.isDarkMode : true;
   const [isTimeout, setIsTimeout] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [isRetryingState, setIsRetryingState] = useState(false);
   const [activeAdIndex, setActiveAdIndex] = useState(0);
 
   // Animation values
@@ -223,15 +276,25 @@ export default function PremiumLoader({
     }
   }, [progress, progressAnim]);
 
-  // Timeout monitoring for retry states
   useEffect(() => {
-    if (!error && timeoutMs > 0 && onRetry) {
-      const timer = setTimeout(() => {
-        setIsTimeout(true);
-      }, timeoutMs);
-      return () => clearTimeout(timer);
+    if (error) {
+      setIsRetryingState(false);
+    } else {
+      setIsTimeout(false);
     }
-  }, [error, timeoutMs, onRetry]);
+  }, [error]);
+
+  // Timeout monitoring for retry states; retryNonce restarts countdown even when onRetry ref is stable.
+  useEffect(() => {
+    setIsTimeout(false);
+    return scheduleLoaderTimeout(
+      { error, timeoutMs, hasRetryHandler: Boolean(onRetry) },
+      () => {
+        setIsRetryingState(false);
+        setIsTimeout(true);
+      },
+    );
+  }, [error, timeoutMs, onRetry, retryNonce]);
 
   const indeterminateTranslateX = indeterminateAnim.interpolate({
     inputRange: [0, 1],
@@ -262,8 +325,15 @@ export default function PremiumLoader({
 
   const currentAd = AD_SLIDES[activeAdIndex];
   const AdIcon = currentAd.icon;
-  const showErrorOrTimeout = error || isTimeout;
-  const displayErrorMsg = error || 'Connection is taking longer than expected.';
+  const displayState = getLoaderDisplayState({
+    error,
+    isTimeout,
+    isRetrying: isRetryingState,
+    isRetryingProp,
+    subtitle,
+    hasRetryHandler: Boolean(onRetry),
+  });
+  const effectiveRetrying = displayState.effectiveRetrying;
 
   // Pure True OLED Pitch Black Theme
   const containerBg = isDarkMode ? '#000000' : '#f8fafc';
@@ -305,8 +375,14 @@ export default function PremiumLoader({
         {/* Header Titles */}
         <View style={styles.header}>
           <Text style={[font('titleText'), { color: titleColor }]}>{title}</Text>
-          <Text style={[font('subtitleText'), { color: subtitleColor }]} numberOfLines={2}>
-            {showErrorOrTimeout ? displayErrorMsg : subtitle}
+          <Text
+            style={[
+              font('subtitleText'),
+              { color: !displayState.showErrorOrTimeout && effectiveRetrying ? '#f97316' : subtitleColor },
+            ]}
+            numberOfLines={2}
+          >
+            {displayState.displaySubtitle}
           </Text>
         </View>
 
@@ -328,18 +404,25 @@ export default function PremiumLoader({
         </View>
 
         {/* Retry State if timeout */}
-        {showErrorOrTimeout ? (
-          onRetry && (
+        {displayState.showErrorOrTimeout ? (
+          displayState.showRetryButton && (
             <TouchableOpacity
               onPress={() => {
                 setIsTimeout(false);
-                onRetry();
+                if (!error) {
+                  setIsRetryingState(true);
+                }
+                setRetryNonce((prev) => prev + 1);
+                onRetry?.();
               }}
+              disabled={effectiveRetrying}
               activeOpacity={0.8}
-              style={styles.retryButton}
+              accessibilityRole="button"
+              accessibilityLabel={displayState.retryLabel}
+              style={[styles.retryButton, effectiveRetrying && styles.retryButtonDisabled]}
             >
               <RefreshCw size={14} color="#ffffff" strokeWidth={2.2} />
-              <Text style={font('retryText')}>Retry</Text>
+              <Text style={font('retryText')}>{displayState.retryLabel}</Text>
             </TouchableOpacity>
           )
         ) : (
@@ -525,6 +608,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     minHeight: 40,
+  },
+  retryButtonDisabled: {
+    opacity: 0.7,
   },
   retryText: {
     color: '#ffffff',

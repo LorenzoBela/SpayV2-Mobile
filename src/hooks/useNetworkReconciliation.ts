@@ -1,55 +1,46 @@
-import { useEffect, useRef } from 'react';
-import NetInfo from '@react-native-community/netinfo';
-import { onlineManager } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { queryClient } from '../utils/queryClient';
+import { initNetworkMonitor, subscribeReconnect } from '../utils/networkResilience';
 import { syncWidgetData } from '../utils/widgetSync';
 
+const RECONNECT_QUERY_KEYS = new Set([
+  'admin-dashboard',
+  'admin-clients',
+  'admin-orders',
+  'admin-payments',
+  'admin-reminders',
+  'admin-reports',
+  'shared-credit-limits',
+  'dashboard',
+  'orders',
+  'notifications',
+  'unreadCount',
+  'budget',
+]);
+
 /**
- * Connects NetInfo to TanStack Query onlineManager and triggers
- * intelligent background query invalidation when moving from dead zones to 4G/5G/WiFi.
+ * Connects the shared NetInfo monitor to TanStack Query and triggers
+ * background query invalidation when transitioning from offline to online.
  */
 export function useNetworkReconciliation() {
-  const wasOffline = useRef(false);
-
   useEffect(() => {
-    // 1. Sync React Native NetInfo with TanStack Query's onlineManager
-    onlineManager.setEventListener((setOnline) => {
-      return NetInfo.addEventListener((state) => {
-        const isOnline = Boolean(state.isConnected && state.isInternetReachable !== false);
-        setOnline(isOnline);
+    const stopMonitor = initNetworkMonitor();
+    const unsubscribeReconnect = subscribeReconnect(() => {
+      void queryClient.invalidateQueries({
+        predicate: (query) => {
+          const queryKey = query.queryKey;
+          return (
+            Array.isArray(queryKey) &&
+            queryKey.some((part) => typeof part === 'string' && RECONNECT_QUERY_KEYS.has(part))
+          );
+        },
       });
-    });
-
-    // 2. Listen to network state transitions for automatic re-sync
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      const isOnline = Boolean(state.isConnected && state.isInternetReachable !== false);
-
-      if (!isOnline) {
-        wasOffline.current = true;
-      } else if (wasOffline.current && isOnline) {
-        wasOffline.current = false;
-        
-        // Re-focus and invalidate queries on connection recovery
-        void queryClient.invalidateQueries({
-          predicate: (query) => {
-            const queryKey = query.queryKey;
-            // Refetch essential fintech queries on reconnect
-            return (
-              Array.isArray(queryKey) &&
-              (queryKey.includes('dashboard') ||
-                queryKey.includes('notifications') ||
-                queryKey.includes('unreadCount') ||
-                queryKey.includes('orders') ||
-                queryKey.includes('budget'))
-            );
-          },
-        });
-        void syncWidgetData(true);
-      }
+      void syncWidgetData(true);
     });
 
     return () => {
-      unsubscribe();
+      unsubscribeReconnect();
+      stopMonitor();
     };
   }, []);
 }

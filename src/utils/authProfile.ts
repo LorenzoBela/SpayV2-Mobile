@@ -1,7 +1,8 @@
-import type { User } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
 
 import { supabase, expoSecureStorage } from './supabase';
 import { storage } from './queryPersister';
+import { withDeadline } from './networkResilience';
 
 export type LinkedProfile = {
   id: string;
@@ -60,33 +61,89 @@ const PROFILE_SELECT = 'id, email, name, role, mobile_number';
 
 const pendingProfiles = new Map<string, Promise<LinkedProfile | null>>();
 
-export function getLinkedProfileForUser(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
+function withAbortSignal<T>(query: T, signal?: AbortSignal): T {
+  if (signal && query && typeof (query as any).abortSignal === 'function') {
+    return (query as any).abortSignal(signal);
+  }
+  return query;
+}
+
+/** Reads the Supabase session under a hard deadline so storage stalls never hang startup. */
+export async function getSessionWithTimeout(
+  timeoutMs = 5000,
+  signal?: AbortSignal,
+): Promise<Session | null> {
+  return withDeadline(
+    async () => {
+      const res = await supabase.auth.getSession();
+      if (res?.error && !res?.data?.session) {
+        throw res.error;
+      }
+      return res?.data?.session ?? null;
+    },
+    timeoutMs,
+    signal,
+    'auth.getSession',
+  );
+}
+
+export function getLinkedProfileForUser(
+  user: Pick<User, 'id' | 'email'>,
+  options?: { signal?: AbortSignal; force?: boolean },
+): Promise<LinkedProfile | null> {
+  if (options?.signal?.aborted) {
+    return withDeadline(
+      () => Promise.resolve(null),
+      6000,
+      options.signal,
+      'authProfile.getLinkedProfileForUser',
+    );
+  }
   const key = JSON.stringify([user.id, user.email ?? null]);
+  if (options?.force) {
+    pendingProfiles.delete(key);
+  }
   const pending = pendingProfiles.get(key);
-  if (pending) return pending;
-  const request = lookupLinkedProfile(user).finally(() => {
+  if (pending) {
+    return options?.signal
+      ? withDeadline(() => pending, Infinity, options.signal, 'authProfile.getLinkedProfileForUser')
+      : pending;
+  }
+  const request = withDeadline(
+    (deadlineSignal) => lookupLinkedProfile(user, deadlineSignal),
+    6000,
+    options?.signal,
+    'authProfile.getLinkedProfileForUser',
+  ).finally(() => {
     if (pendingProfiles.get(key) === request) pendingProfiles.delete(key);
   });
   pendingProfiles.set(key, request);
   return request;
 }
 
-async function lookupLinkedProfile(user: Pick<User, 'id' | 'email'>): Promise<LinkedProfile | null> {
-  const { data: linkedProfile, error: rpcError } = await supabase
-    .rpc('get_current_linked_profile')
-    .maybeSingle();
+async function lookupLinkedProfile(
+  user: Pick<User, 'id' | 'email'>,
+  signal?: AbortSignal,
+): Promise<LinkedProfile | null> {
+  const { data: linkedProfile, error: rpcError } = await withAbortSignal(
+    supabase.rpc('get_current_linked_profile'),
+    signal,
+  ).maybeSingle();
 
   if (rpcError) {
+    if (signal?.aborted) throw rpcError;
     console.warn('[AuthProfile] Linked profile RPC unavailable, falling back to direct profile lookup:', rpcError.message);
   } else if (linkedProfile) {
     return linkedProfile as LinkedProfile;
   }
 
-  const { data: profileById, error: idError } = await supabase
-    .from('profiles')
-    .select(PROFILE_SELECT)
-    .eq('id', user.id)
-    .maybeSingle();
+  const { data: profileById, error: idError } = await withAbortSignal(
+    supabase
+      .from('profiles')
+      .select(PROFILE_SELECT)
+      .eq('id', user.id),
+    signal,
+  ).maybeSingle();
 
   if (idError) {
     throw idError;
@@ -100,12 +157,14 @@ async function lookupLinkedProfile(user: Pick<User, 'id' | 'email'>): Promise<Li
     return null;
   }
 
-  const { data: profileByEmail, error: emailError } = await supabase
-    .from('profiles')
-    .select(PROFILE_SELECT)
-    .ilike('email', user.email)
-    .limit(1)
-    .maybeSingle();
+  const { data: profileByEmail, error: emailError } = await withAbortSignal(
+    supabase
+      .from('profiles')
+      .select(PROFILE_SELECT)
+      .ilike('email', user.email)
+      .limit(1),
+    signal,
+  ).maybeSingle();
 
   if (emailError) {
     throw emailError;
@@ -162,13 +221,18 @@ export async function getLinkedProfileForCurrentUser() {
     // Fall back to default session user
   }
 
-  let { data: { session } } = await supabase.auth.getSession();
+  let session = await getSessionWithTimeout(5000);
 
   if (session && session.expires_at) {
     const nowSec = Math.floor(Date.now() / 1000);
     if (session.expires_at <= nowSec) {
       try {
-        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+        const { data: { session: refreshed } } = await withDeadline(
+          () => supabase.auth.refreshSession(),
+          5000,
+          undefined,
+          'auth.refreshSession',
+        );
         if (refreshed) {
           session = refreshed;
         }
