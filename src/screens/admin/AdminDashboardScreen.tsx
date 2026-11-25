@@ -1363,13 +1363,42 @@ export default function AdminDashboardScreen() {
                   {/* Table Body */}
                   {recentOrders.length > 0 ? (
                     recentOrders.map((o: any) => (
-                      <View key={o.id} style={[styles.tableBodyRow, { 
-                        borderBottomColor: t.border,
-                        ...(o.isShared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d' })
-                      }]}>
-                        <Text style={[styles.tableCell, { width: 100, fontWeight: 'bold', color: t.textPrimary }]} numberOfLines={1}>
-                          {o.clientName} {o.isShared && <Text style={{ color: '#ee4d2d', fontSize: 10 }}>[SHARED]</Text>}
-                        </Text>
+                      <View
+                        key={o.id}
+                        style={[
+                          styles.tableBodyRow,
+                          {
+                            borderBottomColor: t.border,
+                            ...(o.isShared && {
+                              backgroundColor: 'rgba(238, 77, 45, 0.06)',
+                              borderLeftWidth: 2,
+                              borderLeftColor: '#ee4d2d',
+                              paddingLeft: 6,
+                            }),
+                          },
+                        ]}
+                      >
+                        <View style={{ width: o.isShared ? 92 : 100, paddingRight: 8 }}>
+                          <Text style={[styles.tableCell, { fontWeight: 'bold', color: t.textPrimary }]} numberOfLines={1}>
+                            {o.clientName}
+                          </Text>
+                          {o.isShared && (
+                            <View
+                              style={{
+                                alignSelf: 'flex-start',
+                                marginTop: 3,
+                                paddingHorizontal: 5,
+                                paddingVertical: 1,
+                                borderRadius: 4,
+                                backgroundColor: 'rgba(238, 77, 45, 0.14)',
+                              }}
+                            >
+                              <Text style={{ color: '#ee4d2d', fontSize: 8, fontWeight: '800', letterSpacing: 0.4 }}>
+                                SHARED
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={[styles.tableCell, { width: 130, color: t.textPrimary }]} numberOfLines={1}>
                           {o.itemName}
                         </Text>
@@ -1403,18 +1432,22 @@ export default function AdminDashboardScreen() {
               <View style={styles.timelineContainer}>
                 {activities.length > 0 ? (
                   activities.map((act: any, index: number) => (
-                    <View key={index} style={[styles.timelineItem, { 
-                      borderLeftColor: t.border,
-                      ...(act.isShared && { borderStyle: 'dashed', borderWidth: 1, borderColor: '#ee4d2d', borderRadius: 8, padding: 4, marginBottom: 8 })
-                    }]}>
+                    <View key={index} style={[styles.timelineItem, { borderLeftColor: t.border }]}>
                       <View style={[
                         styles.timelineBullet,
                         { backgroundColor: act.type === 'order' ? '#f97316' : '#10b981' }
                       ]} />
-                      <View style={styles.timelineContent}>
+                      <View style={[
+                        styles.timelineContent,
+                        act.isShared && {
+                          backgroundColor: 'rgba(238, 77, 45, 0.06)',
+                          borderRadius: 8,
+                          padding: 8,
+                        },
+                      ]}>
                         <Text style={[styles.timelineText, { color: t.textPrimary }]}>
                           <Text style={{ fontWeight: 'bold', color: t.textPrimary }}>{act.name}</Text>
-                          {act.isShared && <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: 'bold' }}> [SHARED]</Text>}
+                          {act.isShared && <Text style={{ color: '#ee4d2d', fontSize: 10, fontWeight: '800' }}> · SHARED</Text>}
                           <Text style={{ color: t.textSecondary }}>
                             {act.type === 'order' ? ' scheduled ' : ' paid '}
                           </Text>
