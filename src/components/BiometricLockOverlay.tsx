@@ -47,6 +47,7 @@ export function isBiometricPromptActive(): boolean {
 interface BiometricLockOverlayProps {
   children: React.ReactNode;
   sessionExists: boolean;
+  skipInitialLock?: boolean;
 }
 
 const { width } = Dimensions.get('window');
@@ -62,7 +63,7 @@ const KeypadButton: React.FC<{ val: string; onPress: (val: string) => void }> = 
   </TouchableOpacity>
 ));
 
-export default function BiometricLockOverlay({ children, sessionExists }: BiometricLockOverlayProps) {
+export default function BiometricLockOverlay({ children, sessionExists, skipInitialLock = false }: BiometricLockOverlayProps) {
   const insets = useSafeAreaInsets();
   const { triggerIsland, dismissIsland } = useDynamicIsland();
   const [isLocked, setIsLocked] = useState(false);
@@ -273,6 +274,10 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
       setIsLocked(false);
       return;
     }
+    if (skipInitialLock) {
+      setIsLocked(false);
+      return;
+    }
 
     let timeoutId: NodeJS.Timeout | null = null;
     const shouldLock = (isSupported && isEnrolled) || hasPin;
@@ -288,7 +293,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [sessionExists, isSupported, isEnrolled, hasPin, triggerBiometrics]);
+  }, [sessionExists, skipInitialLock, isSupported, isEnrolled, hasPin, triggerBiometrics]);
 
   useEffect(() => {
     if (!sessionExists) return;

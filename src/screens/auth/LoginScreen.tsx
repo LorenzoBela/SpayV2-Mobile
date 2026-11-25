@@ -96,6 +96,7 @@ export default function LoginScreen() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [fallbackPin, setFallbackPin] = useState('');
+  const signInInFlightRef = useRef(false);
 
   // Load last logged-in account details on mount
   useEffect(() => {
@@ -205,6 +206,8 @@ export default function LoginScreen() {
   };
 
   const handleGoogleSignIn = async (options?: { silent?: boolean }) => {
+    if (signInInFlightRef.current) return;
+    signInInFlightRef.current = true;
     try {
       setLoading(true);
       console.log('[Auth] handleGoogleSignIn called, options:', options);
@@ -267,6 +270,7 @@ export default function LoginScreen() {
         PremiumAlert.alert('Sign In Failed', error.message || 'An error occurred during Google Sign In.');
       }
     } finally {
+      signInInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -331,6 +335,7 @@ export default function LoginScreen() {
 
       PremiumAlert.alert('Biometric Sign-In Failed', error?.message || 'Unable to sign in with biometrics.');
     } finally {
+      signInInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -362,6 +367,7 @@ export default function LoginScreen() {
     } catch (error: any) {
       PremiumAlert.alert('PIN Sign-In Failed', error?.message || 'Unable to sign in with your fallback PIN.');
     } finally {
+      signInInFlightRef.current = false;
       setLoading(false);
     }
   };

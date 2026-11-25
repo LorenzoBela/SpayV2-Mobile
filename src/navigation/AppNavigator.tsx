@@ -698,6 +698,7 @@ export default function AppNavigator() {
   const { impersonatedUser, isImpersonating } = useImpersonation();
 
   const [session, setSession] = useState<Session | null>(null);
+  const [signedInInteractively, setSignedInInteractively] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean | null>(() => {
     try {
       const cached = storage.getString(ONBOARDING_COMPLETED_KEY);
@@ -881,13 +882,19 @@ export default function AppNavigator() {
       setSessionError(null);
       setLoading(false);
       if (session?.user?.id) {
-        if (event === 'SIGNED_IN') pushRegistrationGate.resume();
+        if (event === 'SIGNED_IN') {
+          pushRegistrationGate.resume();
+          if (!sessionRef.current) {
+            setSignedInInteractively(true);
+          }
+        }
         posthog.identify(session.user.id, {
           email: session.user.email ?? '',
           platform: 'mobile',
         });
       }
       if (event === 'SIGNED_OUT') {
+        setSignedInInteractively(false);
         profileRequestVersion.current += 1;
         profileAbortRef.current?.abort();
         clearMemoryProfileCache();
@@ -1347,7 +1354,7 @@ export default function AppNavigator() {
                 <ImpersonationBanner />
 
                 {!isActuallyLoading && (
-                  <BiometricLockOverlay sessionExists={!!session}>
+                  <BiometricLockOverlay sessionExists={!!session} skipInitialLock={signedInInteractively}>
                     <NavigationContainer ref={navigationRef} theme={navigationTheme} onReady={() => setNotificationActionVersion(v => v + 1)}>
                       <Stack.Navigator screenOptions={{ headerShown: false }}>
                         {session ? (

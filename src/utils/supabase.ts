@@ -80,9 +80,9 @@ export const expoSecureStorage = {
         chunks.push(value.slice(i, i + CHUNK_SIZE))
       }
 
-      await Promise.all(
-        chunks.map((chunk, i) => SecureStore.setItemAsync(`${key}__g${nextGen}_c${i}`, chunk)),
-      )
+      for (let i = 0; i < chunks.length; i++) {
+        await SecureStore.setItemAsync(`${key}__g${nextGen}_c${i}`, chunks[i])
+      }
       await SecureStore.setItemAsync(
         `${key}${META_SUFFIX}`,
         JSON.stringify({ gen: nextGen, chunks: chunks.length }),
