@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { ThemeContext } from '../navigation/navigationTypes';
+import { formatUserErrorMessage } from '../utils/networkResilience';
 import {
   StyleSheet,
   Text,
@@ -80,8 +81,11 @@ export function getLoaderDisplayState({
   // `error` truthy during refetch must never leave Retry permanently disabled.
   const effectiveRetrying = Boolean(isRetryingProp || (!error && isRetrying));
   const showErrorOrTimeout = Boolean(error || isTimeout);
+  const sanitizedError = error
+    ? formatUserErrorMessage(error, 'Unable to load data right now. Please try again.')
+    : null;
   const displaySubtitle = showErrorOrTimeout
-    ? (error || 'Connection is taking longer than expected.')
+    ? (sanitizedError || 'Connection is taking longer than expected.')
     : effectiveRetrying
       ? 'Retrying connection...'
       : subtitle;

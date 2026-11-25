@@ -1,4 +1,5 @@
 import { PremiumAlertOptions, PremiumAlert } from '../services/PremiumAlertService';
+import { formatUserErrorMessage } from '../utils/networkResilience';
 import React, { useEffect, useState, useCallback, useContext } from 'react';
 import {
   StyleSheet,
@@ -239,7 +240,7 @@ export default function GlobalPremiumAlert() {
 
             {alertConfig.message ? (
               <Text style={[styles.description, { color: c.textSecondary }]}>
-                {alertConfig.message}
+                {formatUserErrorMessage(alertConfig.message, 'Something went wrong. Please try again.')}
               </Text>
             ) : null}
 

@@ -598,7 +598,13 @@ export default function DashboardScreen() {
   const paymentsError = ordersError;
   const hasCachedDashboardData = Boolean(queryOrdersData && queryPayments);
   const staleRefreshError = hasCachedDashboardData && ordersError
-    ? ((ordersError as Error).message || 'Unable to refresh dashboard. Showing cached data.')
+    ? (() => {
+        const msg = (ordersError as Error).message || '';
+        if (/timed out|timeout|trpc\.|TRPCClientError|<\/?[a-z]|PrismaClient|\n\s*at\s+/i.test(msg)) {
+          return 'Connection timed out while refreshing. Showing cached data.';
+        }
+        return msg || 'Unable to refresh dashboard. Showing cached data.';
+      })()
     : null;
 
   // Financial Limits States

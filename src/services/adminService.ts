@@ -230,7 +230,9 @@ export const callAdminApi = async (
               errMsg = parsed.error || parsed.message || errMsg;
               errorCode = typeof parsed.code === 'string' ? parsed.code : undefined;
             } catch {
-              if (errText) errMsg = errText.slice(0, 100);
+              if (errText && !/^\s*</.test(errText)) {
+                errMsg = errText.slice(0, 100);
+              }
             }
             return recordFailureCause(
               { success: false, error: errMsg, ...(errorCode ? { code: errorCode } : {}) },

@@ -98,6 +98,7 @@ const AnyFlashList = FlashList as any;
 import DatePicker from '../../components/DatePicker';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
 import { fetchAdminDashboardOrThrow, callAdminApi, ADMIN_QUERY_OPTIONS } from '../../services/adminService';
+import { formatUserErrorMessage } from '../../utils/networkResilience';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useDynamicIsland } from '../../context/DynamicIslandContext';
@@ -320,8 +321,10 @@ export default function AdminDashboardScreen() {
 
   const hasDashboardData = Boolean(dashboardData && dashboardData.success !== false);
   const error = queryError
-    ? (queryError as Error).message
-    : (dashboardData && dashboardData.success === false ? (dashboardData.error || 'Failed to load admin dashboard.') : null);
+    ? formatUserErrorMessage(queryError, 'Unable to refresh live metrics.')
+    : (dashboardData && dashboardData.success === false
+      ? formatUserErrorMessage(dashboardData.error, 'Failed to load admin dashboard.')
+      : null);
   const showBlockingLoader = !hasDashboardData && (loading || isFetching || Boolean(error));
 
   useEffect(() => {

@@ -303,3 +303,42 @@ export function subscribeReconnect(cb: () => void): () => void {
     reconnectListeners.delete(cb);
   };
 }
+
+/**
+ * Converts internal network, timeout, HTML, or stack-trace errors into concise user-facing text.
+ */
+export function formatUserErrorMessage(
+  error: unknown,
+  fallback = 'Unable to reach the server right now. Please try again.',
+): string {
+  const raw =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : (error && typeof error === 'object' && typeof (error as any).message === 'string')
+          ? String((error as any).message)
+          : '';
+  const name = error instanceof Error ? error.name : (error && typeof error === 'object' ? String((error as any).name || '') : '');
+  const trimmed = raw.trim();
+
+  if (name === 'TimeoutError' || /timed out|timeout|ETIMEDOUT/i.test(trimmed)) {
+    return 'Request timed out. Please try again.';
+  }
+  if (/network request failed|failed to fetch|ECONNREFUSED|ENOTFOUND|ERR_NETWORK/i.test(trimmed)) {
+    return 'No internet connection. Please check your network and try again.';
+  }
+  if (/unauthorized|invalid.*token|jwt|session expired/i.test(trimmed)) {
+    return 'Your session expired. Please sign in again.';
+  }
+  const looksTechnical =
+    /\n\s*at\s+/.test(trimmed) ||
+    /<\/?[a-z][\s\S]*>/i.test(trimmed) ||
+    /TRPCClientError|PrismaClient|SyntaxError|TypeError|ReferenceError|ECONN|trpc\./i.test(trimmed) ||
+    (trimmed.length > 220 && /[\n{}[\]]|Error:/i.test(trimmed));
+
+  if (!trimmed || looksTechnical) {
+    return fallback;
+  }
+  return trimmed;
+}
