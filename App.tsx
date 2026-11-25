@@ -31,18 +31,7 @@ try { enableFreeze(true); } catch {}
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Import Google Fonts loaders (essential 3 font weights: Regular 400, SemiBold 600, Bold 700)
-import {
-  useFonts,
-  Outfit_400Regular,
-  Outfit_600SemiBold,
-  Outfit_700Bold,
-} from '@expo-google-fonts/outfit';
-
-import {
-  PlusJakartaSans_400Regular,
-  PlusJakartaSans_600SemiBold,
-  PlusJakartaSans_700Bold,
-} from '@expo-google-fonts/plus-jakarta-sans';
+import { useFonts } from 'expo-font';
 
 import { queryClient } from './src/utils/queryClient';
 export { queryClient };
@@ -121,18 +110,18 @@ export default function App() {
   const [isSplashAnimationComplete, setIsSplashAnimationComplete] = useState(hasCachedStartup);
 
   const [fontsLoaded, fontError] = useFonts({
-    'Outfit-Light': Outfit_400Regular,
-    'Outfit-Regular': Outfit_400Regular,
-    'Outfit-Medium': Outfit_600SemiBold,
-    'Outfit-SemiBold': Outfit_600SemiBold,
-    'Outfit-Bold': Outfit_700Bold,
-    'Outfit-ExtraBold': Outfit_700Bold,
-    'Jakarta-Light': PlusJakartaSans_400Regular,
-    'Jakarta-Regular': PlusJakartaSans_400Regular,
-    'Jakarta-Medium': PlusJakartaSans_600SemiBold,
-    'Jakarta-SemiBold': PlusJakartaSans_600SemiBold,
-    'Jakarta-Bold': PlusJakartaSans_700Bold,
-    'Jakarta-ExtraBold': PlusJakartaSans_700Bold,
+    'Outfit-Light': require('@expo-google-fonts/outfit/400Regular/Outfit_400Regular.ttf'),
+    'Outfit-Regular': require('@expo-google-fonts/outfit/400Regular/Outfit_400Regular.ttf'),
+    'Outfit-Medium': require('@expo-google-fonts/outfit/600SemiBold/Outfit_600SemiBold.ttf'),
+    'Outfit-SemiBold': require('@expo-google-fonts/outfit/600SemiBold/Outfit_600SemiBold.ttf'),
+    'Outfit-Bold': require('@expo-google-fonts/outfit/700Bold/Outfit_700Bold.ttf'),
+    'Outfit-ExtraBold': require('@expo-google-fonts/outfit/700Bold/Outfit_700Bold.ttf'),
+    'Jakarta-Light': require('@expo-google-fonts/plus-jakarta-sans/400Regular/PlusJakartaSans_400Regular.ttf'),
+    'Jakarta-Regular': require('@expo-google-fonts/plus-jakarta-sans/400Regular/PlusJakartaSans_400Regular.ttf'),
+    'Jakarta-Medium': require('@expo-google-fonts/plus-jakarta-sans/600SemiBold/PlusJakartaSans_600SemiBold.ttf'),
+    'Jakarta-SemiBold': require('@expo-google-fonts/plus-jakarta-sans/600SemiBold/PlusJakartaSans_600SemiBold.ttf'),
+    'Jakarta-Bold': require('@expo-google-fonts/plus-jakarta-sans/700Bold/PlusJakartaSans_700Bold.ttf'),
+    'Jakarta-ExtraBold': require('@expo-google-fonts/plus-jakarta-sans/700Bold/PlusJakartaSans_700Bold.ttf'),
   });
 
   // Start network monitoring immediately on boot without waiting for fonts or splash animation.

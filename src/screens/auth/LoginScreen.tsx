@@ -17,7 +17,7 @@ import { Wallet, ShieldCheck, ChevronRight, Fingerprint } from 'lucide-react-nat
 import Svg, { Path } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { GoogleAuth } from 'react-native-google-auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../../utils/queryPersister';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
@@ -104,7 +104,14 @@ export default function LoginScreen() {
 
     const loadSavedSignInOptions = async () => {
       try {
-        const raw = await AsyncStorage.getItem(LAST_ACCOUNT_KEY);
+        let raw = storage.getString(LAST_ACCOUNT_KEY);
+        if (!raw) {
+          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+          raw = (await AsyncStorage.getItem(LAST_ACCOUNT_KEY)) ?? undefined;
+          if (raw) {
+            storage.set(LAST_ACCOUNT_KEY, raw);
+          }
+        }
         if (raw) {
           setLastAccount(JSON.parse(raw));
         }
@@ -167,7 +174,7 @@ export default function LoginScreen() {
 
     if (name || email) {
       const account = { name, email, photo };
-      await AsyncStorage.setItem(LAST_ACCOUNT_KEY, JSON.stringify(account));
+      storage.set(LAST_ACCOUNT_KEY, JSON.stringify(account));
       setLastAccount(account);
     }
   };

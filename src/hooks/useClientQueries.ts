@@ -107,11 +107,12 @@ export function useClientOrdersQuery() {
   return trpc.orders.list.useQuery(undefined, { refetchOnMount: true, staleTime: 2 * 60_000 });
 }
 
-export function useSharedCreditLimitsQuery() {
+export function useSharedCreditLimitsQuery(enabled = true) {
   return useQuery({
     queryKey: ['shared-credit-limits'],
     queryFn: () => getSharedCreditLimits(),
     staleTime: 5 * 60_000,
+    enabled,
   });
 }
 

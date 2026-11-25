@@ -943,13 +943,20 @@ export default function DashboardScreen() {
     setMonthlyTrends(monthsArray.map(key => trendsMap.get(key)));
   };
 
-  const { data: sharedLimitsData, refetch: refetchSharedLimits } = useSharedCreditLimitsQuery();
+  const hasServerGlobalLimits = typeof (dashboardData as any)?.globalLimits?.limit === 'number';
+  const { data: sharedLimitsData, refetch: refetchSharedLimits } = useSharedCreditLimitsQuery(!queryOrdersLoading && !hasServerGlobalLimits);
 
   useEffect(() => {
+    const serverLimits = (dashboardData as any)?.globalLimits;
+    if (serverLimits && typeof serverLimits.limit === 'number') {
+      setGlobalCreditLimit(serverLimits.limit);
+      setGlobalAvailableCredit(Math.max(0, serverLimits.limit - (serverLimits.unpaid ?? 0)));
+      return;
+    }
     if (!sharedLimitsData) return;
     setGlobalCreditLimit(sharedLimitsData.limit);
     setGlobalAvailableCredit(Math.max(0, sharedLimitsData.limit - sharedLimitsData.unpaid));
-  }, [sharedLimitsData]);
+  }, [(dashboardData as any)?.globalLimits, sharedLimitsData]);
 
   // Global credit limit fetcher
   const fetchGlobalLimits = useCallback(async (force = false) => {
