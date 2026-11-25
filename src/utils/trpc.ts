@@ -77,10 +77,12 @@ export const getTrpcHeaders = async () => {
   }
 }
 
+export const TRPC_FETCH_TIMEOUT_MS = 18000
+
 export const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit) =>
   withDeadline(
     (signal) => fetch(url, { ...options, signal }),
-    7000,
+    TRPC_FETCH_TIMEOUT_MS,
     options?.signal ?? undefined,
     'trpc.fetch',
   )

@@ -52,6 +52,7 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
 import PremiumLoader from '../../components/PremiumLoader';
+import { isBiometricPromptActive } from '../../components/BiometricLockOverlay';
 import SwipeDismissModal from '../../components/SwipeDismissModal';
 import HeaderActions, { HeaderWeatherTime } from '../../components/HeaderActions';
 import { useResponsiveLayout } from '../../utils/responsive';
@@ -1192,11 +1193,12 @@ export default function DashboardScreen() {
     }, [refetchDashboard, fetchGlobalLimits])
   );
 
-  // Instantly refetch live data whenever app returns from background
+  // Instantly refetch live data whenever app returns from real background (never aborting cold-start on biometric prompt)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        refetchDashboard({ cancelRefetch: true });
+        if (isBiometricPromptActive()) return;
+        refetchDashboard({ cancelRefetch: false });
         fetchGlobalLimits(true);
         void syncWidgetData();
       }

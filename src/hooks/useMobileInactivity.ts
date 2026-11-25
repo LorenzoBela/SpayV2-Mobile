@@ -26,26 +26,8 @@ export function useMobileInactivity(enabled: boolean = true) {
   }, []);
 
   const checkInactivity = useCallback(async (): Promise<boolean> => {
-    try {
-      const storedTime = await AsyncStorage.getItem(SPAY_LAST_ACTIVE_KEY);
-      if (storedTime) {
-        const lastActiveTime = parseInt(storedTime, 10);
-        if (!isNaN(lastActiveTime)) {
-          const elapsed = Date.now() - lastActiveTime;
-          if (elapsed > INACTIVITY_TIMEOUT_MS) {
-            console.log(
-              `[useMobileInactivity] Session timed out after ${elapsed} ms (> ${INACTIVITY_TIMEOUT_MS} ms). Signing out.`
-            );
-            const { error } = await signOutWithNotifications();
-            if (error) return false;
-            await AsyncStorage.removeItem(SPAY_LAST_ACTIVE_KEY);
-            return true;
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('[useMobileInactivity] Error checking inactivity:', error);
-    }
+    // BiometricLockOverlay enforces the 5-minute local re-auth gate without
+    // globally signing out all devices or wiping MMKV cache on backgrounding.
     return false;
   }, []);
 

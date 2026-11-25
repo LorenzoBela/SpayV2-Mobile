@@ -36,6 +36,14 @@ const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minutes (Fintech standard grac
 const PRE_LOCK_WARNING_MS = 4.5 * 60 * 1000; // 4.5 Minutes (triggers 30s pre-lock warning)
 const PRE_LOCK_DURATION_MS = 30 * 1000; // 30s warning window
 
+let biometricPromptActiveCount = 0;
+let suppressBiometricResumeUntilMs = 0;
+
+/** True while an OS biometric prompt is open or within 1.5s of its dismissal. */
+export function isBiometricPromptActive(): boolean {
+  return biometricPromptActiveCount > 0 || Date.now() < suppressBiometricResumeUntilMs;
+}
+
 interface BiometricLockOverlayProps {
   children: React.ReactNode;
   sessionExists: boolean;
@@ -114,6 +122,7 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
     if (!isSupported || !isEnrolled) return;
 
     isPromptingRef.current = true;
+    biometricPromptActiveCount += 1;
     setCheckingBiometrics(true);
     try {
       const result = await LocalAuthentication.authenticateAsync({
@@ -160,6 +169,8 @@ export default function BiometricLockOverlay({ children, sessionExists }: Biomet
     } catch (err) {
       console.warn('[BiometricLockOverlay] Auth error:', err);
     } finally {
+      biometricPromptActiveCount = Math.max(0, biometricPromptActiveCount - 1);
+      suppressBiometricResumeUntilMs = Date.now() + 1500;
       setCheckingBiometrics(false);
       setTimeout(() => {
         isPromptingRef.current = false;

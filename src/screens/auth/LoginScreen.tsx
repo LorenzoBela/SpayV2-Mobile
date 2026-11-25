@@ -221,9 +221,13 @@ export default function LoginScreen() {
           const tokens = user ? await GoogleAuth.getTokens() : null;
           console.log('[Auth] getTokens response:', tokens ? { hasIdToken: !!tokens.idToken } : null);
           if (user && tokens?.idToken) {
-            console.log('[Auth] Silent Google Sign-In succeeded, logging into Supabase...');
-            await completeSupabaseSignIn(tokens.idToken, user);
-            return;
+            try {
+              console.log('[Auth] Silent Google Sign-In succeeded, logging into Supabase...');
+              await completeSupabaseSignIn(tokens.idToken, user);
+              return;
+            } catch (tokenErr) {
+              console.warn('[Auth] Cached Google idToken rejected (likely expired); falling back to interactive sign-in:', tokenErr);
+            }
           }
         } catch (silentError) {
           console.log('[Auth] Cached Google credential unavailable, opening One Tap.', silentError);

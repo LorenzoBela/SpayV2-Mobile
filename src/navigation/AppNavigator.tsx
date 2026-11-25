@@ -30,6 +30,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
 import { trpc } from '../utils/trpc';
 import { runIdlePrefetch } from '../utils/idlePrefetch';
+import { fetchAdminDashboardOrThrow } from '../services/adminService';
 import { getPersistedTheme, savePersistedTheme, syncStartupTheme, resolveIsDark, type ThemePreference } from '../utils/themeStorage';
 
 import { supabase } from '../utils/supabase';
@@ -1013,6 +1014,15 @@ export default function AppNavigator() {
         setLinkedProfileId(cached.linkedProfileId);
         setActiveRole(cached.role === 'CLIENT' ? 'client' : null);
         setProfileLoading(false);
+        if (cached.role === 'ADMIN') {
+          runIdlePrefetch(`admin_dash_${session.user.id}`, () =>
+            queryClient.prefetchQuery({
+              queryKey: ['admin-dashboard'],
+              queryFn: ({ signal }) => fetchAdminDashboardOrThrow(signal),
+              staleTime: 30_000,
+            }),
+          );
+        }
       } else {
         setUserRole(null);
         setLinkedProfileId(null);
