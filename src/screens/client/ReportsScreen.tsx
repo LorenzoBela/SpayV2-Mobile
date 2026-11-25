@@ -14,6 +14,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
@@ -58,7 +59,6 @@ export default function ReportsScreen() {
   const scrollHandler = useTabBarScroll();
   const layout = useResponsiveLayout();
   const chartCanvasWidth = layout.getChartWidth(76);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Filter & tab states (matching web's 5 tabs)
@@ -76,9 +76,7 @@ export default function ReportsScreen() {
     recommendations: false,
   });
 
-  // Raw database records
-  const [rawOrders, setRawOrders] = useState<any[]>([]);
-  const [rawPayments, setRawPayments] = useState<any[]>([]);
+  // Query-backed dataset (hydrated from MMKV on revisit)
 
   // Style colors mapping
   const t = {
@@ -104,10 +102,9 @@ export default function ReportsScreen() {
     { text: isDarkMode ? '#a8a29e' : '#78716c', bar: '#78716c' },
   ];
 
-  const fetchReportsData = async () => {
-    try {
-      const { user, profileId } = await getLinkedProfileForCurrentUser();
-      if (!user) return;
+  const fetchReportsDataset = async () => {
+    const { user, profileId } = await getLinkedProfileForCurrentUser();
+    if (!user) return { rawOrders: [] as any[], rawPayments: [] as any[] };
 
       // 1. Fetch Orders (Owned + Shared Participations)
       const { data: participations, error: partErr } = await supabase
@@ -238,32 +235,30 @@ export default function ReportsScreen() {
         isPaid: o.is_paid,
       }));
 
-      setRawOrders(allOrdersMapped);
-      setRawPayments(allPaymentsMapped);
-    } catch (e) {
-      console.warn('Failed to load reports dataset:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      return { rawOrders: allOrdersMapped, rawPayments: allPaymentsMapped };
+    };
 
-  useEffect(() => {
-    fetchReportsData();
-  }, []);
+  const { data: reportsQueryData, isLoading: queryLoading, refetch: refetchReports } = useQuery({
+    queryKey: ['client-reports'],
+    queryFn: fetchReportsDataset,
+    staleTime: 2 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const loading = queryLoading && !reportsQueryData;
+  const rawOrders = reportsQueryData?.rawOrders ?? [];
+  const rawPayments = reportsQueryData?.rawPayments ?? [];
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.allSettled([
-        fetchReportsData(),
-      ]);
+      await refetchReports();
     } catch (err) {
       console.warn('Reports pull-to-refresh error:', err);
     } finally {
       setRefreshing(false);
     }
-  }, [fetchReportsData]);
+  }, [refetchReports]);
 
   // Perform client-side data transformations & summaries matching web formulas
   const calculatedData = useMemo(() => {

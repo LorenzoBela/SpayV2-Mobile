@@ -54,7 +54,7 @@ import AdminErrorBanner from '../../components/AdminErrorBanner';
 import CountdownTimer from '../../components/CountdownTimer';
 import { parseUtcDate } from '../../utils/date';
 import { PremiumAlert } from '../../services/PremiumAlertService';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { storage } from '../../utils/queryPersister';
 import { getSessionWithTimeout } from '../../utils/authProfile';
 import { withDeadline } from '../../utils/networkResilience';
@@ -366,7 +366,8 @@ export default function AdminSalaryScreen() {
   } = useQuery({
     queryKey: ['admin-salary'],
     queryFn: ({ signal }) => fetchSalaryDataOrThrow(signal),
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
     ...(cachedSalaryData ? { initialData: cachedSalaryData, initialDataUpdatedAt: 0 } : {}),
   });
 

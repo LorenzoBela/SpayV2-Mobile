@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, Send, Sparkles, Brain, Trash2, AlertTriangle } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
+import { getCachedAccessToken, getSessionWithTimeout } from '../../utils/authProfile';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
 import { useTabBar } from '../../navigation/TabBarContext';
@@ -524,8 +525,11 @@ export default function NootAiScreen() {
 
     // 3. Fetch from backend API
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      let token = getCachedAccessToken();
+      if (!token) {
+        const session = await getSessionWithTimeout(3000);
+        token = session?.access_token ?? null;
+      }
       const apiUrl = getApiUrl();
 
       const historyToSend = messages.slice(1).map(m => ({

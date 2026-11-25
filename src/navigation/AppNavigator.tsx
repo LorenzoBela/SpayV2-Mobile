@@ -30,7 +30,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { storage } from '../utils/queryPersister';
 import { trpc } from '../utils/trpc';
 import { runIdlePrefetch } from '../utils/idlePrefetch';
-import { fetchAdminDashboardOrThrow } from '../services/adminService';
+import { fetchAdminDashboardOrThrow, adminClientsQueryOptions, adminOrdersQueryOptions, adminPaymentsQueryOptions } from '../services/adminService';
 import { getPersistedTheme, savePersistedTheme, syncStartupTheme, resolveIsDark, type ThemePreference } from '../utils/themeStorage';
 
 import { supabase } from '../utils/supabase';
@@ -439,7 +439,7 @@ const MainNavigator = () => {
     <Tab.Navigator
       detachInactiveScreens={true}
       tabBar={(props) => <CustomTabBar {...props} icons={TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, freezeOnBlur: true }}
     >
       <Tab.Screen
         name="Dashboard"
@@ -478,7 +478,6 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <Tab.Screen
@@ -487,7 +486,6 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <Tab.Screen
@@ -504,7 +502,6 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <Tab.Screen
@@ -530,7 +527,6 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <Tab.Screen
@@ -539,7 +535,6 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <Tab.Screen
@@ -548,7 +543,6 @@ const MainNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
     </Tab.Navigator>
@@ -559,12 +553,21 @@ const MainNavigator = () => {
 const AdminNavigator = () => {
   const { isDarkMode } = React.useContext(ThemeContext);
   const { unreadCount } = useNotifications();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    runIdlePrefetch('admin_tabs_warmup', () => {
+      void queryClient.prefetchQuery(adminClientsQueryOptions()).catch(() => {});
+      void queryClient.prefetchQuery(adminOrdersQueryOptions()).catch(() => {});
+      void queryClient.prefetchQuery(adminPaymentsQueryOptions()).catch(() => {});
+    });
+  }, [queryClient]);
 
   return (
     <AdminTab.Navigator
       detachInactiveScreens={true}
       tabBar={(props) => <CustomTabBar {...props} icons={ADMIN_TAB_ICONS} unreadCount={unreadCount} isDarkMode={isDarkMode} />}
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, freezeOnBlur: true }}
     >
       <AdminTab.Screen
         name="AdminDashboard"
@@ -575,16 +578,37 @@ const AdminNavigator = () => {
         name="AdminClients"
         component={AdminClientsGestureScreen}
         options={{ tabBarLabel: 'Clients' }}
+        listeners={{
+          tabPress: () => {
+            runIdlePrefetch('tab_admin_clients', () =>
+              queryClient.prefetchQuery(adminClientsQueryOptions()).catch(() => {}),
+            );
+          },
+        }}
       />
       <AdminTab.Screen
         name="AdminOrders"
         component={AdminOrdersGestureScreen}
         options={{ tabBarLabel: 'Orders' }}
+        listeners={{
+          tabPress: () => {
+            runIdlePrefetch('tab_admin_orders', () =>
+              queryClient.prefetchQuery(adminOrdersQueryOptions()).catch(() => {}),
+            );
+          },
+        }}
       />
       <AdminTab.Screen
         name="AdminPayments"
         component={AdminPaymentsGestureScreen}
         options={{ tabBarLabel: 'Ledger' }}
+        listeners={{
+          tabPress: () => {
+            runIdlePrefetch('tab_admin_payments', () =>
+              queryClient.prefetchQuery(adminPaymentsQueryOptions()).catch(() => {}),
+            );
+          },
+        }}
       />
       <AdminTab.Screen
         name="AdminMore"
@@ -597,7 +621,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -606,7 +629,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -623,7 +645,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -632,7 +653,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -641,7 +661,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -650,7 +669,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -659,7 +677,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -668,7 +685,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen
@@ -677,7 +693,6 @@ const AdminNavigator = () => {
         options={{
           tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
-          unmountOnBlur: true,
         } as any}
       />
       <AdminTab.Screen

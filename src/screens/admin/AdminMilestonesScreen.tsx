@@ -232,7 +232,7 @@ export default function AdminMilestonesScreen() {
   const [celebrateColors, setCelebrateColors] = useState<string[]>(['#ff5a5f', '#3e5170', '#eab308']);
 
   // Fetch admin milestones data using tRPC
-  const { data: milestones = [], isLoading } = trpc.milestones.getAdminMilestones.useQuery();
+  const { data: milestones = [], isLoading } = trpc.milestones.getAdminMilestones.useQuery(undefined, { staleTime: 2 * 60 * 1000 });
 
   const totalCount = milestones.length;
   const unlockedCount = milestones.filter((m: any) => m.isUnlocked).length;

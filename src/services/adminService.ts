@@ -1,5 +1,6 @@
 import { DeviceEventEmitter } from 'react-native';
 import { supabase } from '../utils/supabase';
+import * as authProfileNamespace from '../utils/authProfile';
 import { getTrpcHeaders, trpcVanillaClient } from '../utils/trpc';
 import { SPLIT_READER_HEADERS } from '../utils/split-reader-contract';
 import { withDeadline } from '../utils/networkResilience';
@@ -89,6 +90,64 @@ export const ADMIN_QUERY_OPTIONS = {
   gcTime: 10 * 60 * 1000,
 };
 
+export const adminClientsQueryOptions = (
+  filters: { page?: number; pageSize?: number; searchQuery?: string; status?: string } = {},
+) => {
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 6;
+  const searchQuery = filters.searchQuery ?? '';
+  const status = filters.status ?? 'all';
+  return {
+    queryKey: ['admin-clients', page, searchQuery, status] as const,
+    queryFn: ({ signal }: { signal?: AbortSignal }) =>
+      fetchAdminActionOrThrow<Record<string, any>>(
+        'fetch-admin-clients',
+        { page, pageSize, searchQuery, status },
+        signal,
+      ),
+    ...ADMIN_QUERY_OPTIONS,
+  };
+};
+
+export const adminOrdersQueryOptions = (
+  filters: { page?: number; pageSize?: number; searchQuery?: string; status?: string; filterMonthKey?: string | null } = {},
+) => {
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 6;
+  const searchQuery = filters.searchQuery ?? '';
+  const status = filters.status ?? 'all';
+  const filterMonthKey = filters.filterMonthKey ?? null;
+  return {
+    queryKey: ['admin-orders', 'monthly-shares-v1', page, searchQuery, status, filterMonthKey] as const,
+    queryFn: ({ signal }: { signal?: AbortSignal }) =>
+      fetchAdminActionOrThrow<Record<string, any>>(
+        'fetch-admin-orders',
+        { page, pageSize, searchQuery, status, filterMonthKey: filterMonthKey || undefined },
+        signal,
+      ),
+    ...ADMIN_QUERY_OPTIONS,
+  };
+};
+
+export const adminPaymentsQueryOptions = (
+  filters: { page?: number; pageSize?: number; searchQuery?: string; ledgerFilter?: string } = {},
+) => {
+  const page = filters.page ?? 1;
+  const pageSize = filters.pageSize ?? 8;
+  const searchQuery = filters.searchQuery ?? '';
+  const ledgerFilter = filters.ledgerFilter ?? 'all';
+  return {
+    queryKey: ['admin-payments', page, searchQuery, ledgerFilter] as const,
+    queryFn: ({ signal }: { signal?: AbortSignal }) =>
+      fetchAdminActionOrThrow<Record<string, any>>(
+        'fetch-admin-payments',
+        { page, pageSize, searchQuery, ledgerFilter },
+        signal,
+      ),
+    ...ADMIN_QUERY_OPTIONS,
+  };
+};
+
 export const callAdminApi = async (
   action: string,
   bodyData: any = {},
@@ -126,11 +185,26 @@ export const callAdminApi = async (
     try {
       return await withDeadline(
         async (attemptSignal) => {
-          const { data: { session } } = await supabase.auth.getSession();
+          let token: string | null = null;
+          try {
+            const authMod = authProfileNamespace as Record<string, any>;
+            if (typeof authMod.getCachedAccessToken === 'function') {
+              token = authMod.getCachedAccessToken();
+            }
+            if (!token && typeof authMod.getSessionWithTimeout === 'function') {
+              const session = await authMod.getSessionWithTimeout(3000, attemptSignal);
+              token = session?.access_token ?? null;
+            }
+          } catch {
+            // Partial Vitest mocks of authProfile may omit helpers.
+          }
+          if (!token) {
+            const { data: { session } } = await supabase.auth.getSession();
+            token = session?.access_token ?? null;
+          }
           if (attemptSignal.aborted) {
             throw attemptSignal.reason ?? createAbortError();
           }
-          const token = session?.access_token;
           const apiUrl = getApiUrl();
 
           const response = await fetch(`${apiUrl}/api/admin/actions`, {
@@ -220,11 +294,26 @@ export const getExportLedgerCsv = async (
     try {
       return await withDeadline(
         async (attemptSignal) => {
-          const { data: { session } } = await supabase.auth.getSession();
+          let token: string | null = null;
+          try {
+            const authMod = authProfileNamespace as Record<string, any>;
+            if (typeof authMod.getCachedAccessToken === 'function') {
+              token = authMod.getCachedAccessToken();
+            }
+            if (!token && typeof authMod.getSessionWithTimeout === 'function') {
+              const session = await authMod.getSessionWithTimeout(3000, attemptSignal);
+              token = session?.access_token ?? null;
+            }
+          } catch {
+            // Partial Vitest mocks of authProfile may omit helpers.
+          }
+          if (!token) {
+            const { data: { session } } = await supabase.auth.getSession();
+            token = session?.access_token ?? null;
+          }
           if (attemptSignal.aborted) {
             throw attemptSignal.reason ?? createAbortError();
           }
-          const token = session?.access_token;
           const apiUrl = getApiUrl();
 
           let queryParams = `?allTime=${filters.allTime}`;

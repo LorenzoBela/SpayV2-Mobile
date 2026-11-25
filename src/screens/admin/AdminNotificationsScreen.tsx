@@ -57,7 +57,7 @@ import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useResponsiveLayout } from '../../utils/responsive';
 import { getNotifications, markNotificationsRead, clearNotifications, sendAdminAnnouncement } from '../../services/adminService';
 import { useNotifications } from '../../hooks/useNotifications';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { parseUtcDate } from '../../utils/date';
 
 type NotificationCategory = 'ALL' | 'PAYMENT_UPDATES' | 'ALERTS' | 'ADS' | 'SYSTEM';
@@ -237,7 +237,8 @@ export default function AdminNotificationsScreen() {
   const { data: notificationsData, isLoading: loading, refetch } = useQuery({
     queryKey: ['admin-notifications'],
     queryFn: () => getNotifications(100),
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const items = useMemo(() => (notificationsData as any)?.notifications || [], [notificationsData]);

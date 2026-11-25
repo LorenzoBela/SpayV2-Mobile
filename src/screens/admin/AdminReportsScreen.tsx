@@ -58,7 +58,7 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useResponsiveLayout } from '../../utils/responsive';
 import AdminErrorBanner from '../../components/AdminErrorBanner';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAdminActionOrThrow, getExportLedgerCsv, callAdminApi } from '../../services/adminService';
+import { fetchAdminActionOrThrow, getExportLedgerCsv, callAdminApi, ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -153,21 +153,21 @@ export default function AdminReportsScreen() {
   const { data: reportsData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-reports', { allTime, startMonth, startYear, endMonth, endYear }],
     queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-reports', { allTime, startMonth, startYear, endMonth, endYear }, signal),
-    staleTime: 30000,
+    ...ADMIN_QUERY_OPTIONS,
     placeholderData: keepPreviousData,
   });
 
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
     queryFn: ({ signal }) => fetchAdminActionOrThrow('fetch-admin-clients', { page: 1, pageSize: 1000 }, signal),
-    staleTime: 30000,
+    ...ADMIN_QUERY_OPTIONS,
   });
 
   const { data: clientAnalyticsData, isLoading: loadingClient, error: clientAnalyticsError, refetch: refetchClientAnalytics } = useQuery({
     queryKey: ['admin-client-analytics', selectedClientId],
     queryFn: ({ signal }) => fetchAdminActionOrThrow('get-client-analytics', { clientId: selectedClientId }, signal),
     enabled: !!selectedClientId,
-    staleTime: 30000,
+    ...ADMIN_QUERY_OPTIONS,
   });
 
   const allProfiles = clientsSelectionData?.clients || [];

@@ -41,6 +41,7 @@ import {
 } from 'lucide-react-native';
 import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ThemeContext } from '../../navigation/navigationTypes';
@@ -112,9 +113,63 @@ export default function WishlistScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
 
-  const [loading, setLoading] = useState(true);
-  const [wishlists, setWishlists] = useState<WishlistGoal[]>([]);
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data: wishlistPayload, isLoading: queryLoading, refetch: refetchWishlists } = useQuery({
+    queryKey: ['client-wishlists'],
+    queryFn: async () => {
+      const profileData = await getLinkedProfileForCurrentUser();
+      if (!profileData?.profileId) return { profileId: null as string | null, wishlists: [] as WishlistGoal[] };
+
+      const { data: goals, error } = await supabase
+        .from('user_budget_goals')
+        .select(`
+          *,
+          user_budget_goal_deposits (*)
+        `)
+        .eq('user_id', profileData.profileId)
+        .eq('category', 'Wishlist')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[WishlistScreen] fetch error:', error);
+        throw error;
+      }
+
+      const formatted: WishlistGoal[] = (goals || []).map((g: any) => ({
+        id: g.id,
+        userId: g.user_id,
+        goalType: g.goal_type,
+        targetAmount: Number(g.target_amount || 0),
+        currentAmount: Number(g.current_amount || 0),
+        targetDate: g.target_date,
+        category: g.category,
+        status: g.status || 'active',
+        isRecurring: Boolean(g.is_recurring),
+        recurrenceInterval: g.recurrence_interval,
+        recurringAmount: g.recurring_amount ? Number(g.recurring_amount) : null,
+        nextReminderDate: g.next_reminder_date,
+        color: g.color || '#10b981',
+        theme: g.theme || 'ring',
+        createdAt: g.created_at,
+        deposits: (g.user_budget_goal_deposits || [])
+          .map((d: any) => ({
+            id: d.id,
+            goalId: d.goal_id,
+            amount: Number(d.amount || 0),
+            depositDate: d.deposit_date,
+            message: d.message,
+          }))
+          .sort((a: WishlistDeposit, b: WishlistDeposit) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime()),
+      }));
+      return { profileId: profileData.profileId, wishlists: formatted };
+    },
+    staleTime: 2 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const loading = queryLoading && !wishlistPayload;
+  const wishlists = wishlistPayload?.wishlists ?? [];
+  const profileId = wishlistPayload?.profileId ?? null;
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -133,85 +188,32 @@ export default function WishlistScreen() {
   };
 
   const fetchWishlists = async () => {
-    try {
-      setLoading(true);
-      const profileData = await getLinkedProfileForCurrentUser();
-      if (!profileData?.profileId) return;
-      setProfileId(profileData.profileId);
-
-      const { data: goals, error } = await supabase
-        .from('user_budget_goals')
-        .select(`
-          *,
-          user_budget_goal_deposits (*)
-        `)
-        .eq('user_id', profileData.profileId)
-        .eq('category', 'Wishlist')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('[WishlistScreen] fetch error:', error);
-        return;
-      }
-
-      if (goals) {
-        const formatted: WishlistGoal[] = goals.map((g: any) => ({
-          id: g.id,
-          userId: g.user_id,
-          goalType: g.goal_type,
-          targetAmount: Number(g.target_amount || 0),
-          currentAmount: Number(g.current_amount || 0),
-          targetDate: g.target_date,
-          category: g.category,
-          status: g.status || 'active',
-          isRecurring: Boolean(g.is_recurring),
-          recurrenceInterval: g.recurrence_interval,
-          recurringAmount: g.recurring_amount ? Number(g.recurring_amount) : null,
-          nextReminderDate: g.next_reminder_date,
-          color: g.color || '#10b981',
-          theme: g.theme || 'ring',
-          createdAt: g.created_at,
-          deposits: (g.user_budget_goal_deposits || [])
-            .map((d: any) => ({
-              id: d.id,
-              goalId: d.goal_id,
-              amount: Number(d.amount || 0),
-              depositDate: d.deposit_date,
-              message: d.message,
-            }))
-            .sort((a: WishlistDeposit, b: WishlistDeposit) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime()),
-        }));
-        setWishlists(formatted);
-      }
-    } catch (err) {
-      console.error('[WishlistScreen] error loading wishlists:', err);
-    } finally {
-      setLoading(false);
-    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['client-wishlists'] }),
+      refetchWishlists(),
+    ]);
   };
 
   useEffect(() => {
-    fetchWishlists();
-
     // Supabase Realtime subscription
     const goalsSubscription = supabase
       .channel('wishlist_changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_budget_goals' },
-        () => fetchWishlists()
+        () => void queryClient.invalidateQueries({ queryKey: ['client-wishlists'] })
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_budget_goal_deposits' },
-        () => fetchWishlists()
+        () => void queryClient.invalidateQueries({ queryKey: ['client-wishlists'] })
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(goalsSubscription);
     };
-  }, []);
+  }, [queryClient]);
 
   const sortedWishlists = useMemo(() => {
     return [...wishlists].sort((a, b) => {

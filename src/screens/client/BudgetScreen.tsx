@@ -36,6 +36,8 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSharedCreditLimitsQuery } from '../../hooks/useClientQueries';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import Svg, { Path, Circle as SvgCircle, Line, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { MainTabParamList, ThemeContext } from '../../navigation/navigationTypes';
@@ -100,6 +102,15 @@ export default function BudgetScreen() {
   const bottomInset = Math.max(insets.bottom + 12, 20);
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
+
+  const queryClient = useQueryClient();
+  const { data: sharedLimitsData } = useSharedCreditLimitsQuery();
+
+  useEffect(() => {
+    if (!sharedLimitsData) return;
+    setGlobalLimit(sharedLimitsData.limit);
+    setGlobalExposure(sharedLimitsData.unpaid);
+  }, [sharedLimitsData]);
 
   // Data states
   const [categories, setCategories] = useState<BudgetCategory[]>([]);
@@ -416,13 +427,21 @@ export default function BudgetScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchBudgetData();
-  }, []);
+  const { refetch: refetchBudget } = useQuery({
+    queryKey: ['client-budget'],
+    queryFn: async () => {
+      await fetchBudgetData();
+      return true;
+    },
+    staleTime: 2 * 60_000,
+  });
 
   useRealtimeSync(
     ['orders', 'payments', 'user_budget_categories', 'user_budget_goals'],
-    fetchBudgetData
+    () => {
+      void queryClient.invalidateQueries({ queryKey: ['client-budget'] });
+      void refetchBudget();
+    }
   );
 
   // Projections computing

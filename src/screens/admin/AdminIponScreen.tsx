@@ -41,6 +41,8 @@ import {
 } from 'lucide-react-native';
 import Svg, { Circle as SvgCircle, Path as SvgPath, Rect as SvgRect, G as SvgG } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../../utils/supabase';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
@@ -131,11 +133,8 @@ export default function AdminIponScreen() {
   const layout = useResponsiveLayout();
   const scrollHandler = useTabBarScroll();
 
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
-  const [goals, setGoals] = useState<AdminIponGoal[]>([]);
-  const [recentDeposits, setRecentDeposits] = useState<AdminIponDeposit[]>([]);
-  const [adminUserId, setAdminUserId] = useState<string | null>(null);
 
   // Goal Modal State (Create & Edit)
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -189,15 +188,13 @@ export default function AdminIponScreen() {
     emeraldLight: isDarkMode ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.08)',
   };
 
-  const fetchIponData = useCallback(async (showIndicator = true) => {
-    try {
-      if (showIndicator) setLoading(true);
+  const { data: iponPayload, isLoading: queryLoading, refetch: refetchIpon } = useQuery({
+    queryKey: ['admin-ipon-goals'],
+    queryFn: async () => {
       const profileData = await getLinkedProfileForCurrentUser();
-      const currentUserId = profileData?.profileId || profileData?.user?.id;
-      if (!currentUserId) return;
-      setAdminUserId(currentUserId);
+      const currentUserId = profileData?.profileId || profileData?.user?.id || null;
+      if (!currentUserId) return { adminUserId: null as string | null, goals: [] as AdminIponGoal[], recentDeposits: [] as AdminIponDeposit[] };
 
-      // Fetch goals matching admin user
       const { data: rawGoals, error: goalsErr } = await supabase
         .from('user_budget_goals')
         .select(`
@@ -245,30 +242,42 @@ export default function AdminIponScreen() {
         };
       });
 
-      setGoals(formattedGoals);
-
-      // Flatten and extract recent deposits across all goals
       const allDeposits: AdminIponDeposit[] = [];
       formattedGoals.forEach((goal) => {
-        if (goal.deposits) {
-          allDeposits.push(...goal.deposits);
-        }
+        if (goal.deposits) allDeposits.push(...goal.deposits);
       });
-      allDeposits.sort(
-        (a, b) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime()
-      );
-      setRecentDeposits(allDeposits.slice(0, 30));
+      allDeposits.sort((a, b) => new Date(b.depositDate).getTime() - new Date(a.depositDate).getTime());
+
+      return {
+        adminUserId: currentUserId,
+        goals: formattedGoals,
+        recentDeposits: allDeposits.slice(0, 30),
+      };
+    },
+    ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
+  });
+
+  const loading = queryLoading && !iponPayload;
+  const goals = iponPayload?.goals ?? [];
+  const recentDeposits = iponPayload?.recentDeposits ?? [];
+  const adminUserId = iponPayload?.adminUserId ?? null;
+
+  const fetchIponData = useCallback(async (showIndicator = true) => {
+    try {
+      if (showIndicator) {
+        await refetchIpon();
+      } else {
+        await queryClient.invalidateQueries({ queryKey: ['admin-ipon-goals'] });
+      }
     } catch (err) {
       console.error('[AdminIponScreen] Exception during fetch:', err);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [refetchIpon, queryClient]);
 
   useEffect(() => {
-    fetchIponData();
-
     // Supabase Real-Time Channel
     const iponChannel = supabase
       .channel('admin_ipon_changes')

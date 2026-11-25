@@ -2,6 +2,7 @@ import type { InstallmentShare } from '../utils/installment-shares';
 import { trpc } from '../utils/trpc';
 import { useQuery } from '@tanstack/react-query';
 import { fetchClientDashboard } from '../services/dashboardService';
+import { getSharedCreditLimits } from '../services/sharedCreditService';
 
 // --- ORDERS HOOK INTERFACES ---
 export interface OrderPaymentItem {
@@ -103,7 +104,15 @@ export interface ClientPaymentItem {
 }
 
 export function useClientOrdersQuery() {
-  return trpc.orders.list.useQuery(undefined, { refetchOnMount: 'always', staleTime: 0 });
+  return trpc.orders.list.useQuery(undefined, { refetchOnMount: true, staleTime: 2 * 60_000 });
+}
+
+export function useSharedCreditLimitsQuery() {
+  return useQuery({
+    queryKey: ['shared-credit-limits'],
+    queryFn: () => getSharedCreditLimits(),
+    staleTime: 5 * 60_000,
+  });
 }
 
 export function useClientPaymentsQuery() {

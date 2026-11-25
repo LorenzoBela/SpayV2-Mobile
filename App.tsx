@@ -22,8 +22,11 @@ import RootErrorBoundary from './src/components/RootErrorBoundary';
 import PrivacyCurtain from './src/components/PrivacyCurtain';
 import { useNetworkReconciliation } from './src/hooks/useNetworkReconciliation';
 import * as SplashScreen from 'expo-splash-screen';
+import { enableFreeze } from 'react-native-screens';
 import AnimatedSplashScreen from './src/components/AnimatedSplashScreen';
 
+// Freeze off-screen tabs/routes to pause background re-renders while preserving state.
+try { enableFreeze(true); } catch {}
 // Keep the native splash screen visible until the custom animated splash mounts
 SplashScreen.preventAutoHideAsync().catch(() => {});
 

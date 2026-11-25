@@ -19,6 +19,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -272,9 +274,18 @@ export default function AdminExpensesScreen() {
   const insets = useSafeAreaInsets();
   const scrollHandler = useTabBarScroll();
 
-  const [data, setData] = useState<ExpensesDashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const { data: expensesQueryData, isLoading: queryLoading, refetch: refetchExpenses } = useQuery({
+    queryKey: ['admin-expenses'],
+    queryFn: () => getExpensesDashboardData(true),
+    ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
+  });
+  const [dataOverride, setData] = useState<ExpensesDashboardData | null>(null);
+  const [isMutating, setIsLoading] = useState(false);
+  const data = expensesQueryData ?? dataOverride;
+  const isLoading = (queryLoading && !data) || isMutating;
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'atome' | 'timeline' | 'ledger'>('overview');
 
   // Interactive Wallet Deck Index
@@ -407,41 +418,44 @@ export default function AdminExpensesScreen() {
     atomeCreditLimit: 30000,
   });
 
+  useEffect(() => {
+    const res = expensesQueryData;
+    if (!res) return;
+    setShortcutsList(res?.quickShortcuts || res?.shortcuts || []);
+    if (res?.balances) {
+      setCashForm({
+        cashOnHand: res.balances.cashOnHand ?? 0,
+        bdoBalance: res.balances.bdoBalance || res.balances.bankBalance || 0,
+        maribankBalance: res.balances.maribankBalance || 0,
+        gcashBalance: res.balances.gcashBalance ?? 0,
+      });
+    }
+    if (res?.billsSummary) {
+      setConfigForm({
+        spayCutoffDay: res.billsSummary.spayCutoffDay || 25,
+        spayDueDay: res.billsSummary.spayDueDay || 15,
+        spayCreditLimit: res.billsSummary.spayCreditLimit || 50000,
+        atomeCutoffDay: res.billsSummary.atomeCutoffDay || 25,
+        atomeDueDay: res.billsSummary.atomeDueDay || 12,
+        atomeCreditLimit: res.billsSummary.atomeCreditLimit || 30000,
+      });
+    }
+  }, [expensesQueryData]);
+
   // Fetch Data Function
   const loadData = useCallback(async (force = false) => {
     try {
-      const res = await getExpensesDashboardData(force);
-      setData(res);
-      setShortcutsList(res?.quickShortcuts || res?.shortcuts || []);
-      if (res?.balances) {
-        setCashForm({
-          cashOnHand: res.balances.cashOnHand ?? 0,
-          bdoBalance: res.balances.bdoBalance || res.balances.bankBalance || 0,
-          maribankBalance: res.balances.maribankBalance || 0,
-          gcashBalance: res.balances.gcashBalance ?? 0,
-        });
-      }
-      if (res?.billsSummary) {
-        setConfigForm({
-          spayCutoffDay: res.billsSummary.spayCutoffDay || 25,
-          spayDueDay: res.billsSummary.spayDueDay || 15,
-          spayCreditLimit: res.billsSummary.spayCreditLimit || 50000,
-          atomeCutoffDay: res.billsSummary.atomeCutoffDay || 25,
-          atomeDueDay: res.billsSummary.atomeDueDay || 12,
-          atomeCreditLimit: res.billsSummary.atomeCreditLimit || 30000,
-        });
+      if (force) {
+        await refetchExpenses();
+      } else {
+        await queryClient.invalidateQueries({ queryKey: ['admin-expenses'] });
       }
     } catch (e) {
       console.error('Error loading expenses data:', e);
     } finally {
-      setIsLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  }, [refetchExpenses, queryClient]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

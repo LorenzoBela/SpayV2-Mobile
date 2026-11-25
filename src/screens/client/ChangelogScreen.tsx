@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
   ChevronLeft,
@@ -116,57 +117,62 @@ export default function ChangelogScreen() {
   const { isDarkMode } = useContext(ThemeContext);
   const scrollHandler = useTabBarScroll();
 
-  const [releases, setReleases] = useState<ReleaseChangelog[]>([]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    currentPage: 1,
-    totalPages: 1,
-    pageSize: PAGE_SIZE,
-    totalCount: BUNDLED_CHANGELOGS.length,
-  });
+  const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<ChangelogCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedVersions, setExpandedVersions] = useState<Record<string, boolean>>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
   const [previewRelease, setPreviewRelease] = useState<ReleaseChangelog | null>(null);
 
+  const [currentPageOverride, setCurrentPageOverride] = useState<number>(1);
+  const { data: changelogQueryData, isLoading: queryLoading, refetch: refetchChangelogs } = useQuery({
+    queryKey: ['changelogs', currentPageOverride, selectedCategory, searchQuery],
+    queryFn: () => getPaginatedChangelogsAsync(currentPageOverride, PAGE_SIZE, selectedCategory, searchQuery),
+    staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const releases = changelogQueryData?.releases ?? [];
+  const pagination: PaginationState = changelogQueryData?.pagination ?? {
+    currentPage: currentPageOverride,
+    totalPages: 1,
+    pageSize: PAGE_SIZE,
+    totalCount: BUNDLED_CHANGELOGS.length,
+  };
+  const isLoading = queryLoading && !changelogQueryData;
+
   const totalReleasesCount = BUNDLED_CHANGELOGS.length;
 
   const loadChangelogs = useCallback(
     async (page: number, category: ChangelogCategory | 'all', search: string) => {
-      try {
-        const result = await getPaginatedChangelogsAsync(page, PAGE_SIZE, category, search);
-        setReleases(result.releases);
-        setPagination(result.pagination);
-
-        // Expand first item by default on initial page 1 load
-        if (page === 1 && result.releases.length > 0) {
-          setExpandedVersions((prev) => {
-            const next = { ...prev };
-            result.releases.forEach((r, idx) => {
-              if (next[r.version] === undefined) {
-                next[r.version] = idx === 0; // expand first item
-              }
-            });
-            return next;
-          });
-        }
-      } catch (err) {
-        console.warn('[ChangelogScreen] Failed to fetch changelogs:', err);
-      } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
+      setCurrentPageOverride(page);
+      if (category === selectedCategory && search === searchQuery && page === currentPageOverride) {
+        await refetchChangelogs();
       }
+      setIsRefreshing(false);
     },
-    []
+    [selectedCategory, searchQuery, currentPageOverride, refetchChangelogs]
   );
 
   useEffect(() => {
-    setIsLoading(true);
-    loadChangelogs(1, selectedCategory, searchQuery);
-  }, [selectedCategory, searchQuery, loadChangelogs]);
+    setCurrentPageOverride(1);
+  }, [selectedCategory, searchQuery]);
+
+  useEffect(() => {
+    if (pagination.currentPage === 1 && releases.length > 0) {
+      setExpandedVersions((prev) => {
+        const next = { ...prev };
+        releases.forEach((r, idx) => {
+          if (next[r.version] === undefined) {
+            next[r.version] = idx === 0;
+          }
+        });
+        return next;
+      });
+    }
+  }, [pagination.currentPage, releases]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -209,7 +215,6 @@ export default function ChangelogScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsLoading(true);
     loadChangelogs(newPage, selectedCategory, searchQuery);
   };
 

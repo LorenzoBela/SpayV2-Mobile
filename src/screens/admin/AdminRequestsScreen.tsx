@@ -49,6 +49,8 @@ import {
   Moon,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { supabase } from '../../utils/supabase';
 import { formatAmount } from '../../utils/money';
@@ -67,9 +69,22 @@ export default function AdminRequestsScreen() {
   const isDarkMode = themeContext?.isDarkMode ?? true;
   const scrollHandler = useTabBarScroll();
 
-  const [requests, setRequests] = useState<PurchaseRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { data: requestsQueryData, isLoading: queryLoading, refetch: refetchRequests } = useQuery({
+    queryKey: ['admin-purchase-requests'],
+    queryFn: async () => {
+      const res = await fetchAdminPurchaseRequests();
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to load requests');
+      }
+      return res.data;
+    },
+    ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
+  });
+  const requests = requestsQueryData ?? [];
+  const isLoading = queryLoading && !requestsQueryData;
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [termFilter, setTermFilter] = useState<number | 'ALL'>('ALL');
@@ -114,35 +129,26 @@ export default function AdminRequestsScreen() {
 
   // Load Requests
   const loadRequests = useCallback(async () => {
-    setIsLoading(true);
-    const res = await fetchAdminPurchaseRequests();
-    if (res.success) {
-      setRequests(res.data);
-    } else {
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to load requests',
-        text2: res.error,
-      });
-    }
-    setIsLoading(false);
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: ['admin-purchase-requests'] });
+  }, [queryClient]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await loadRequests();
-    setIsRefreshing(false);
+    try {
+      await refetchRequests();
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   useEffect(() => {
-    loadRequests();
     const channel = supabase
       .channel('admin-requests-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'purchase_requests' },
         () => {
-          loadRequests();
+          void loadRequests();
         }
       )
       .subscribe();

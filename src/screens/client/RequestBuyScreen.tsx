@@ -44,6 +44,7 @@ import {
   Info,
 } from 'lucide-react-native';
 import { ThemeContext } from '../../navigation/navigationTypes';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { formatAmount } from '../../utils/money';
 import { parseShopeeShareText } from '../../utils/shopeeParser';
@@ -91,8 +92,21 @@ export default function RequestBuyScreen({ route }: RequestBuyScreenProps) {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // List State
-  const [requests, setRequests] = useState<PurchaseRequest[]>([]);
-  const [isLoadingList, setIsLoadingList] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: requestsQueryData, isLoading: queryLoadingList, refetch: refetchRequests } = useQuery({
+    queryKey: ['client-purchase-requests'],
+    queryFn: async () => {
+      const res = await fetchClientPurchaseRequests();
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to load requests');
+      }
+      return res.data;
+    },
+    staleTime: 2 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const requests = requestsQueryData ?? [];
+  const isLoadingList = queryLoadingList && !requestsQueryData;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -200,29 +214,17 @@ export default function RequestBuyScreen({ route }: RequestBuyScreenProps) {
 
   // Load Requests
   const loadRequests = useCallback(async () => {
-    setIsLoadingList(true);
-    const res = await fetchClientPurchaseRequests();
-    if (res.success) {
-      setRequests(res.data);
-    } else {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: res.error || 'Failed to load requests',
-      });
-    }
-    setIsLoadingList(false);
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: ['client-purchase-requests'] });
+  }, [queryClient]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await loadRequests();
-    setIsRefreshing(false);
+    try {
+      await refetchRequests();
+    } finally {
+      setIsRefreshing(false);
+    }
   };
-
-  useEffect(() => {
-    loadRequests();
-  }, [loadRequests]);
 
   // Paste from clipboard handler
   const handlePasteClipboard = async () => {

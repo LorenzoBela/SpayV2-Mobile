@@ -53,6 +53,7 @@ import * as Sharing from 'expo-sharing';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../../utils/supabase';
+import { getCachedAccessToken, getSessionWithTimeout } from '../../utils/authProfile';
 import { getLinkedProfileForCurrentUser } from '../../utils/authProfile';
 import { ensureDeviceRegistration } from '../../services/fcmNotificationService';
 import { ensureTrayNotificationPermissions } from '../../services/notificationService';
@@ -132,8 +133,11 @@ export default function SettingsScreen() {
     setRefreshingCache(true);
     try {
       const getApiUrl = () => process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || 'https://nootspaytracker.vercel.app';
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      let token = getCachedAccessToken();
+      if (!token) {
+        const session = await getSessionWithTimeout(3000);
+        token = session?.access_token ?? null;
+      }
       if (!token) {
         PremiumAlert.alert('Authentication Error', 'Session not found. Please log in again.');
         return;
@@ -177,8 +181,11 @@ export default function SettingsScreen() {
     setExportingFormat(format);
     try {
       const getApiUrl = () => process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || 'https://nootspaytracker.vercel.app';
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      let token = getCachedAccessToken();
+      if (!token) {
+        const session = await getSessionWithTimeout(3000);
+        token = session?.access_token ?? null;
+      }
 
       const dateStr = new Date().toISOString().split('T')[0];
       const fileName = `spay-data-export-${dateStr}.${format}`;

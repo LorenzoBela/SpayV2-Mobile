@@ -65,7 +65,7 @@ import { useResponsiveLayout } from '../../utils/responsive';
 import AdminErrorBanner from '../../components/AdminErrorBanner';
 import PremiumLoader from '../../components/PremiumLoader';
 import { parseUtcDate, getUtc8DateParts } from '../../utils/date';
-import { fetchAdminActionOrThrow, callAdminApi } from '../../services/adminService';
+import { fetchAdminActionOrThrow, callAdminApi, ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -370,7 +370,7 @@ export default function AdminOrdersScreen() {
       status: activeTab,
       filterMonthKey: filterMonthKey || undefined,
     }, signal),
-    staleTime: 30000,
+    ...ADMIN_QUERY_OPTIONS,
     placeholderData: keepPreviousData,
   });
 

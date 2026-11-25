@@ -51,11 +51,11 @@ import { ThemeContext } from '../../navigation/navigationTypes';
 import { useTabBarScroll } from '../../navigation/TabBarContext';
 import { useResponsiveLayout } from '../../utils/responsive';
 import PremiumLoader from '../../components/PremiumLoader';
-import { fetchAdminActionOrThrow, callAdminApi, triggerNotificationScheduler } from '../../services/adminService';
+import { fetchAdminActionOrThrow, callAdminApi, triggerNotificationScheduler, ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import { getClientAvatarUrl } from '../../utils/authProfile';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { WebView } from 'react-native-webview';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { parseUtcDate } from '../../utils/date';
 
 const FLIP_PHASE_MS = 330;
@@ -493,14 +493,15 @@ export default function AdminRemindersScreen() {
 
   const { data: remindersData, isLoading: loading, isFetching, error: queryError, refetch } = useQuery({
     queryKey: ['admin-reminders'],
-    queryFn: ({ signal }) => fetchAdminActionOrThrow('fetch-admin-reminders', {}, signal),
-    staleTime: 30000,
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-reminders', {}, signal),
+    ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
   });
 
   const { data: clientsSelectionData } = useQuery({
     queryKey: ['admin-clients-selection'],
-    queryFn: ({ signal }) => fetchAdminActionOrThrow('fetch-admin-clients', { page: 1, pageSize: 1000 }, signal),
-    staleTime: 30000,
+    queryFn: ({ signal }) => fetchAdminActionOrThrow<Record<string, any>>('fetch-admin-clients', { page: 1, pageSize: 1000 }, signal),
+    ...ADMIN_QUERY_OPTIONS,
   });
 
   const hasRemindersData = Boolean(remindersData && remindersData.success !== false);

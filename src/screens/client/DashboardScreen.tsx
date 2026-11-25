@@ -69,7 +69,7 @@ import {
   markWhatsNewSeenAsync,
 } from '../../services/changelogService';
 import { ReleaseChangelog } from '../../types/changelog';
-import { useClientDashboardQuery } from '../../hooks/useClientQueries';
+import { useClientDashboardQuery, useSharedCreditLimitsQuery } from '../../hooks/useClientQueries';
 import { useDynamicIsland } from '../../context/DynamicIslandContext';
 import { fetchFreshWeather } from '../../services/weatherService';
 import { getSharedCreditLimits } from '../../services/sharedCreditService';
@@ -943,9 +943,21 @@ export default function DashboardScreen() {
     setMonthlyTrends(monthsArray.map(key => trendsMap.get(key)));
   };
 
+  const { data: sharedLimitsData, refetch: refetchSharedLimits } = useSharedCreditLimitsQuery();
+
+  useEffect(() => {
+    if (!sharedLimitsData) return;
+    setGlobalCreditLimit(sharedLimitsData.limit);
+    setGlobalAvailableCredit(Math.max(0, sharedLimitsData.limit - sharedLimitsData.unpaid));
+  }, [sharedLimitsData]);
+
   // Global credit limit fetcher
   const fetchGlobalLimits = useCallback(async (force = false) => {
     try {
+      if (force) {
+        const res = await refetchSharedLimits();
+        if (res.data) return res.data;
+      }
       const limits = await getSharedCreditLimits(force);
       setGlobalCreditLimit(limits.limit);
       setGlobalAvailableCredit(Math.max(0, limits.limit - limits.unpaid));
@@ -954,12 +966,11 @@ export default function DashboardScreen() {
       console.warn('Failed to fetch global credit limits:', err);
       return null;
     }
-  }, []);
+  }, [refetchSharedLimits]);
 
-  // User Profile & shared credit limits parallel startup fetch
+  // User Profile parallel startup fetch (shared limits hydrated via useSharedCreditLimitsQuery)
   useEffect(() => {
     let active = true;
-    void fetchGlobalLimits();
     getLinkedProfileForCurrentUser()
       .then(({ user, profile }) => {
         if (!active || !user) return;

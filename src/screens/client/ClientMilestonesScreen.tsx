@@ -237,7 +237,7 @@ export default function ClientMilestonesScreen() {
   const [celebrateColors, setCelebrateColors] = useState<string[]>(['#ff5a5f', '#3e5170', '#eab308']);
 
   // Fetch client milestones data using tRPC
-  const { data: milestones = [], isLoading, refetch } = trpc.milestones.getClientMilestones.useQuery();
+  const { data: milestones = [], isLoading, refetch } = trpc.milestones.getClientMilestones.useQuery(undefined, { staleTime: 2 * 60 * 1000 });
 
   const totalCount = milestones.length;
   const unlockedCount = milestones.filter((m: any) => m.isUnlocked).length;

@@ -97,7 +97,7 @@ import { FlashList } from '@shopify/flash-list';
 const AnyFlashList = FlashList as any;
 import DatePicker from '../../components/DatePicker';
 import ActivityHeatmap from '../../components/ActivityHeatmap';
-import { fetchAdminDashboardOrThrow, callAdminApi } from '../../services/adminService';
+import { fetchAdminDashboardOrThrow, callAdminApi, ADMIN_QUERY_OPTIONS } from '../../services/adminService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useDynamicIsland } from '../../context/DynamicIslandContext';
@@ -315,7 +315,7 @@ export default function AdminDashboardScreen() {
   } = useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: ({ signal }) => fetchAdminDashboardOrThrow(signal),
-    staleTime: 30000,
+    ...ADMIN_QUERY_OPTIONS,
   });
 
   const hasDashboardData = Boolean(dashboardData && dashboardData.success !== false);
