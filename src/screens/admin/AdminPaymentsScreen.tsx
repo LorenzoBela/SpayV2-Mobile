@@ -31,7 +31,7 @@ import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
-import Reanimated, { useAnimatedStyle, interpolate, FadeOut, Layout } from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, cancelAnimation, interpolate, FadeOut, Layout } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -672,6 +672,22 @@ export default function AdminPaymentsScreen() {
   const [isRejectOpen, setIsRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const bulkProgressX = useSharedValue(-160);
+
+  useEffect(() => {
+    if (actionLoading) {
+      bulkProgressX.value = -160;
+      bulkProgressX.value = withRepeat(withTiming(360, { duration: 1100 }), -1, false);
+    } else {
+      cancelAnimation(bulkProgressX);
+      bulkProgressX.value = -160;
+    }
+    return () => cancelAnimation(bulkProgressX);
+  }, [actionLoading, bulkProgressX]);
+
+  const animatedBulkProgressStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: bulkProgressX.value }],
+  }));
 
   // Countdown timer & next billing schedule
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
@@ -1401,18 +1417,30 @@ export default function AdminPaymentsScreen() {
           onPress: async () => {
             setActionLoading(true);
             try {
-              const response = await callAdminApi('bulk-mark-paid', { ids: idsToClear });
+              const response = await callAdminApi('bulk-mark-paid', { ids: idsToClear }, { timeoutMs: 25000 });
               if (response && response.success) {
-                const clearedCount = (typeof response.count === 'number' && response.count > 0) ? response.count : idsToClear.length;
                 setSelectedIds([]);
                 setBulkMode(false);
                 queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
-                PremiumAlert.alert('Success', `Successfully cleared ${clearedCount} ${clearedCount === 1 ? 'payment' : 'payments'}.`);
+                if (response.count === 0) {
+                  PremiumAlert.alert('Already Cleared', 'Selected payments were already marked as paid.');
+                } else {
+                  const clearedCount = typeof response.count === 'number' ? response.count : idsToClear.length;
+                  PremiumAlert.alert('Success', `Successfully cleared ${clearedCount} ${clearedCount === 1 ? 'payment' : 'payments'}.`);
+                }
               } else {
-                PremiumAlert.alert('Error', response?.error || 'Failed bulk marks.');
+                const errMsg = String(response?.error || '');
+                const isTimeoutOrNetwork = /timeout|timed out|abort|network/i.test(errMsg);
+                if (isTimeoutOrNetwork) {
+                  queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+                  PremiumAlert.alert('Syncing Status', 'The request timed out or lost connection. Refreshing the list to verify if payments were cleared.');
+                } else {
+                  PremiumAlert.alert('Error', errMsg || 'Failed bulk marks.');
+                }
               }
             } catch (e: any) {
-              PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
+              queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+              PremiumAlert.alert('Syncing Status', 'The request timed out or lost connection. Refreshing the list to verify if payments were cleared.');
             } finally {
               setActionLoading(false);
             }
@@ -3289,9 +3317,20 @@ export default function AdminPaymentsScreen() {
 
       {/* Floating Bulk Actions Bar for Ledger */}
       {selectedIds.length > 0 && (
-        <Reanimated.View style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border }]}>
-          <View style={{ flexDirection: 'column', flex: 1, marginRight: 12 }}>
-            <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>{selectedIds.length} Selected</Text>
+        <Reanimated.View
+          style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border, overflow: 'hidden' }]}
+          accessibilityRole="progressbar"
+          accessibilityState={{ busy: actionLoading }}
+        >
+          {actionLoading && (
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: 'rgba(238, 77, 45, 0.2)', overflow: 'hidden' }}>
+              <Reanimated.View style={[{ width: 140, height: '100%', backgroundColor: t.accent }, animatedBulkProgressStyle]} />
+            </View>
+          )}
+          <View style={{ flexDirection: 'column', flex: 1, marginRight: 12 }} accessibilityLiveRegion="polite">
+            <Text style={[styles.bulkLabel, { color: t.textPrimary }]}>
+              {actionLoading ? `Clearing ${selectedIds.length} ${selectedIds.length === 1 ? 'payment' : 'payments'}...` : `${selectedIds.length} Selected`}
+            </Text>
             {selectedPaymentsSummary.clientString ? (
               <Text style={{ color: t.textSecondary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
                 {formatCurrency(selectedPaymentsSummary.totalAmount)} • {selectedPaymentsSummary.clientString}
@@ -3299,17 +3338,32 @@ export default function AdminPaymentsScreen() {
             ) : null}
           </View>
           <View style={styles.bulkBtnRow}>
-            <TouchableOpacity style={styles.bulkCancelBtn} onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setSelectedIds([]);
-            }}>
+            <TouchableOpacity
+              style={[styles.bulkCancelBtn, actionLoading && { opacity: 0.45 }]}
+              disabled={actionLoading}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedIds([]);
+              }}
+            >
               <Text style={styles.bulkCancelBtnText}>Deselect</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bulkConfirmBtn, { backgroundColor: t.accent }]} onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              handleBulkClear();
-            }} disabled={actionLoading}>
-              <Text style={styles.bulkConfirmBtnText}>{actionLoading ? 'Clearing...' : 'Verify Paid'}</Text>
+            <TouchableOpacity
+              style={[styles.bulkConfirmBtn, { backgroundColor: t.accent, opacity: actionLoading ? 0.85 : 1, flexDirection: 'row', gap: 6 }]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleBulkClear();
+              }}
+              disabled={actionLoading}
+            >
+              {actionLoading ? (
+                <>
+                  <ActivityIndicator size="small" color="#fff" />
+                  <Text style={styles.bulkConfirmBtnText}>Clearing...</Text>
+                </>
+              ) : (
+                <Text style={styles.bulkConfirmBtnText}>Verify Paid</Text>
+              )}
             </TouchableOpacity>
           </View>
         </Reanimated.View>

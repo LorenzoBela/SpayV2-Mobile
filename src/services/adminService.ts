@@ -151,9 +151,10 @@ export const adminPaymentsQueryOptions = (
 export const callAdminApi = async (
   action: string,
   bodyData: any = {},
-  opts?: { signal?: AbortSignal },
+  opts?: { signal?: AbortSignal; timeoutMs?: number },
 ) => {
   const signal = opts?.signal;
+  const restTimeoutMs = opts?.timeoutMs ?? ADMIN_REST_TIMEOUT_MS;
   if (signal?.aborted) {
     return recordFailureCause(
       { success: false, error: 'Request aborted.' },
@@ -242,7 +243,7 @@ export const callAdminApi = async (
 
           return await response.json();
         },
-        ADMIN_REST_TIMEOUT_MS,
+        restTimeoutMs,
         signal,
         `Admin action ${action}`,
       );

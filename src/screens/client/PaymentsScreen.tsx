@@ -745,7 +745,13 @@ export default function PaymentsScreen() {
         );
         void refetch();
       } catch (err: any) {
-        PremiumAlert.alert('Reschedule Error', err?.message || 'Failed to submit reschedule request.');
+        const msg = String(err?.message || '');
+        if (/timeout|timed out|abort|network/i.test(msg)) {
+          void refetch();
+          PremiumAlert.alert('Syncing Status', 'Connection timed out. Refreshing your payments to verify if the request was submitted.');
+        } else {
+          PremiumAlert.alert('Reschedule Error', msg || 'Failed to submit reschedule request.');
+        }
       } finally {
         setSubmittingReschedule(false);
       }
