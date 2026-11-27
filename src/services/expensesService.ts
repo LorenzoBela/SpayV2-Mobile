@@ -559,7 +559,7 @@ export async function bulkPayAtomeInstallments(
     const res = await callAdminApi('bulk-pay-atome-installments', {
       paymentIds,
       paymentSource,
-    });
+    }, { timeoutMs: 25000 });
     if (res && res.success !== false) {
       return { success: true };
     }

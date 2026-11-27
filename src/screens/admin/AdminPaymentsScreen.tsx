@@ -1632,16 +1632,23 @@ export default function AdminPaymentsScreen() {
           onPress: async () => {
             setActionLoading(true);
             try {
-              const response = await callAdminApi('bulk-reject-shopee-imports', { notificationIds: selectedImportIds });
+              const response = await callAdminApi('bulk-reject-shopee-imports', { notificationIds: selectedImportIds }, { timeoutMs: 25000 });
               if (response.success) {
                 PremiumAlert.alert('Success', `Successfully rejected ${selectedImportIds.length} Shopee import requests.`);
                 setSelectedImportIds([]);
                 queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
               } else {
-                PremiumAlert.alert('Error', response.error || 'Failed to reject Shopee imports.');
+                const errMsg = String(response.error || '');
+                if (/timeout|timed out|abort|network/i.test(errMsg)) {
+                  queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+                  PremiumAlert.alert('Syncing Status', 'Request timed out. Refreshing imports to verify status.');
+                } else {
+                  PremiumAlert.alert('Error', errMsg || 'Failed to reject Shopee imports.');
+                }
               }
             } catch (e: any) {
-              PremiumAlert.alert('Error', e?.message || 'Unexpected network error.');
+              queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+              PremiumAlert.alert('Syncing Status', 'Request timed out or lost connection. Refreshing imports to verify status.');
             } finally {
               setActionLoading(false);
             }
@@ -1796,7 +1803,7 @@ export default function AdminPaymentsScreen() {
 
       const response = await callAdminApi('bulk-approve-shopee-imports', {
         items: payloadItems
-      });
+      }, { timeoutMs: 25000 });
 
       if (response.success) {
         PremiumAlert.alert('Success', `Successfully approved and assigned ${selectedImportIds.length} Shopee order(s)!`);
@@ -1805,11 +1812,20 @@ export default function AdminPaymentsScreen() {
         queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
         queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
-        PremiumAlert.alert('Error', response.error || 'Failed to bulk approve Shopee imports.');
+        const errMsg = String(response.error || '');
+        if (/timeout|timed out|abort|network/i.test(errMsg)) {
+          queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+          queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+          PremiumAlert.alert('Syncing Status', 'Request timed out. Refreshing imports and payments to verify status.');
+        } else {
+          PremiumAlert.alert('Error', errMsg || 'Failed to bulk approve Shopee imports.');
+        }
       }
     } catch (err) {
       console.error(err);
-      PremiumAlert.alert('Error', 'An unexpected error occurred during bulk processing.');
+      queryClient.invalidateQueries({ queryKey: ['admin-shopee-imports'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+      PremiumAlert.alert('Syncing Status', 'Request timed out or lost connection. Refreshing imports and payments to verify status.');
     } finally {
       setActionLoading(false);
     }
