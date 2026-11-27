@@ -1184,6 +1184,83 @@ export default function AppNavigator() {
     return () => clearTimeout(timer);
   }, [session?.user?.id, effectiveUserId, profileLoading]);
 
+  // Real-time Mobile presence (presence:spay-clients) & throttled last-seen heartbeat (100% OTA safe)
+  useEffect(() => {
+    if (!session?.user?.id || !linkedProfileId || profileLoading) return;
+
+    let isDisposed = false;
+    let lastHeartbeatAt = 0;
+    const mobilePlatform = Platform.OS === 'ios' ? 'ios' : 'android';
+    const serverUrl = process.env.EXPO_PUBLIC_API_URL || 'https://nootspaytracker.vercel.app';
+
+    const sendHeartbeat = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastHeartbeatAt < 120_000) return;
+      lastHeartbeatAt = now;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) return;
+        await fetch(`${serverUrl}/api/user/heartbeat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ platform: mobilePlatform }),
+        });
+      } catch {
+        // Non-blocking heartbeat
+      }
+    };
+
+    const channel = supabase.channel('presence:spay-clients', {
+      config: { presence: { key: linkedProfileId } },
+    });
+
+    const trackIfActive = () => {
+      if (isDisposed || AppState.currentState !== 'active') return;
+      void channel.track({
+        profile_id: linkedProfileId,
+        platform: mobilePlatform,
+        online_at: new Date().toISOString(),
+      });
+    };
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED' && !isDisposed) {
+        trackIfActive();
+        if (AppState.currentState === 'active') {
+          void sendHeartbeat(true);
+        }
+      }
+    });
+
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        trackIfActive();
+        void sendHeartbeat(false);
+      } else if (nextState === 'background' || nextState === 'inactive') {
+        void channel.untrack();
+        void sendHeartbeat(true);
+      }
+    });
+
+    const heartbeatInterval = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        void sendHeartbeat(false);
+      }
+    }, 120_000);
+
+    return () => {
+      isDisposed = true;
+      clearInterval(heartbeatInterval);
+      appStateSub.remove();
+      void channel.untrack();
+      void supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, linkedProfileId, profileLoading]);
+
   useEffect(() => {
     if (!session?.user?.id || !linkedProfileId || profileLoading || getCachedUserProfile(session.user.id)?.linkedProfileId !== linkedProfileId) return;
     pushRegistrationGate.resume();

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useReducer,
 } from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../utils/supabase';
@@ -934,6 +934,19 @@ export const DynamicIslandProvider: React.FC<{
     }
     checkMissedNotifications();
   }, [sessionExists, activeRole, checkMissedNotifications]);
+
+  // Persist spay_last_online_at when app moves to background/inactive so catch-up reflects actual leave time
+  useEffect(() => {
+    if (!sessionExists) return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        void AsyncStorage.setItem('spay_last_online_at', new Date().toISOString());
+      }
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [sessionExists]);
 
   // Weather update listener to keep greeting badge fresh
   useEffect(() => {
