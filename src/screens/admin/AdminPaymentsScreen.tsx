@@ -31,7 +31,7 @@ import { useTabBarScroll, useTabBar } from '../../navigation/TabBarContext';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFooterPadding } from '../../utils/safeArea';
-import Reanimated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, cancelAnimation, interpolate, FadeOut, Layout } from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, interpolate, FadeOut, Layout } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -672,22 +672,29 @@ export default function AdminPaymentsScreen() {
   const [isRejectOpen, setIsRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  const bulkProgressX = useSharedValue(-160);
+  const bulkProgressAnim = useRef(new Animated.Value(-160)).current;
 
   useEffect(() => {
-    if (actionLoading) {
-      bulkProgressX.value = -160;
-      bulkProgressX.value = withRepeat(withTiming(360, { duration: 1100 }), -1, false);
-    } else {
-      cancelAnimation(bulkProgressX);
-      bulkProgressX.value = -160;
+    if (!actionLoading) {
+      bulkProgressAnim.stopAnimation();
+      bulkProgressAnim.setValue(-160);
+      return;
     }
-    return () => cancelAnimation(bulkProgressX);
-  }, [actionLoading, bulkProgressX]);
-
-  const animatedBulkProgressStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: bulkProgressX.value }],
-  }));
+    bulkProgressAnim.setValue(-160);
+    const loop = Animated.loop(
+      Animated.timing(bulkProgressAnim, {
+        toValue: 360,
+        duration: 1100,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      bulkProgressAnim.setValue(-160);
+    };
+  }, [actionLoading, bulkProgressAnim]);
 
   // Countdown timer & next billing schedule
   const [selectedScheduleIndex, setSelectedScheduleIndex] = useState<number>(0);
@@ -3335,12 +3342,10 @@ export default function AdminPaymentsScreen() {
       {selectedIds.length > 0 && (
         <Reanimated.View
           style={[styles.floatingBulkBar, animatedBulkBarContainerStyle, { backgroundColor: t.cardBg, borderColor: t.border, overflow: 'hidden' }]}
-          accessibilityRole="progressbar"
-          accessibilityState={{ busy: actionLoading }}
         >
           {actionLoading && (
             <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: 'rgba(238, 77, 45, 0.2)', overflow: 'hidden' }}>
-              <Reanimated.View style={[{ width: 140, height: '100%', backgroundColor: t.accent }, animatedBulkProgressStyle]} />
+              <Animated.View style={{ width: 140, height: '100%', backgroundColor: t.accent, transform: [{ translateX: bulkProgressAnim }] }} />
             </View>
           )}
           <View style={{ flexDirection: 'column', flex: 1, marginRight: 12 }} accessibilityLiveRegion="polite">
