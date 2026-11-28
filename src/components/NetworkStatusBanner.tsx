@@ -11,6 +11,7 @@ const getHealthUrl = () => {
   return `${base}/api/health`;
 };
 
+/** Event-driven offline & server-unreachable status pill with manual health retry. */
 export default function NetworkStatusBanner() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
