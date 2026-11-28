@@ -2448,7 +2448,7 @@ export default function AdminPaymentsScreen() {
                     {/* Body */}
                     {paymentsList.length > 0 ? (
                       paymentsList.map((payment: any) => {
-                        const selected = selectedIds.includes(payment.id);
+                        const selected = selectedIdsSet.has(payment.id);
                         return (
                           <TouchableOpacity
                             key={payment.id}
@@ -2784,7 +2784,7 @@ export default function AdminPaymentsScreen() {
                     {/* Body */}
                     {filteredBreakdownPayments.length > 0 ? (
                       paginatedBreakdownPayments.map((payment: any) => {
-                        const selected = selectedIds.includes(payment.id);
+                        const selected = selectedIdsSet.has(payment.id);
                         const monthKey = getBillingMonthKey(payment.due_date);
                         const monthName = formatBillingMonthKey(monthKey);
                         return (
@@ -3418,7 +3418,7 @@ export default function AdminPaymentsScreen() {
 
 
       {/* Payment Details Modal */}
-      {selectedPayment && (
+      {selectedPayment && isDetailsOpen && (
         <Modal visible={isDetailsOpen} animationType="slide" transparent={false}>
           <SafeAreaView style={[styles.modalScrollContainer, { backgroundColor: t.bg }]}>
             <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={t.bg} />

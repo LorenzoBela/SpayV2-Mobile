@@ -73,33 +73,65 @@ export function useRealtimeSync(
       }, 300);
     };
 
-    console.log(`[useRealtimeSync] Subscribing to changes on [${tablesKey}] under channel: ${channelName}`);
-    const channel = supabase.channel(channelName);
-
     const subscribedTables = [...new Set(tables.some(table => table === 'orders' || table === 'payments')
       ? [...tables, 'order_participants', 'order_participant_payments'] : tables)];
-    subscribedTables.forEach((table) => {
-      channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: table,
-        },
-        (payload) => {
-          console.log(`[useRealtimeSync] Database change detected on table: ${table}. Event type: ${payload.eventType}`);
+
+    let activeChannel: ReturnType<typeof supabase.channel> | null = null;
+    let isDisposed = false;
+
+    const subscribeChannel = () => {
+      if (isDisposed || activeChannel) return;
+      const suffix = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const name = `realtime-sync-${tablesKey}-${suffix}`;
+      const ch = supabase.channel(name);
+      subscribedTables.forEach((table) => {
+        ch.on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: table,
+          },
+          (payload) => {
+            console.log(`[useRealtimeSync] Database change detected on table: ${table}. Event type: ${payload.eventType}`);
+            triggerSync();
+          }
+        );
+      });
+      ch.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[useRealtimeSync] Channel ${name} successfully subscribed.`);
+        } else if (status === 'CLOSED') {
+          console.log(`[useRealtimeSync] Channel ${name} subscription closed.`);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn(`[useRealtimeSync] Channel ${name} subscription error. Check if Realtime is enabled in Supabase!`);
+        }
+      });
+      activeChannel = ch;
+    };
+
+    const unsubscribeChannel = () => {
+      if (!activeChannel) return;
+      const ch = activeChannel;
+      activeChannel = null;
+      void supabase.removeChannel(ch);
+    };
+
+    if (AppState.currentState === 'active') {
+      subscribeChannel();
+    }
+
+    let wasBackgrounded = AppState.currentState === 'background';
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        if (wasBackgrounded) {
+          wasBackgrounded = false;
+          subscribeChannel();
           triggerSync();
         }
-      );
-    });
-
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log(`[useRealtimeSync] Channel ${channelName} successfully subscribed.`);
-      } else if (status === 'CLOSED') {
-        console.log(`[useRealtimeSync] Channel ${channelName} subscription closed.`);
-      } else if (status === 'CHANNEL_ERROR') {
-        console.warn(`[useRealtimeSync] Channel ${channelName} subscription error. Check if Realtime is enabled in Supabase!`);
+      } else if (nextState === 'background') {
+        wasBackgrounded = true;
+        unsubscribeChannel();
       }
     });
 
@@ -108,10 +140,11 @@ export function useRealtimeSync(
     }, 60000) : null;
 
     return () => {
+      isDisposed = true;
+      appStateSub.remove();
       if (debounceTimer) clearTimeout(debounceTimer);
       if (fallbackRefresh !== null) clearInterval(fallbackRefresh);
-      console.log(`[useRealtimeSync] Cleaning up subscription for channel: ${channelName}`);
-      void supabase.removeChannel(channel);
+      unsubscribeChannel();
     };
   }, [tablesKey, queryClient]);
 }

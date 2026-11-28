@@ -1,4 +1,5 @@
 import { DeviceEventEmitter } from 'react-native';
+import { keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '../utils/supabase';
 import * as authProfileNamespace from '../utils/authProfile';
 import { getTrpcHeaders, trpcVanillaClient } from '../utils/trpc';
@@ -106,6 +107,7 @@ export const adminClientsQueryOptions = (
         signal,
       ),
     ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
   };
 };
 
@@ -126,6 +128,7 @@ export const adminOrdersQueryOptions = (
         signal,
       ),
     ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
   };
 };
 
@@ -145,6 +148,7 @@ export const adminPaymentsQueryOptions = (
         signal,
       ),
     ...ADMIN_QUERY_OPTIONS,
+    placeholderData: keepPreviousData,
   };
 };
 
