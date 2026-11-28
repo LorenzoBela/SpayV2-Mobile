@@ -10,6 +10,8 @@ export type LinkedProfile = {
   name?: string | null;
   role?: string | null;
   mobile_number?: string | null;
+  verification_status?: string | null;
+  verification_notes?: string | null;
   avatar_url?: string | null;
   avatarUrl?: string | null;
 };
@@ -31,6 +33,8 @@ export type CachedUserProfile = {
   authUserId?: string;
   role: string;
   linkedProfileId: string;
+  verificationStatus?: string | null;
+  verificationNotes?: string | null;
   theme?: string;
   name?: string | null;
   avatarUrl?: string | null;
@@ -59,7 +63,7 @@ export function setCachedUserProfile(cached: CachedUserProfile): void {
   }
 }
 
-const PROFILE_SELECT = 'id, email, name, role, mobile_number';
+const PROFILE_SELECT = 'id, email, name, role, mobile_number, verification_status, verification_notes';
 
 const pendingProfiles = new Map<string, Promise<LinkedProfile | null>>();
 

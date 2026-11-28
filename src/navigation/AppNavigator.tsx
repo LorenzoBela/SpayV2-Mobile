@@ -57,6 +57,7 @@ import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '../screens/auth/Onbo
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RoleSelectionScreen from '../screens/auth/RoleSelectionScreen';
+import AccountScreeningScreen from '../screens/auth/AccountScreeningScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import AdminClientsScreen from '../screens/admin/AdminClientsScreen';
 import AdminOrdersScreen from '../screens/admin/AdminOrdersScreen';
@@ -755,6 +756,8 @@ export default function AppNavigator() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const [verificationNotes, setVerificationNotes] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<'admin' | 'client' | null>(null);
   const [linkedProfileId, setLinkedProfileId] = useState<string | null>(null);
   const isMountedRef = useRef(true);
@@ -982,7 +985,11 @@ export default function AppNavigator() {
 
       // Account access is ready. Theme synchronization must not gate navigation.
       const role = data?.role === 'ADMIN' ? 'ADMIN' : 'CLIENT';
+      const nextVerificationStatus = data?.verification_status ?? null;
+      const nextVerificationNotes = data?.verification_notes ?? null;
       setUserRole(role);
+      setVerificationStatus(nextVerificationStatus);
+      setVerificationNotes(nextVerificationNotes);
       setActiveRole(current => role === 'CLIENT' ? 'client' : current);
       setProfileLoading(false);
       accountReady = true;
@@ -991,6 +998,8 @@ export default function AppNavigator() {
           authUserId: user.id,
           role,
           linkedProfileId: targetId,
+          verificationStatus: nextVerificationStatus,
+          verificationNotes: nextVerificationNotes,
           theme: getPersistedTheme(),
           name: data?.name ?? user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
           avatarUrl:
@@ -1033,6 +1042,8 @@ export default function AppNavigator() {
       const cached = getCachedUserProfile(session.user.id);
       if (cached) {
         setUserRole(cached.role);
+        setVerificationStatus(cached.verificationStatus ?? null);
+        setVerificationNotes(cached.verificationNotes ?? null);
         setLinkedProfileId(cached.linkedProfileId);
         setActiveRole(cached.role === 'CLIENT' ? 'client' : null);
         setProfileLoading(false);
@@ -1047,6 +1058,8 @@ export default function AppNavigator() {
         }
       } else {
         setUserRole(null);
+        setVerificationStatus(null);
+        setVerificationNotes(null);
         setLinkedProfileId(null);
         setActiveRole(null);
         setProfileLoading(true);
@@ -1054,6 +1067,8 @@ export default function AppNavigator() {
       void fetchProfileRole(session.user);
     } else {
       setUserRole(null);
+      setVerificationStatus(null);
+      setVerificationNotes(null);
       setActiveRole(null);
       setLinkedProfileId(null);
       setProfileLoading(false);
@@ -1450,7 +1465,27 @@ export default function AppNavigator() {
                     <NavigationContainer ref={navigationRef} theme={navigationTheme} onReady={() => setNotificationActionVersion(v => v + 1)}>
                       <Stack.Navigator screenOptions={{ headerShown: false }}>
                         {session ? (
-                          userRole === 'ADMIN' && activeRole === null ? (
+                          userRole !== 'ADMIN' && verificationStatus !== 'VERIFIED' ? (
+                            <Stack.Screen name="AccountScreening">
+                              {() => (
+                                <AccountScreeningScreen
+                                  name={session.user?.user_metadata?.full_name ?? session.user?.user_metadata?.name ?? null}
+                                  email={session.user?.email ?? null}
+                                  avatarUrl={session.user?.user_metadata?.avatar_url ?? session.user?.user_metadata?.picture ?? null}
+                                  status={verificationStatus ?? 'PENDING'}
+                                  notes={verificationNotes}
+                                  onRefreshStatus={async () => {
+                                    if (session?.user) {
+                                      await fetchProfileRole(session.user, { force: true });
+                                    }
+                                  }}
+                                  onSignOut={async () => {
+                                    await signOutWithNotifications();
+                                  }}
+                                />
+                              )}
+                            </Stack.Screen>
+                          ) : userRole === 'ADMIN' && activeRole === null ? (
                             <Stack.Screen name="RoleSelect">
                               {(props) => (
                                 <RoleSelectionScreen
@@ -1492,7 +1527,7 @@ export default function AppNavigator() {
                   </BiometricLockOverlay>
                 )}
 
-                {!!session && !!activeRole && !showOverlay && (
+                {!!session && !!activeRole && !(userRole !== 'ADMIN' && verificationStatus !== 'VERIFIED') && !showOverlay && (
                   <FloatingDynamicIsland />
                 )}
 

@@ -2,6 +2,7 @@ import React from 'react';
 
 export type RootStackParamList = {
   Auth: undefined;
+  AccountScreening: undefined;
   Main: undefined;
   RoleSelect: undefined;
   Admin: undefined;
