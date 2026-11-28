@@ -18,6 +18,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import AppUpdateGate from './src/components/AppUpdateGate';
 import GlobalPremiumAlert from './src/components/GlobalPremiumAlert';
 import GlobalProgressBar from './src/components/GlobalProgressBar';
+import NetworkStatusBanner from './src/components/NetworkStatusBanner';
 import RootErrorBoundary from './src/components/RootErrorBoundary';
 import PrivacyCurtain from './src/components/PrivacyCurtain';
 import { useNetworkReconciliation } from './src/hooks/useNetworkReconciliation';
@@ -91,6 +92,7 @@ function AppContent() {
                     <PrivacyCurtain />
                     <GlobalPremiumAlert />
                     <GlobalProgressBar />
+                    <NetworkStatusBanner />
                   </SafeAreaProvider>
                 </ProgressProvider>
               </PaperProvider>

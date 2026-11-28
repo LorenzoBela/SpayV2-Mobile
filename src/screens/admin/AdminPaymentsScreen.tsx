@@ -1457,18 +1457,47 @@ export default function AdminPaymentsScreen() {
     );
   };
 
+  const applyOptimisticMarkPaid = async (paymentId: string) => {
+    await queryClient.cancelQueries({ queryKey: ['admin-payments'] });
+    const previousQueries = queryClient.getQueriesData({ queryKey: ['admin-payments'] });
+    const paidAtIso = new Date().toISOString();
+    queryClient.setQueriesData({ queryKey: ['admin-payments'] }, (old: any) => {
+      if (!old || typeof old !== 'object') return old;
+      const patchList = (list: any[]) =>
+        list.map((p: any) =>
+          p && p.id === paymentId
+            ? { ...p, isPaid: true, is_paid: true, paymentDate: paidAtIso, payment_date: paidAtIso }
+            : p
+        );
+      return {
+        ...old,
+        ...(Array.isArray(old.payments) ? { payments: patchList(old.payments) } : {}),
+        ...(Array.isArray(old.allPaymentsForStats) ? { allPaymentsForStats: patchList(old.allPaymentsForStats) } : {}),
+      };
+    });
+    return () => {
+      previousQueries.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+    };
+  };
+
   const handleMarkPaid = async (paymentId: string) => {
     setActionLoading(true);
+    setIsDetailsOpen(false);
+    const rollback = await applyOptimisticMarkPaid(paymentId);
     try {
       const response = await callAdminApi('mark-payment-paid', { id: paymentId });
       if (response.success) {
         PremiumAlert.alert('Success', 'Payment marked as cleared.');
-        setIsDetailsOpen(false);
         queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
+        rollback();
         PremiumAlert.alert('Error', response.error || 'Failed to mark payment as paid.');
       }
     } catch (e: any) {
+      rollback();
+      queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
@@ -1477,16 +1506,20 @@ export default function AdminPaymentsScreen() {
 
   const handleApproveProof = async (paymentId: string) => {
     setActionLoading(true);
+    setIsDetailsOpen(false);
+    const rollback = await applyOptimisticMarkPaid(paymentId);
     try {
       const response = await callAdminApi('approve-payment-proof', { id: paymentId });
       if (response.success) {
         PremiumAlert.alert('Success', 'Payment proof approved and verified.');
-        setIsDetailsOpen(false);
         queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       } else {
+        rollback();
         PremiumAlert.alert('Error', response.error || 'Failed to verify payment proof.');
       }
     } catch (e: any) {
+      rollback();
+      queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
       PremiumAlert.alert('Network Error', e?.message || 'Server did not respond.');
     } finally {
       setActionLoading(false);
