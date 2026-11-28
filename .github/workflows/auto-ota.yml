@@ -1,0 +1,52 @@
+name: Auto OTA (Production)
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-auto-ota-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-ota:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Expo & EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run unit tests
+        run: npx vitest run src/tests/admin-payments-bulk-safety.test.ts
+
+      - name: Publish production OTA update
+        env:
+          EAS_SKIP_AUTO_FINGERPRINT: '1'
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "ERROR: EXPO_TOKEN secret is not set in GitHub Actions."
+            exit 1
+          fi
+          MSG=$(git log -1 --pretty=%s)
+          eas update --branch production --environment production --message "$MSG" --non-interactive
