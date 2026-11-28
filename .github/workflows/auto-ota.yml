@@ -25,12 +25,6 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup Expo & EAS CLI
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
       - name: Install dependencies
         run: npm ci
 
@@ -42,11 +36,12 @@ jobs:
 
       - name: Publish production OTA update
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EAS_SKIP_AUTO_FINGERPRINT: '1'
         run: |
-          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+          if [ -z "$EXPO_TOKEN" ]; then
             echo "ERROR: EXPO_TOKEN secret is not set in GitHub Actions."
             exit 1
           fi
           MSG=$(git log -1 --pretty=%s)
-          eas update --branch production --environment production --message "$MSG" --non-interactive
+          npx --yes eas-cli update --branch production --environment production --message "$MSG" --non-interactive
