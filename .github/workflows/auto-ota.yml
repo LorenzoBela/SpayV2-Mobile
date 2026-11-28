@@ -32,7 +32,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Run unit tests
-        run: npx vitest run src/tests/admin-payments-bulk-safety.test.ts
+        run: npx vitest run --exclude src/tests/split-allocation.test.ts
 
       - name: Publish production OTA update
         env:
